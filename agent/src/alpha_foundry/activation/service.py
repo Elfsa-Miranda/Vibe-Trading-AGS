@@ -22,6 +22,9 @@ from src.alpha_foundry.activation.resource_v1 import ActivationResourceEvidenceV
 from src.alpha_foundry.activation.generation_consumption_v1 import (
     ActivationGenerationConsumptionV1,
 )
+from src.alpha_foundry.activation.generation_consumption_v2 import (
+    ActivationGenerationConsumptionV2,
+)
 from src.research_ledger.events import EventDraft, ResearchEventStore
 
 
@@ -208,6 +211,74 @@ class ActivationEvidenceService:
                     "selected_parent_factor_spec_ids": list(
                         evidence.selected_parent_factor_spec_ids
                     ),
+                    "consumed_parent_factor_spec_ids": list(
+                        evidence.consumed_parent_factor_spec_ids
+                    ),
+                    "generated_candidate_count": len(
+                        evidence.generated_candidates
+                    ),
+                    "candidate_budget": evidence.candidate_budget,
+                    "compute_budget": evidence.compute_budget,
+                    "source_failure_codes": list(evidence.source_failure_codes),
+                    "source_complete": evidence.source_complete,
+                    "evidence_hash": evidence.evidence_hash,
+                    "artifact_refs": [reference],
+                },
+            )
+        )
+        return relative
+
+    def record_generation_consumption_v2(
+        self,
+        evidence: ActivationGenerationConsumptionV2,
+    ) -> str:
+        if not isinstance(evidence, ActivationGenerationConsumptionV2):
+            raise TypeError("typed exact generation-consumption evidence is required")
+        kind: ArtifactKind = "generation_consumption_v2"
+        relative = self.artifacts.put(kind, evidence.to_dict())
+        reference = self._reference(kind, evidence.evidence_hash, relative)
+        reference["media_type"] = (
+            "application/vnd.vibe.activation-generation-consumption-v2+json"
+        )
+        generation_id = (
+            "activation-generation-v2-"
+            + evidence.evidence_hash.removeprefix("sha256:")[:24]
+        )
+        self.event_store.append_event(
+            EventDraft(
+                event_type="ActivationGenerationConsumptionV2Recorded",
+                entity_id=generation_id,
+                run_id=evidence.execution_run_id,
+                payload_schema_version=(
+                    "activation_generation_consumption_recorded.v2"
+                ),
+                idempotency_key=(
+                    "activation-generation-v2:" + evidence.evidence_hash
+                ),
+                payload={
+                    "generation_id": generation_id,
+                    "plan_hash": evidence.plan_hash,
+                    "pair_id": evidence.pair_id,
+                    "run_group_id": evidence.run_group_id,
+                    "mechanism_family": evidence.mechanism_family,
+                    "dag_region": evidence.dag_region,
+                    "execution_run_id": evidence.execution_run_id,
+                    "retriever_decision_event_hash": (
+                        evidence.retriever_decision_event_hash
+                    ),
+                    "retriever_decision_hash": evidence.retriever_decision_hash,
+                    "control_evidence_event_hash": (
+                        evidence.control_evidence_event_hash
+                    ),
+                    "generator_policy_hash": evidence.generator_policy_hash,
+                    "selected_action_ids": list(evidence.selected_action_ids),
+                    "selected_action_event_hashes": list(
+                        evidence.selected_action_event_hashes
+                    ),
+                    "selected_parent_factor_spec_ids": list(
+                        evidence.selected_parent_factor_spec_ids
+                    ),
+                    "consumed_action_ids": list(evidence.consumed_action_ids),
                     "consumed_parent_factor_spec_ids": list(
                         evidence.consumed_parent_factor_spec_ids
                     ),
