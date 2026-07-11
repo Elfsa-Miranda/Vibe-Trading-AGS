@@ -135,6 +135,11 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "ActivationGenerationConsumptionV4Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ActivationResultRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
@@ -355,6 +360,9 @@ class ResearchEventStore:
             draft.event_type, payload
         )
         self._validate_external_generation_consumption_v3(
+            draft.event_type, payload
+        )
+        self._validate_external_generation_consumption_v4(
             draft.event_type, payload
         )
         self._validate_factor_definition_identity(draft.event_type, payload)
@@ -584,6 +592,7 @@ class ResearchEventStore:
             "ActivationGenerationConsumptionRecorded": "generation_id",
             "ActivationGenerationConsumptionV2Recorded": "generation_id",
             "ActivationGenerationConsumptionV3Recorded": "generation_id",
+            "ActivationGenerationConsumptionV4Recorded": "generation_id",
             "ActivationResultRecorded": "result_id",
             "RetrieverActivationDecisionRecorded": "activation_decision_id",
             "FalsificationContractRegistered": "contract_id",
@@ -2533,6 +2542,186 @@ class ResearchEventStore:
                 "Activation source-bound generation event differs from artifact"
             )
 
+    def _validate_external_generation_consumption_v4(
+        self, event_type: str, payload: Mapping[str, Any]
+    ) -> None:
+        if event_type != "ActivationGenerationConsumptionV4Recorded":
+            return
+        references = [
+            reference for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.activation-generation-consumption-v4+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError(
+                "Activation schedule-bound generation requires one artifact"
+            )
+        try:
+            from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
+            from src.alpha_foundry.activation.generation_consumption_v2 import (
+                ExactSelectedActionMutatorV2,
+            )
+            from src.alpha_foundry.activation.generation_consumption_v4 import (
+                ActivationGenerationConsumptionV4,
+            )
+            from src.alpha_foundry.mutators import SEED_MUTATION_TEMPLATE_REGISTRY_V1
+            from src.alpha_foundry.search import AlphaFoundrySearch
+            from src.alpha_foundry.seed_bank import AlphaSeed, SeedBank
+
+            artifacts = ActivationArtifactStore(self.artifact_root)
+            kind: Literal["generation_consumption_v4"] = "generation_consumption_v4"
+            if str(references[0]["relative_path"]).replace("\\", "/") != (
+                artifacts.relative_path(kind, str(payload["evidence_hash"]))
+            ):
+                raise ValueError("schedule-bound generation path is not canonical")
+            evidence = ActivationGenerationConsumptionV4.from_dict(
+                artifacts.get(kind, str(payload["evidence_hash"]))
+            )
+            events = self.query_events()
+            by_hash = {event.event_hash: event for event in events}
+            retriever = by_hash.get(evidence.base.retriever_decision_event_hash)
+            schedule = by_hash.get(evidence.schedule_event_hash)
+            source = by_hash.get(evidence.feature_source_event_hash)
+            if (
+                retriever is None or retriever.event_type != "RetrieverDecisionV7Recorded"
+                or schedule is None or schedule.event_type != "PreArmFlatScheduleFrozen"
+                or source is None or source.event_type != "RetrieverFeatureSourceRecorded"
+            ):
+                raise ValueError("schedule-bound generation authority is missing")
+            self._validate_external_retriever_v7_evidence(
+                retriever.event_type, retriever.to_dict()["payload"]
+            )
+            plan = artifacts.get("plan", evidence.base.plan_hash)
+            design = plan.get("design")
+            provenance = plan.get("provenance")
+            if not isinstance(design, Mapping) or not isinstance(provenance, Mapping):
+                raise ValueError("schedule-bound generation plan is invalid")
+            if (
+                retriever.run_id != evidence.base.execution_run_id
+                or retriever.payload["decision_hash"]
+                != evidence.base.retriever_decision_hash
+                or retriever.payload["input_bundle_hash"]
+                != evidence.retriever_input_bundle_hash
+                or retriever.payload["schedule_event_hash"]
+                != evidence.schedule_event_hash
+                or retriever.payload["schedule_hash"] != evidence.schedule_hash
+                or retriever.payload["feature_source_event_hash"]
+                != evidence.feature_source_event_hash
+                or retriever.payload["feature_source_hash"]
+                != evidence.feature_source_hash
+                or tuple(retriever.payload["selected_action_ids"])
+                != evidence.base.selected_action_ids
+                or tuple(retriever.payload["selected_parent_factor_spec_ids"])
+                != evidence.base.selected_parent_factor_spec_ids
+                or schedule.payload["plan_hash"] != evidence.base.plan_hash
+                or schedule.payload["pair_id"] != evidence.base.pair_id
+                or schedule.payload["schedule_hash"] != evidence.schedule_hash
+                or source.payload["source_hash"] != evidence.feature_source_hash
+                or source.payload["snapshot_event_hash"]
+                != evidence.feature_snapshot_event_hash
+                or source.payload["snapshot_hash"] != evidence.feature_snapshot_hash
+                or source.payload["feature_policy_hash"] != evidence.feature_policy_hash
+                or tuple(source.payload["scorecard_event_hashes"])
+                != evidence.feature_scorecard_event_hashes
+                or design.get("candidate_budget") != evidence.base.candidate_budget
+                or design.get("compute_budget") != evidence.base.compute_budget
+                or provenance.get("train_snapshot_hash")
+                != evidence.feature_snapshot_hash
+            ):
+                raise ValueError("schedule-bound generation authority differs")
+            expected_policy_hash = canonical_json_hash(
+                {
+                    "schema_version": "activation_exact_action_generator_policy.v4",
+                    "generator_version": "alpha_foundry_search.v1",
+                    "mutator_version": "exact_selected_action_mutator.v2",
+                    "template_registry_hash": SEED_MUTATION_TEMPLATE_REGISTRY_V1.registry_hash,
+                    "selection_order": (
+                        "retriever_v7_schedule_bound_selected_action_order.v1"
+                    ),
+                    "retriever_input_bundle_hash": evidence.retriever_input_bundle_hash,
+                    "schedule_event_hash": evidence.schedule_event_hash,
+                    "schedule_hash": evidence.schedule_hash,
+                    "feature_source_event_hash": evidence.feature_source_event_hash,
+                    "feature_source_hash": evidence.feature_source_hash,
+                    "selected_action_ids": list(evidence.base.selected_action_ids),
+                    "selected_action_event_hashes": list(
+                        evidence.base.selected_action_event_hashes
+                    ),
+                    "max_candidates": evidence.base.candidate_budget,
+                    "trial_budget": evidence.base.compute_budget,
+                }
+            )
+            if expected_policy_hash != evidence.base.generator_policy_hash:
+                raise ValueError("schedule-bound generation policy differs")
+            parent_catalog = {
+                str(parent["factor_spec_id"]): AlphaSeed(
+                    seed_id=str(parent["factor_spec_id"]),
+                    formula=str(parent["formula"]),
+                    source="content-addressed:" + str(parent["source_hash"]),
+                )
+                for parent in evidence.base.selected_parents
+            }
+            mutator = ExactSelectedActionMutatorV2(evidence.base.selected_actions)
+            replay = AlphaFoundrySearch(
+                seed_bank=SeedBank(mutator.action_seeds(parent_catalog)),
+                mutator=mutator,
+                max_candidates=evidence.base.candidate_budget,
+                trial_budget=evidence.base.compute_budget,
+            ).generate()
+            replay_records = tuple(
+                (
+                    str(candidate.metadata["retriever_action_id"]),
+                    str(candidate.metadata["retriever_action_event_hash"]),
+                    candidate.candidate_id, candidate.parent_seed_id,
+                    str(candidate.metadata["mutation"]), candidate.formula_hash,
+                )
+                for candidate in replay.candidates
+            )
+            evidence_records = tuple(
+                (
+                    str(record["action_id"]), str(record["action_event_hash"]),
+                    str(record["candidate_id"]),
+                    str(record["parent_factor_spec_id"]),
+                    str(record["template_id"]), str(record["formula_hash"]),
+                )
+                for record in evidence.base.generated_candidates
+            )
+            if replay_records != evidence_records:
+                raise ValueError("schedule-bound generation search does not replay")
+            starts = {
+                str(event.payload["trial_id"]): event for event in events
+                if event.event_type == "TrialStarted"
+            }
+            for record in evidence.base.generated_candidates:
+                terminal = by_hash.get(str(record["terminal_event_hash"]))
+                start = None if terminal is None else starts.get(
+                    str(terminal.payload["trial_id"])
+                )
+                if (
+                    terminal is None or terminal.event_type != "TrialTerminated"
+                    or terminal.run_id != evidence.base.execution_run_id
+                    or start is None
+                    or start.payload["candidate_id"] != record["candidate_id"]
+                ):
+                    raise ValueError("schedule-bound generation terminal differs")
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "Activation schedule-bound generation evidence is invalid"
+            ) from exc
+        raw = evidence.to_dict()
+        expected = {
+            key: raw[key] for key in payload
+            if key not in {"generation_id", "generated_candidate_count", "artifact_refs"}
+        }
+        if (
+            any(payload[name] != value for name, value in expected.items())
+            or payload["generated_candidate_count"]
+            != len(evidence.base.generated_candidates)
+        ):
+            raise EventValidationError(
+                "Activation schedule-bound generation event differs from artifact"
+            )
+
     @staticmethod
     def _validate_factor_definition_identity(
         event_type: str, payload: Mapping[str, Any]
@@ -3325,6 +3514,69 @@ class ResearchEventStore:
             if prior is not None or result is not None:
                 raise EventTransitionError(
                     "source-bound generation is duplicate or follows result"
+                )
+            return
+        if event_type == "ActivationGenerationConsumptionV4Recorded":
+            if draft.run_id != payload["execution_run_id"]:
+                raise EventTransitionError(
+                    "schedule-bound generation run differs from execution run"
+                )
+            self._activation_plan_payload(conn, str(payload["plan_hash"]))
+            retriever = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'RetrieverDecisionV7Recorded' AND event_hash = ?",
+                (payload["retriever_decision_event_hash"],),
+            ).fetchone()
+            schedule = conn.execute(
+                "SELECT payload FROM research_events WHERE event_type = 'PreArmFlatScheduleFrozen' AND event_hash = ?",
+                (payload["schedule_event_hash"],),
+            ).fetchone()
+            source = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'RetrieverFeatureSourceRecorded' AND event_hash = ?",
+                (payload["feature_source_event_hash"],),
+            ).fetchone()
+            if retriever is None or schedule is None or source is None:
+                raise EventTransitionError("schedule-bound generation authority is missing")
+            rp = json.loads(str(retriever["payload"]))
+            sp = json.loads(str(schedule["payload"]))
+            fp = json.loads(str(source["payload"]))
+            if (
+                str(retriever["run_id"]) != draft.run_id
+                or str(source["run_id"]) != draft.run_id
+                or rp["decision_hash"] != payload["retriever_decision_hash"]
+                or rp["input_bundle_hash"] != payload["retriever_input_bundle_hash"]
+                or rp["schedule_event_hash"] != payload["schedule_event_hash"]
+                or rp["feature_source_event_hash"]
+                != payload["feature_source_event_hash"]
+                or rp["selected_action_ids"] != payload["selected_action_ids"]
+                or rp["selected_parent_factor_spec_ids"]
+                != payload["selected_parent_factor_spec_ids"]
+                or sp["schedule_hash"] != payload["schedule_hash"]
+                or sp["plan_hash"] != payload["plan_hash"]
+                or sp["pair_id"] != payload["pair_id"]
+                or fp["source_hash"] != payload["feature_source_hash"]
+                or fp["snapshot_event_hash"]
+                != payload["feature_snapshot_event_hash"]
+                or fp["snapshot_hash"] != payload["feature_snapshot_hash"]
+                or fp["feature_policy_hash"] != payload["feature_policy_hash"]
+                or fp["scorecard_event_hashes"]
+                != payload["feature_scorecard_event_hashes"]
+            ):
+                raise EventTransitionError("schedule-bound generation authority differs")
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ActivationGenerationConsumptionV4Recorded'
+                  AND (entity_id = ? OR json_extract(payload, '$.evidence_hash') = ?)
+                """,
+                (payload["generation_id"], payload["evidence_hash"]),
+            ).fetchone()
+            result = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'ActivationResultRecorded' AND json_extract(payload, '$.plan_hash') = ?",
+                (payload["plan_hash"],),
+            ).fetchone()
+            if prior is not None or result is not None:
+                raise EventTransitionError(
+                    "schedule-bound generation is duplicate or follows result"
                 )
             return
         if event_type == "ActivationResultRecorded":
@@ -4595,6 +4847,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_generation_consumption_v4(
+                    event.event_type,
+                    validated_payload,
+                )
                 if validated_payload != event_dict["payload"]:
                     return False
                 self._validate_draft_identity(
@@ -5357,6 +5613,41 @@ class ResearchEventStore:
                     != payload["selected_action_ids"]
                     or feature_source.payload["source_hash"]
                     != payload["feature_source_hash"]
+                    or generation_id in activation_generation_ids
+                    or evidence_hash in activation_generation_hashes
+                ):
+                    return False
+                activation_generation_ids.add(generation_id)
+                activation_generation_hashes.add(evidence_hash)
+            elif event.event_type == "ActivationGenerationConsumptionV4Recorded":
+                plan_hash = str(payload["plan_hash"])
+                generation_id = str(payload["generation_id"])
+                evidence_hash = str(payload["evidence_hash"])
+                retriever = retriever_v7_events.get(
+                    str(payload["retriever_decision_event_hash"])
+                )
+                schedule = prearm_schedule_events.get(
+                    str(payload["schedule_event_hash"])
+                )
+                source = retriever_feature_source_events.get(
+                    str(payload["feature_source_event_hash"])
+                )
+                if (
+                    plan_hash not in activation_plans
+                    or plan_hash in activation_result_plans
+                    or event.run_id != payload["execution_run_id"]
+                    or retriever is None or schedule is None or source is None
+                    or retriever.run_id != event.run_id
+                    or source.run_id != event.run_id
+                    or retriever.payload["decision_hash"]
+                    != payload["retriever_decision_hash"]
+                    or retriever.payload["input_bundle_hash"]
+                    != payload["retriever_input_bundle_hash"]
+                    or retriever.payload["schedule_event_hash"] != schedule.event_hash
+                    or retriever.payload["selected_action_ids"]
+                    != payload["selected_action_ids"]
+                    or schedule.payload["schedule_hash"] != payload["schedule_hash"]
+                    or source.payload["source_hash"] != payload["feature_source_hash"]
                     or generation_id in activation_generation_ids
                     or evidence_hash in activation_generation_hashes
                 ):

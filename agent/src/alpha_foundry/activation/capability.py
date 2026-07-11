@@ -256,6 +256,7 @@ class ActiveRetrieverResolver:
                 "ActivationGenerationConsumptionRecorded",
                 "ActivationGenerationConsumptionV2Recorded",
                 "ActivationGenerationConsumptionV3Recorded",
+                "ActivationGenerationConsumptionV4Recorded",
             }
             or event.payload.get("plan_hash") != result.get("plan_hash")
             for event in sources

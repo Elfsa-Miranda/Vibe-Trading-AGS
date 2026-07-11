@@ -1007,6 +1007,31 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ActivationGenerationConsumptionV4Recorded": PayloadSpec(
+        "activation_generation_consumption_recorded.v4",
+        {
+            "generation_id": _string, "plan_hash": _hash, "pair_id": _string,
+            "run_group_id": _string, "mechanism_family": _string,
+            "dag_region": _string, "execution_run_id": _string,
+            "retriever_decision_event_hash": _hash, "retriever_decision_hash": _hash,
+            "retriever_input_bundle_hash": _hash,
+            "schedule_event_hash": _hash, "schedule_hash": _hash,
+            "feature_source_event_hash": _hash, "feature_source_hash": _hash,
+            "feature_snapshot_event_hash": _hash, "feature_snapshot_hash": _hash,
+            "feature_policy_hash": _hash,
+            "feature_scorecard_event_hashes": _ordered_unique_hash_list,
+            "generator_policy_hash": _hash,
+            "selected_action_ids": _nonempty_string_list,
+            "selected_action_event_hashes": _ordered_unique_hash_list,
+            "selected_parent_factor_spec_ids": _nonempty_string_list,
+            "consumed_action_ids": _nonempty_string_list,
+            "consumed_parent_factor_spec_ids": _nonempty_string_list,
+            "generated_candidate_count": _positive_integer,
+            "candidate_budget": _candidate_budget, "compute_budget": _positive_integer,
+            "source_failure_codes": _reason_codes, "source_complete": _boolean,
+            "evidence_hash": _hash, "artifact_refs": _artifact_list,
+        },
+    ),
     "ActivationResultRecorded": PayloadSpec(
         "activation_result_recorded.v1",
         {
@@ -2169,6 +2194,30 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         ):
             raise EventValidationError(
                 "Activation source-bound generation binding is inconsistent"
+            )
+    if event_type == "ActivationGenerationConsumptionV4Recorded":
+        expected_identifier = (
+            "activation-generation-v4-"
+            + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
+        )
+        selected = list(payload["selected_action_ids"])
+        selected_events = list(payload["selected_action_event_hashes"])
+        consumed = list(payload["consumed_action_ids"])
+        if (
+            payload["generation_id"] != expected_identifier
+            or payload["source_complete"] != (not payload["source_failure_codes"])
+            or "RETRIEVER_FEATURE_SOURCE_UNVERIFIED"
+            in payload["source_failure_codes"]
+            or len(selected) != len(set(selected))
+            or len(selected) != len(selected_events)
+            or len(selected) != len(payload["selected_parent_factor_spec_ids"])
+            or len(consumed) != len(set(consumed))
+            or len(consumed) != len(payload["consumed_parent_factor_spec_ids"])
+            or payload["generated_candidate_count"] != len(consumed)
+            or payload["generated_candidate_count"] > payload["candidate_budget"]
+        ):
+            raise EventValidationError(
+                "Activation schedule-bound generation binding is inconsistent"
             )
     if event_type == "FinalCandidateFrozen":
         candidate_content = {
