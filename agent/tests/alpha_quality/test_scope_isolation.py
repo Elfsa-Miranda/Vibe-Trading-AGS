@@ -136,11 +136,14 @@ def _append_discovery_evaluation(store: ResearchEventStore) -> str:
     definition = store.query_events(event_type="FactorDefinitionRecorded")[-1]
     factor_spec_id = str(definition.payload["factor_spec_id"])
     trial_id = str(definition.payload["metadata"]["originating_trial_id"])
+    trial_run_id = store.query_events(
+        event_type="TrialStarted", entity_id=trial_id
+    )[0].run_id
     evaluation = store.append_event(
         EventDraft(
             event_type="EvaluationRecorded",
             entity_id="evaluation-discovery",
-            run_id="run-discovery",
+            run_id=trial_run_id,
             payload_schema_version="evaluation_recorded.v1",
             payload={
                 "evaluation_id": "evaluation-discovery",
@@ -157,7 +160,7 @@ def _append_discovery_evaluation(store: ResearchEventStore) -> str:
         EventDraft(
             event_type="TrialTerminated",
             entity_id=trial_id,
-            run_id="run-discovery",
+            run_id=trial_run_id,
             payload_schema_version="trial_terminated.v1",
             payload={
                 "trial_id": trial_id,

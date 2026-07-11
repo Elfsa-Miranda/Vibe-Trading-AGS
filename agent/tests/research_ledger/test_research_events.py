@@ -1519,6 +1519,91 @@ def test_terminal_requires_start_and_infrastructure_cannot_promote(tmp_path: Pat
         )
 
 
+def test_trial_lifecycle_cannot_cross_run_boundaries(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    trial_id = "trial-run-boundary"
+    started = _draft(
+        event_type="TrialStarted",
+        entity_id=trial_id,
+        payload={
+            "trial_id": trial_id,
+            "candidate_id": "candidate-run-boundary",
+            "data_scope": "train_valid",
+            "objective": "rank_ic",
+            "started_at": "2025-01-01T00:00:00Z",
+        },
+    )
+    store.append_event(started)
+
+    with pytest.raises(EventTransitionError, match="same run"):
+        store.append_event(
+            EventDraft(
+                event_type="GenerationFailureRecorded",
+                entity_id=trial_id,
+                run_id="run-2",
+                payload_schema_version="generation_failure_recorded.v1",
+                payload={
+                    "trial_id": trial_id,
+                    "failure_code": "WORKER_TIMEOUT",
+                    "failure_kind": "timeout",
+                    "message": "bounded fixture timeout",
+                    "occurred_at": "2025-01-01T00:00:30Z",
+                },
+            )
+        )
+    with pytest.raises(EventTransitionError, match="share one run"):
+        store.append_event(
+            EventDraft(
+                event_type="EvaluationRecorded",
+                entity_id="evaluation-run-boundary",
+                run_id="run-2",
+                payload_schema_version="evaluation_recorded.v1",
+                payload={
+                    "evaluation_id": "evaluation-run-boundary",
+                    "trial_id": trial_id,
+                    "factor_spec_id": "factor-run-boundary",
+                    "data_scope": "train_valid",
+                    "scorecard_hash": "sha256:" + "c" * 64,
+                    "artifact_refs": [],
+                    "metadata": {},
+                },
+            )
+        )
+    with pytest.raises(EventTransitionError, match="share one run"):
+        store.append_event(
+            EventDraft(
+                event_type="TrialTerminated",
+                entity_id=trial_id,
+                run_id="run-2",
+                payload_schema_version="trial_terminated.v1",
+                payload={
+                    "trial_id": trial_id,
+                    "status": "skip",
+                    "reason_codes": ["NO_EVALUATOR"],
+                    "decision": "none",
+                    "evaluation_event_hash": None,
+                    "terminated_at": "2025-01-01T00:01:00Z",
+                },
+            )
+        )
+    terminal = store.append_event(
+        _draft(
+            event_type="TrialTerminated",
+            entity_id=trial_id,
+            payload={
+                "trial_id": trial_id,
+                "status": "skip",
+                "reason_codes": ["NO_EVALUATOR"],
+                "decision": "none",
+                "evaluation_event_hash": None,
+                "terminated_at": "2025-01-01T00:01:00Z",
+            },
+        )
+    )
+    assert terminal.run_id == started.run_id
+    assert store.verify_chain()
+
+
 def test_out_of_order_cross_event_references_are_rejected(tmp_path: Path) -> None:
     store = _store(tmp_path)
     digest = "sha256:" + "d" * 64

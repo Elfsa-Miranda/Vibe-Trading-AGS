@@ -3419,16 +3419,20 @@ class ResearchEventStore:
         if event_type == "GenerationFailureRecorded":
             trial_id = str(payload["trial_id"])
             started = conn.execute(
-                "SELECT 1 FROM research_events WHERE event_type = 'TrialStarted' AND entity_id = ?",
+                "SELECT run_id FROM research_events WHERE event_type = 'TrialStarted' AND entity_id = ?",
                 (trial_id,),
             ).fetchone()
             terminal = conn.execute(
                 "SELECT 1 FROM research_events WHERE event_type = 'TrialTerminated' AND entity_id = ?",
                 (trial_id,),
             ).fetchone()
-            if started is None or terminal is not None:
+            if (
+                started is None
+                or terminal is not None
+                or str(started["run_id"]) != draft.run_id
+            ):
                 raise EventTransitionError(
-                    "generation failure requires a prior active trial"
+                    "generation failure requires a prior active trial in the same run"
                 )
             return
         if event_type not in {"TrialStarted", "EvaluationRecorded", "TrialTerminated"}:
@@ -3437,7 +3441,7 @@ class ResearchEventStore:
         if event_type in {"TrialStarted", "TrialTerminated"} and draft.entity_id != trial_id:
             raise EventValidationError("trial entity_id must equal payload trial_id")
         started = conn.execute(
-            "SELECT event_hash FROM research_events WHERE event_type = 'TrialStarted' AND entity_id = ?",
+            "SELECT event_hash, run_id FROM research_events WHERE event_type = 'TrialStarted' AND entity_id = ?",
             (trial_id,),
         ).fetchone()
         terminal = conn.execute(
@@ -3454,18 +3458,24 @@ class ResearchEventStore:
             raise EventTransitionError(f"trial was not started: {trial_id}")
         if terminal is not None:
             raise EventTransitionError(f"trial already terminated: {trial_id}")
+        if str(started["run_id"]) != draft.run_id:
+            raise EventTransitionError("trial lifecycle events must share one run")
         if event_type == "TrialTerminated" and payload["status"] == "success":
             evaluation_hash = payload["evaluation_event_hash"]
             if evaluation_hash is None:
                 raise EventTransitionError("successful trial requires terminal evaluation evidence")
             evaluation = conn.execute(
                 """
-                SELECT payload FROM research_events
+                SELECT run_id, payload FROM research_events
                 WHERE event_type = 'EvaluationRecorded' AND event_hash = ?
                 """,
                 (evaluation_hash,),
             ).fetchone()
-            if evaluation is None or json.loads(evaluation["payload"])["trial_id"] != trial_id:
+            if (
+                evaluation is None
+                or str(evaluation["run_id"]) != draft.run_id
+                or json.loads(evaluation["payload"])["trial_id"] != trial_id
+            ):
                 raise EventTransitionError("successful trial evaluation evidence is missing or mismatched")
 
     @staticmethod
@@ -4634,9 +4644,9 @@ class ResearchEventStore:
 
     @staticmethod
     def _verify_references_and_lifecycle(events: list[ResearchEventEnvelope]) -> bool:
-        started: set[str] = set()
+        started: dict[str, str] = {}
         terminated: set[str] = set()
-        evaluations: dict[str, str] = {}
+        evaluations: dict[str, tuple[str, str]] = {}
         evaluation_payloads: dict[str, Mapping[str, Any]] = {}
         terminal_hashes: set[str] = set()
         terminal_payloads: dict[str, Mapping[str, Any]] = {}
@@ -4709,7 +4719,7 @@ class ResearchEventStore:
                 trial_id = str(payload["trial_id"])
                 if trial_id in started or trial_id in terminated:
                     return False
-                started.add(trial_id)
+                started[trial_id] = event.run_id
             elif event.event_type == "OfficialSearchControlRecorded":
                 control_id = str(payload["control_id"])
                 if control_id in official_control_ids:
@@ -4717,21 +4727,24 @@ class ResearchEventStore:
                 official_control_ids.add(control_id)
             elif event.event_type == "GenerationFailureRecorded":
                 trial_id = str(payload["trial_id"])
-                if trial_id not in started or trial_id in terminated:
+                if started.get(trial_id) != event.run_id or trial_id in terminated:
                     return False
             elif event.event_type == "EvaluationRecorded":
                 trial_id = str(payload["trial_id"])
-                if trial_id not in started or trial_id in terminated:
+                if started.get(trial_id) != event.run_id or trial_id in terminated:
                     return False
-                evaluations[event.event_hash] = trial_id
+                evaluations[event.event_hash] = (trial_id, event.run_id)
                 evaluation_payloads[event.event_hash] = payload
             elif event.event_type == "TrialTerminated":
                 trial_id = str(payload["trial_id"])
-                if trial_id not in started or trial_id in terminated:
+                if started.get(trial_id) != event.run_id or trial_id in terminated:
                     return False
                 if payload["status"] == "success":
                     evaluation_hash = payload["evaluation_event_hash"]
-                    if evaluations.get(str(evaluation_hash)) != trial_id:
+                    if evaluations.get(str(evaluation_hash)) != (
+                        trial_id,
+                        event.run_id,
+                    ):
                         return False
                 terminated.add(trial_id)
                 terminal_hashes.add(event.event_hash)
