@@ -72,6 +72,11 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "RetrieverFeatureSourceRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "RetrieverDecisionV3Recorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
@@ -313,6 +318,9 @@ class ResearchEventStore:
             draft.event_type, payload
         )
         self._validate_external_train_valid_snapshot(draft.event_type, payload)
+        self._validate_external_retriever_feature_source(
+            draft.event_type, payload
+        )
         self._validate_external_retriever_evidence(draft.event_type, payload)
         self._validate_external_retriever_v4_evidence(draft.event_type, payload)
         self._validate_external_retriever_v5_evidence(draft.event_type, payload)
@@ -535,6 +543,7 @@ class ResearchEventStore:
             "RetrieverDecisionRecorded": "decision_id",
             "RetrieverActionTemplateFrozen": "action_id",
             "TrainValidDataSnapshotFrozen": "snapshot_id",
+            "RetrieverFeatureSourceRecorded": "feature_source_id",
             "RetrieverDecisionV2Recorded": "decision_id",
             "RetrieverDecisionV3Recorded": "decision_id",
             "RetrieverDecisionV4Recorded": "decision_id",
@@ -719,6 +728,87 @@ class ResearchEventStore:
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError(
                 "train/valid snapshot event differs from source artifact"
+            )
+
+    def _validate_external_retriever_feature_source(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "RetrieverFeatureSourceRecorded":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.retriever-feature-source-v1+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError(
+                "Retriever feature source requires one artifact"
+            )
+        try:
+            from src.alpha_foundry.retrieval.evidence_v3 import (
+                _candidate_to_dict,
+            )
+            from src.alpha_foundry.retrieval.feature_producer_v1 import (
+                RetrieverFeaturePolicyV1,
+                RetrieverFeatureSourceArtifactStoreV1,
+                RetrieverFeatureSourceServiceV1,
+            )
+            from src.alpha_foundry.retrieval.policy import (
+                ActivationRetrieverPolicy,
+            )
+
+            source = RetrieverFeatureSourceArtifactStoreV1(
+                self.artifact_root
+            ).read(
+                str(references[0]["relative_path"]),
+                str(payload["source_hash"]),
+            )
+            rebuilt = RetrieverFeatureSourceServiceV1(
+                self,
+                flags=self.flags,
+                feature_policy=RetrieverFeaturePolicyV1(
+                    **dict(source.feature_policy)
+                ),
+            ).rebuild(
+                execution_run_id=source.execution_run_id,
+                snapshot_event_hash=source.snapshot_event_hash,
+                action_event_hashes=source.action_event_hashes,
+                eligible_event_watermark=source.eligible_event_watermark,
+                retrieval_policy=ActivationRetrieverPolicy(
+                    **dict(source.retrieval_policy)
+                ),
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "Retriever feature source cannot be independently rebuilt"
+            ) from exc
+        if rebuilt != source:
+            raise EventValidationError(
+                "Retriever feature source differs from deterministic rebuild"
+            )
+        expected = {
+            "source_hash": source.source_hash,
+            "execution_run_id": source.execution_run_id,
+            "snapshot_event_hash": source.snapshot_event_hash,
+            "snapshot_hash": source.snapshot_hash,
+            "eligible_event_watermark": source.eligible_event_watermark,
+            "retrieval_policy_hash": source.retrieval_policy_hash,
+            "feature_policy_hash": source.feature_policy_hash,
+            "action_event_hashes": list(source.action_event_hashes),
+            "scorecard_event_hashes": list(source.scorecard_event_hashes),
+            "candidate_count": len(source.candidates),
+            "candidate_hashes": [
+                canonical_json_hash(_candidate_to_dict(candidate))
+                for candidate in source.candidates
+            ],
+            "semantic_state": "unavailable",
+        }
+        if any(payload[name] != value for name, value in expected.items()):
+            raise EventValidationError(
+                "Retriever feature event differs from source artifact"
             )
 
     def _validate_external_retriever_evidence(
@@ -2018,6 +2108,72 @@ class ResearchEventStore:
             if prior is not None:
                 raise EventTransitionError(
                     "train/valid snapshot identity already exists"
+                )
+            return
+        if event_type == "RetrieverFeatureSourceRecorded":
+            if draft.run_id != payload["execution_run_id"]:
+                raise EventTransitionError(
+                    "Retriever feature event run differs from execution run"
+                )
+            snapshot = conn.execute(
+                """
+                SELECT seq, payload FROM research_events
+                WHERE event_type = 'TrainValidDataSnapshotFrozen' AND event_hash = ?
+                """,
+                (payload["snapshot_event_hash"],),
+            ).fetchone()
+            watermark = conn.execute(
+                "SELECT seq FROM research_events WHERE event_hash = ?",
+                (payload["eligible_event_watermark"],),
+            ).fetchone()
+            if snapshot is None or watermark is None:
+                raise EventTransitionError(
+                    "Retriever feature source or watermark is missing"
+                )
+            snapshot_payload = json.loads(str(snapshot["payload"]))
+            if (
+                int(snapshot["seq"]) >= int(watermark["seq"])
+                or snapshot_payload["snapshot_hash"] != payload["snapshot_hash"]
+            ):
+                raise EventTransitionError(
+                    "Retriever feature snapshot ordering or identity differs"
+                )
+            for action_hash in payload["action_event_hashes"]:
+                action = conn.execute(
+                    """
+                    SELECT seq, run_id, payload FROM research_events
+                    WHERE event_type = 'RetrieverActionTemplateFrozen'
+                      AND event_hash = ?
+                    """,
+                    (action_hash,),
+                ).fetchone()
+                if action is None:
+                    raise EventTransitionError(
+                        "Retriever feature source lacks an action event"
+                    )
+                action_payload = json.loads(str(action["payload"]))
+                if (
+                    str(action["run_id"]) != draft.run_id
+                    or int(action["seq"]) <= int(watermark["seq"])
+                    or action_payload["data_snapshot_hash"]
+                    != payload["snapshot_hash"]
+                    or action_payload["retrieval_policy_hash"]
+                    != payload["retrieval_policy_hash"]
+                ):
+                    raise EventTransitionError(
+                        "Retriever feature action binding differs"
+                    )
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'RetrieverFeatureSourceRecorded'
+                  AND (entity_id = ? OR json_extract(payload, '$.source_hash') = ?)
+                """,
+                (payload["feature_source_id"], payload["source_hash"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError(
+                    "Retriever feature source identity already exists"
                 )
             return
         if event_type == "RetrieverDecisionV2Recorded":
@@ -3530,6 +3686,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_retriever_feature_source(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_retriever_evidence(
                     event.event_type,
                     validated_payload,
@@ -3657,6 +3817,9 @@ class ResearchEventStore:
         retriever_action_events: dict[str, ResearchEventEnvelope] = {}
         train_valid_snapshot_ids: set[str] = set()
         train_valid_snapshot_hashes: set[str] = set()
+        train_valid_snapshot_events: dict[str, ResearchEventEnvelope] = {}
+        retriever_feature_source_ids: set[str] = set()
+        retriever_feature_source_hashes: set[str] = set()
         retriever_v5_ids: set[str] = set()
         retriever_v5_events: dict[str, ResearchEventEnvelope] = {}
         process_outcome_links: list[tuple[str, str, str]] = []
@@ -3779,6 +3942,38 @@ class ResearchEventStore:
                     return False
                 train_valid_snapshot_ids.add(snapshot_id)
                 train_valid_snapshot_hashes.add(snapshot_hash)
+                train_valid_snapshot_events[event.event_hash] = event
+            elif event.event_type == "RetrieverFeatureSourceRecorded":
+                source_id = str(payload["feature_source_id"])
+                source_hash = str(payload["source_hash"])
+                snapshot = train_valid_snapshot_events.get(
+                    str(payload["snapshot_event_hash"])
+                )
+                actions = tuple(
+                    retriever_action_events.get(str(action_hash))
+                    for action_hash in payload["action_event_hashes"]
+                )
+                watermark_index = event_order.get(
+                    str(payload["eligible_event_watermark"]), -1
+                )
+                if (
+                    source_id in retriever_feature_source_ids
+                    or source_hash in retriever_feature_source_hashes
+                    or snapshot is None
+                    or event.run_id != payload["execution_run_id"]
+                    or event_order[snapshot.event_hash] >= watermark_index
+                    or any(action is None for action in actions)
+                    or any(
+                        action is None
+                        or action.run_id != event.run_id
+                        or event_order[action.event_hash] <= watermark_index
+                        or event_order[action.event_hash] >= event_order[event.event_hash]
+                        for action in actions
+                    )
+                ):
+                    return False
+                retriever_feature_source_ids.add(source_id)
+                retriever_feature_source_hashes.add(source_hash)
             elif event.event_type == "RetrieverDecisionV5Recorded":
                 decision_id = str(payload["decision_id"])
                 control_hash = str(payload["control_evidence_event_hash"])

@@ -660,6 +660,25 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "RetrieverFeatureSourceRecorded": PayloadSpec(
+        "retriever_feature_source_recorded.v1",
+        {
+            "feature_source_id": _string,
+            "source_hash": _hash,
+            "execution_run_id": _string,
+            "snapshot_event_hash": _hash,
+            "snapshot_hash": _hash,
+            "eligible_event_watermark": _hash,
+            "retrieval_policy_hash": _hash,
+            "feature_policy_hash": _hash,
+            "action_event_hashes": _ordered_unique_hash_list,
+            "scorecard_event_hashes": _unique_hash_list,
+            "candidate_count": _positive_integer,
+            "candidate_hashes": _ordered_unique_hash_list,
+            "semantic_state": _enum("unavailable"),
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "RetrieverDecisionV2Recorded": PayloadSpec(
         "retriever_decision_recorded.v2",
         {
@@ -1569,6 +1588,22 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         ):
             raise EventValidationError(
                 "train/valid snapshot frame inventory is inconsistent"
+            )
+    if event_type == "RetrieverFeatureSourceRecorded":
+        expected_identifier = (
+            "retriever-feature-source-v1-"
+            + str(payload["source_hash"]).removeprefix("sha256:")[:24]
+        )
+        if payload["feature_source_id"] != expected_identifier:
+            raise EventValidationError(
+                "Retriever feature source identity must derive from its hash"
+            )
+        if (
+            payload["candidate_count"] != len(payload["action_event_hashes"])
+            or payload["candidate_count"] != len(payload["candidate_hashes"])
+        ):
+            raise EventValidationError(
+                "Retriever feature source candidate inventory is inconsistent"
             )
     if event_type == "ActivationRunRecorded":
         attempted = sum(int(value) for value in payload["terminal_status_counts"].values())
