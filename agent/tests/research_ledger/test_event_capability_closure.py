@@ -23,6 +23,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "RetrieverDecisionV2Recorded",
     "RetrieverDecisionV3Recorded",
     "RetrieverDecisionV4Recorded",
+    "RetrieverDecisionV5Recorded",
     "OfficialSearchControlRecorded",
     "ActivationPlanRegistered",
     "ActivationRunRecorded",

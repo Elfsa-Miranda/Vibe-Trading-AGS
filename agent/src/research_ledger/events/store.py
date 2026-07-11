@@ -75,6 +75,10 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "RetrieverDecisionV5Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "OfficialSearchControlRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
     ),
@@ -301,6 +305,7 @@ class ResearchEventStore:
         )
         self._validate_external_retriever_evidence(draft.event_type, payload)
         self._validate_external_retriever_v4_evidence(draft.event_type, payload)
+        self._validate_external_retriever_v5_evidence(draft.event_type, payload)
         self._validate_external_quality_decision_evidence(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
@@ -519,6 +524,7 @@ class ResearchEventStore:
             "RetrieverDecisionV2Recorded": "decision_id",
             "RetrieverDecisionV3Recorded": "decision_id",
             "RetrieverDecisionV4Recorded": "decision_id",
+            "RetrieverDecisionV5Recorded": "decision_id",
             "OfficialSearchControlRecorded": "control_id",
             "ActivationPlanRegistered": "experiment_id",
             "ActivationRunRecorded": "manifest_id",
@@ -850,6 +856,174 @@ class ResearchEventStore:
         }
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("retriever v4 differs from deterministic rebuild")
+
+    def _validate_external_retriever_v5_evidence(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        """Reopen control, action events, discovery inputs and replay action selection."""
+        if event_type != "RetrieverDecisionV5Recorded":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.retriever-input-bundle-v5+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError("retriever v5 requires one source input bundle")
+        try:
+            from src.alpha_foundry.control_evidence import (
+                OfficialSearchControlArtifactStoreV1,
+            )
+            from src.alpha_foundry.dag import FactorDAGQuery
+            from src.alpha_foundry.retrieval.action_decision_v5 import (
+                ActionShadowRetrieverV5,
+            )
+            from src.alpha_foundry.retrieval.action_template_v1 import (
+                FrozenRetrieverActionTemplateV1,
+            )
+            from src.alpha_foundry.retrieval.evidence_v5 import (
+                RetrieverInputArtifactStoreV5,
+            )
+            from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
+            from src.alpha_quality.scope import DiscoveryEvidenceProjector
+
+            bundle = RetrieverInputArtifactStoreV5(self.artifact_root).read(
+                str(references[0]["relative_path"]),
+                str(payload["input_bundle_hash"]),
+            )
+            source = bundle.retriever_input
+            controls = [
+                event
+                for event in self.query_events(
+                    event_type="OfficialSearchControlRecorded"
+                )
+                if event.event_hash == bundle.control_evidence_event_hash
+            ]
+            if len(controls) != 1:
+                raise ValueError("retriever v5 control event is missing")
+            control_event = controls[0]
+            control_refs = [
+                reference
+                for reference in control_event.payload["artifact_refs"]
+                if reference["media_type"]
+                == OfficialSearchControlArtifactStoreV1.media_type
+            ]
+            if len(control_refs) != 1:
+                raise ValueError("retriever v5 control artifact is missing")
+            control = OfficialSearchControlArtifactStoreV1(self.artifact_root).read(
+                str(control_refs[0]["relative_path"]),
+                bundle.control_evidence_hash,
+            )
+            all_events = self.query_events()
+            by_hash = {event.event_hash: event for event in all_events}
+            order = {event.event_hash: index for index, event in enumerate(all_events)}
+            watermark_order = order.get(source.eligible_event_watermark, -1)
+            control_order = order.get(control_event.event_hash, -1)
+            action_events = [
+                by_hash.get(event_hash)
+                for event_hash in bundle.action_template_event_hashes
+            ]
+            if (
+                watermark_order < 0
+                or control_order <= watermark_order
+                or any(event is None for event in action_events)
+                or any(
+                    event is None
+                    or event.event_type != "RetrieverActionTemplateFrozen"
+                    or not watermark_order < order[event.event_hash] < control_order
+                    for event in action_events
+                )
+                or any(
+                    order.get(event_hash, -1) <= watermark_order
+                    for event_hash in control.terminal_event_hashes
+                )
+            ):
+                raise ValueError("retriever v5 source ordering is invalid")
+            actions = tuple(
+                FrozenRetrieverActionTemplateV1.from_dict(event.payload)
+                for event in action_events
+                if event is not None
+            )
+            policy = ActivationRetrieverPolicy(**dict(source.policy_config))
+            if any(
+                action.eligible_event_watermark != source.eligible_event_watermark
+                or action.data_snapshot_hash != source.data_snapshot_hash
+                or action.retrieval_policy_hash != policy.policy_hash
+                for action in actions
+            ):
+                raise ValueError("retriever v5 action scope or policy differs")
+            official_ids = tuple(
+                str(item["candidate_id"]) for item in control.candidates
+            )
+            if (
+                official_ids != source.official_candidate_ids
+                or control_event.payload["evidence_hash"]
+                != bundle.control_evidence_hash
+                or control_event.payload["policy_hash"]
+                != control.policy.policy_hash
+                or control_event.payload["output_hash"] != control.output_hash
+                or control.output_hash != payload["official_output_hash"]
+                or control.policy.policy_hash != payload["control_policy_hash"]
+                or control.data_snapshot_hash != source.data_snapshot_hash
+                or control_event.run_id != control.run_id
+            ):
+                raise ValueError("retriever v5 control binding differs")
+            discovery = DiscoveryEvidenceProjector(
+                flags=self.flags
+            ).project_at_watermark(
+                self,
+                data_snapshot_hash=source.data_snapshot_hash,
+                watermark_event_hash=source.eligible_event_watermark,
+            )
+            decision = ActionShadowRetrieverV5(
+                flags=self.flags,
+                policy=policy,
+            ).decide(
+                official_candidate_ids=official_ids,
+                evidence=discovery,
+                query=FactorDAGQuery(discovery.factual.dag),
+                candidates=source.candidates,
+                actions=actions,
+                action_template_event_hashes=bundle.action_template_event_hashes,
+                seed=source.seed,
+                candidate_budget=source.candidate_budget,
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "retriever v5 source evidence cannot rebuild the action decision"
+            ) from exc
+        expected = {
+            "shadow_decision_hash": decision.decision_hash,
+            "input_bundle_hash": bundle.bundle_hash,
+            "control_evidence_event_hash": bundle.control_evidence_event_hash,
+            "control_evidence_hash": bundle.control_evidence_hash,
+            "control_policy_hash": control.policy.policy_hash,
+            "selected_action_ids": list(decision.selected_action_ids),
+            "selected_parent_factor_spec_ids": list(
+                decision.selected_parent_factor_spec_ids
+            ),
+            "action_template_event_hashes": list(
+                decision.action_template_event_hashes
+            ),
+            "seed": decision.seed,
+            "policy_version": decision.policy_version,
+            "policy_hash": decision.policy_hash,
+            "policy_config": dict(decision.policy_config),
+            "eligible_event_watermark": decision.eligible_event_watermark,
+            "data_snapshot_hash": decision.data_snapshot_hash,
+            "candidate_budget": decision.candidate_budget,
+            "official_output_hash": decision.official_output_hash,
+            "propensity_semantics": decision.propensity_semantics,
+            "components": [
+                component.to_dict() for component in decision.components
+            ],
+            "shadow_only": decision.shadow_only,
+        }
+        if any(payload[name] != value for name, value in expected.items()):
+            raise EventValidationError("retriever v5 differs from deterministic rebuild")
 
     def _validate_external_quality_decision_evidence(
         self,
@@ -1552,6 +1726,89 @@ class ResearchEventStore:
                 or control_payload["data_snapshot_hash"] != payload["data_snapshot_hash"]
             ):
                 raise EventTransitionError("retriever v4 official control binding differs")
+            return
+        if event_type == "RetrieverDecisionV5Recorded":
+            self._validate_retriever_v2_transition(conn, payload)
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'RetrieverDecisionV5Recorded' AND entity_id = ?
+                """,
+                (payload["decision_id"],),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError(
+                    "retriever v5 decision identity already exists"
+                )
+            control = conn.execute(
+                """
+                SELECT seq, payload FROM research_events
+                WHERE event_type = 'OfficialSearchControlRecorded' AND event_hash = ?
+                """,
+                (payload["control_evidence_event_hash"],),
+            ).fetchone()
+            watermark = conn.execute(
+                "SELECT seq FROM research_events WHERE event_hash = ?",
+                (payload["eligible_event_watermark"],),
+            ).fetchone()
+            if (
+                control is None
+                or watermark is None
+                or int(watermark["seq"]) >= int(control["seq"])
+            ):
+                raise EventTransitionError(
+                    "retriever v5 watermark must precede official control"
+                )
+            control_payload = json.loads(str(control["payload"]))
+            if (
+                control_payload["evidence_hash"] != payload["control_evidence_hash"]
+                or control_payload["policy_hash"] != payload["control_policy_hash"]
+                or control_payload["output_hash"] != payload["official_output_hash"]
+                or control_payload["data_snapshot_hash"]
+                != payload["data_snapshot_hash"]
+            ):
+                raise EventTransitionError(
+                    "retriever v5 official control binding differs"
+                )
+            action_hashes = tuple(payload["action_template_event_hashes"])
+            components = tuple(payload["components"])
+            if len(action_hashes) != len(components):
+                raise EventTransitionError("retriever v5 actions and components differ")
+            for action_event_hash, component in zip(
+                action_hashes, components, strict=True
+            ):
+                row = conn.execute(
+                    """
+                    SELECT seq, run_id, payload FROM research_events
+                    WHERE event_type = 'RetrieverActionTemplateFrozen'
+                      AND event_hash = ?
+                    """,
+                    (action_event_hash,),
+                ).fetchone()
+                if row is None:
+                    raise EventTransitionError(
+                        "retriever v5 lacks a frozen action event"
+                    )
+                action_payload = json.loads(str(row["payload"]))
+                if (
+                    str(row["run_id"]) != draft.run_id
+                    or not int(watermark["seq"]) < int(row["seq"]) < int(control["seq"])
+                    or action_payload["execution_run_id"] != draft.run_id
+                    or action_payload["eligible_event_watermark"]
+                    != payload["eligible_event_watermark"]
+                    or action_payload["data_snapshot_hash"]
+                    != payload["data_snapshot_hash"]
+                    or action_payload["retrieval_policy_hash"]
+                    != payload["policy_hash"]
+                    or action_payload["action_id"] != component["action_id"]
+                    or action_payload["parent_factor_spec_id"]
+                    != component["factor_spec_id"]
+                    or action_payload["expected_motif"] != component["motif"]
+                    or action_payload["identity_action"]
+                ):
+                    raise EventTransitionError(
+                        "retriever v5 frozen action binding differs"
+                    )
             return
         if event_type == "OfficialSearchControlRecorded":
             prior = conn.execute(
@@ -2842,6 +3099,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_retriever_v5_evidence(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_quality_decision_evidence(
                     event.event_type,
                     validated_payload,
@@ -2950,6 +3211,8 @@ class ResearchEventStore:
         activation_generation_hashes: set[str] = set()
         official_control_ids: set[str] = set()
         retriever_action_ids: set[str] = set()
+        retriever_action_events: dict[str, ResearchEventEnvelope] = {}
+        retriever_v5_ids: set[str] = set()
         process_outcome_links: list[tuple[str, str, str]] = []
         retriever_v4_events: dict[str, ResearchEventEnvelope] = {}
         activation_results: dict[str, Mapping[str, Any]] = {}
@@ -3059,6 +3322,59 @@ class ResearchEventStore:
                 if not eligible:
                     return False
                 retriever_action_ids.add(action_id)
+                retriever_action_events[event.event_hash] = event
+            elif event.event_type == "RetrieverDecisionV5Recorded":
+                decision_id = str(payload["decision_id"])
+                control_hash = str(payload["control_evidence_event_hash"])
+                control_event = next(
+                    (
+                        candidate
+                        for candidate in events
+                        if candidate.event_hash == control_hash
+                        and candidate.event_type == "OfficialSearchControlRecorded"
+                    ),
+                    None,
+                )
+                action_hashes = tuple(
+                    str(item) for item in payload["action_template_event_hashes"]
+                )
+                components = tuple(payload["components"])
+                action_events = tuple(
+                    retriever_action_events.get(action_hash)
+                    for action_hash in action_hashes
+                )
+                if (
+                    decision_id in retriever_v5_ids
+                    or control_event is None
+                    or len(action_hashes) != len(components)
+                    or any(action is None for action in action_events)
+                ):
+                    return False
+                watermark_index = event_order.get(
+                    str(payload["eligible_event_watermark"]), -1
+                )
+                control_index = event_order[control_event.event_hash]
+                for action_event, component in zip(
+                    action_events, components, strict=True
+                ):
+                    if action_event is None:
+                        return False
+                    action_payload = action_event.payload
+                    if (
+                        action_event.run_id != event.run_id
+                        or not watermark_index
+                        < event_order[action_event.event_hash]
+                        < control_index
+                        < event_order[event.event_hash]
+                        or action_payload["execution_run_id"] != event.run_id
+                        or action_payload["action_id"] != component["action_id"]
+                        or action_payload["parent_factor_spec_id"]
+                        != component["factor_spec_id"]
+                        or action_payload["expected_motif"] != component["motif"]
+                        or action_payload["identity_action"]
+                    ):
+                        return False
+                retriever_v5_ids.add(decision_id)
             elif event.event_type == "DerivationRecorded":
                 terminal = terminal_payloads.get(str(payload["trial_terminal_event_hash"]))
                 definition = definitions.get(str(payload["child_factor_spec_id"]))
