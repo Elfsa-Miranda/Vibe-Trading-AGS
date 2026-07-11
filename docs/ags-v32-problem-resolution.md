@@ -39,7 +39,7 @@ Status meanings:
 | P0-06 | M2 stateful execution | audit_reported | none |
 | P0-07 | M1 split registry | partial | content-hashed calendar/policy/plan models pass adversarial tests; producer-scoped registration remains open |
 | P0-08 | M1/M2 execution policy | audit_reported | none |
-| P0-09 | M1 immutable output | audit_reported | none |
+| P0-09 | M1 immutable output | partial | exact-axis immutable byte content passes adversarial tests; formal Parquet/Arrow refs and evaluator consumption remain open |
 | P0-10 | M1 scorecard/final boundary | audit_reported | none |
 | P0-11 | M1 split-safe scorecard | audit_reported | none |
 | P0-12 | M1 final eligibility/provider | audit_reported | none |
@@ -50,7 +50,7 @@ Status meanings:
 | P0-17 | M1 atomic artifact writer | partial | canonical create-if-absent writer passes collision/concurrency tests; legacy writers and event transitions remain unmigrated |
 | P0-18 | M1 forward authority/vintage | audit_reported | none |
 | P1-01 | M1 production timing binding | audit_reported | none |
-| P1-02 | M1 executable grammar | audit_reported | none |
+| P1-02 | M1 executable grammar | partial | runtime grammar/backend intersection and typed pre-compute skip pass; production lifecycle integration remains open |
 | P1-03 | M2 partitioned artifacts | audit_reported | none |
 | P1-04 | M1 scorecard v2 | audit_reported | none |
 | P1-05 | M1 production search factory | audit_reported | none |
@@ -140,3 +140,36 @@ normalization race. The implementation now normalizes extended paths and
 rechecks the resolved parent immediately before linking, preserving both
 concurrency and junction/symlink containment. The complete focused and broad
 matrices were rerun after the correction.
+
+## M1 executable-input/output evidence
+
+Branch `codex/ags-v32-m1-executable-output` was created from accepted main
+`0fccd8fadc85384453120a54ba96c03c23e9b43f`.
+
+`ExecutableGrammarSnapshotV1` is rebuilt from the frozen safe grammar and the
+actual core backend registry. The seven grammar-only operators are excluded
+and produce typed `BACKEND_OPERATOR_UNAVAILABLE` before backend computation.
+Every advertised operator and retained alias is exercised against the real
+backend in tests. Runtime snapshot fields cannot be changed with
+`dataclasses.replace` while preserving a valid snapshot.
+
+`FrozenFactorOutputV2` rejects duplicate/unsorted axes, shape mismatch,
+Infinity, nullable/non-bool masks and NaN observations marked valid. It stores
+canonical float/mask bytes rather than caller DataFrames, so mutations to input
+or returned frames do not alter frozen content. It has no intersection helper
+and requires exact snapshot axes.
+
+The current repository environment and declared dependencies contain no
+Parquet/Arrow engine. The object is therefore explicitly
+`fixture_only_partition_artifact_unavailable` and `decision_grade=false`.
+No pickle, NPY or full-panel JSON fallback was introduced. P0-09 and P1-03
+remain open until the M2 partitioned producer writes and reopens formal refs;
+P1-02 remains partial until the production lifecycle consumes the snapshot.
+
+Current verification:
+
+- executable grammar plus frozen output adversarial matrix: `29 passed`;
+- full Alpha Foundry plus Alpha Quality: `444 passed in 67.94s`;
+- Research Ledger, contracts, security and acceptance:
+  `200 passed in 22.79s`, with 21 existing deprecation warnings;
+- three-source cold mypy: passed.
