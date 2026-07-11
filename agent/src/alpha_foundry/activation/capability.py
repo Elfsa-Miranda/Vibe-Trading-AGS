@@ -252,7 +252,10 @@ class ActiveRetrieverResolver:
         sources = [by_hash.get(str(event_hash)) for event_hash in references]
         if any(
             event is None
-            or event.event_type != "ActivationGenerationConsumptionRecorded"
+            or event.event_type not in {
+                "ActivationGenerationConsumptionRecorded",
+                "ActivationGenerationConsumptionV2Recorded",
+            }
             or event.payload.get("plan_hash") != result.get("plan_hash")
             for event in sources
         ):

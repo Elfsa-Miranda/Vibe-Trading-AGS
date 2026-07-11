@@ -830,6 +830,34 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ActivationGenerationConsumptionV2Recorded": PayloadSpec(
+        "activation_generation_consumption_recorded.v2",
+        {
+            "generation_id": _string,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
+            "mechanism_family": _string,
+            "dag_region": _string,
+            "execution_run_id": _string,
+            "retriever_decision_event_hash": _hash,
+            "retriever_decision_hash": _hash,
+            "control_evidence_event_hash": _hash,
+            "generator_policy_hash": _hash,
+            "selected_action_ids": _nonempty_string_list,
+            "selected_action_event_hashes": _ordered_unique_hash_list,
+            "selected_parent_factor_spec_ids": _nonempty_string_list,
+            "consumed_action_ids": _nonempty_string_list,
+            "consumed_parent_factor_spec_ids": _nonempty_string_list,
+            "generated_candidate_count": _positive_integer,
+            "candidate_budget": _candidate_budget,
+            "compute_budget": _positive_integer,
+            "source_failure_codes": _reason_codes,
+            "source_complete": _boolean,
+            "evidence_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "ActivationResultRecorded": PayloadSpec(
         "activation_result_recorded.v1",
         {
@@ -1759,6 +1787,36 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         if payload["generated_candidate_count"] > payload["candidate_budget"]:
             raise EventValidationError(
                 "Activation generation exceeds its frozen candidate budget"
+            )
+    if event_type == "ActivationGenerationConsumptionV2Recorded":
+        expected_identifier = (
+            "activation-generation-v2-"
+            + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
+        )
+        if payload["generation_id"] != expected_identifier:
+            raise EventValidationError(
+                "Activation exact generation identity must derive from evidence"
+            )
+        if payload["source_complete"] != (not payload["source_failure_codes"]):
+            raise EventValidationError(
+                "Activation exact generation completeness must derive from failures"
+            )
+        selected_actions = list(payload["selected_action_ids"])
+        selected_events = list(payload["selected_action_event_hashes"])
+        selected_parents = list(payload["selected_parent_factor_spec_ids"])
+        consumed_actions = list(payload["consumed_action_ids"])
+        consumed_parents = list(payload["consumed_parent_factor_spec_ids"])
+        if (
+            len(selected_actions) != len(set(selected_actions))
+            or len(selected_actions) != len(selected_events)
+            or len(selected_actions) != len(selected_parents)
+            or len(consumed_actions) != len(set(consumed_actions))
+            or len(consumed_actions) != len(consumed_parents)
+            or payload["generated_candidate_count"] != len(consumed_actions)
+            or payload["generated_candidate_count"] > payload["candidate_budget"]
+        ):
+            raise EventValidationError(
+                "Activation exact generation action binding is inconsistent"
             )
     if event_type == "FinalCandidateFrozen":
         candidate_content = {

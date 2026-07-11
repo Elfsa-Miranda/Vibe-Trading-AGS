@@ -30,6 +30,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "ActivationRunSourceAudited",
     "ActivationResourceMeasured",
     "ActivationGenerationConsumptionRecorded",
+    "ActivationGenerationConsumptionV2Recorded",
     "ActivationResultRecorded",
     "RetrieverActivationDecisionRecorded",
     "FalsificationContractRegistered",
