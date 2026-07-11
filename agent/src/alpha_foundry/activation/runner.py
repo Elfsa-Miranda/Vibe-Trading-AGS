@@ -18,6 +18,9 @@ if TYPE_CHECKING:
         ActivationResourceEvidenceV1,
         MeasuredActivationPairV1,
     )
+    from src.alpha_foundry.activation.resource_v2 import (
+        MeasuredScheduledActivationPairV2,
+    )
 
 
 _REGISTRATION_AUTHORITY = object()
@@ -280,6 +283,59 @@ class PairedActivationRunner:
             self.artifact_store.put("run", manifest.to_dict())
             by_arm[arm] = manifest
         return by_arm["control"], by_arm["treatment"]
+
+    def run_scheduled_pair_measured(
+        self,
+        registered: RegisteredActivationPlan,
+        *,
+        execution_claim: object,
+        executor: ArmExecutor,
+    ) -> "MeasuredScheduledActivationPairV2":
+        """Measure the scheduled boundary without claiming unavailable isolation."""
+        from src.alpha_foundry.activation.pair_schedule_v1 import (
+            ClaimedActivationPairExecutionV1,
+        )
+        from src.alpha_foundry.activation.resource_v2 import (
+            ActivationResourceEvidenceV2,
+            MeasuredScheduledActivationPairV2,
+            _mint_resource_evidence_v2,
+        )
+
+        if not isinstance(execution_claim, ClaimedActivationPairExecutionV1):
+            raise TypeError("scheduled resource measurement requires an execution claim")
+        resources: dict[str, ActivationResourceEvidenceV2] = {}
+
+        def measured_executor(
+            request: ActivationArmRequest,
+            scope: TrainValidActivationScope,
+        ) -> ActivationRunManifest:
+            wall_start = time.perf_counter()
+            cpu_start = time.process_time()
+            manifest = executor(request, scope)
+            cpu_seconds = time.process_time() - cpu_start
+            wall_seconds = time.perf_counter() - wall_start
+            resources[request.arm] = _mint_resource_evidence_v2(
+                claim=execution_claim,
+                request=request,
+                manifest=manifest,
+                wall_seconds=wall_seconds,
+                cpu_seconds=cpu_seconds,
+            )
+            return manifest
+
+        control, treatment = self.run_scheduled_pair(
+            registered,
+            execution_claim=execution_claim,
+            executor=measured_executor,
+        )
+        for evidence in resources.values():
+            self.artifact_store.put("resource", evidence.to_dict())
+        return MeasuredScheduledActivationPairV2(
+            control=control,
+            treatment=treatment,
+            control_resource=resources["control"],
+            treatment_resource=resources["treatment"],
+        )
 
     def run_pair_measured(
         self,

@@ -130,6 +130,10 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "ActivationResourceMeasuredV2": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ActivationGenerationConsumptionRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
@@ -364,6 +368,7 @@ class ResearchEventStore:
         self._validate_external_prearm_flat_schedule(draft.event_type, payload)
         self._validate_external_pair_execution_schedule(draft.event_type, payload)
         self._validate_external_activation_resource(draft.event_type, payload)
+        self._validate_external_activation_resource_v2(draft.event_type, payload)
         self._validate_external_generation_consumption(draft.event_type, payload)
         self._validate_external_generation_consumption_v2(
             draft.event_type, payload
@@ -600,6 +605,7 @@ class ResearchEventStore:
             "ActivationRunRecorded": "manifest_id",
             "ActivationRunSourceAudited": "audit_id",
             "ActivationResourceMeasured": "resource_id",
+            "ActivationResourceMeasuredV2": "resource_id",
             "ActivationGenerationConsumptionRecorded": "generation_id",
             "ActivationGenerationConsumptionV2Recorded": "generation_id",
             "ActivationGenerationConsumptionV3Recorded": "generation_id",
@@ -1842,6 +1848,98 @@ class ResearchEventStore:
         }
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("Activation resource event differs from artifact")
+
+    def _validate_external_activation_resource_v2(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "ActivationResourceMeasuredV2":
+            return
+        references = [
+            reference for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.activation-resource-v2+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError(
+                "Activation resource v2 requires one evidence artifact"
+            )
+        try:
+            from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
+            from src.alpha_foundry.activation.pair_schedule_v1 import (
+                ActivationPairExecutionScheduleV1,
+            )
+            from src.alpha_foundry.activation.resource_v2 import (
+                validate_resource_evidence_v2_mapping,
+            )
+
+            artifacts = ActivationArtifactStore(self.artifact_root)
+            expected_relative = artifacts.relative_path(
+                "resource", str(payload["evidence_hash"])
+            )
+            if str(references[0]["relative_path"]).replace("\\", "/") != expected_relative:
+                raise ValueError("Activation resource v2 path is not canonical")
+            evidence = validate_resource_evidence_v2_mapping(
+                artifacts.get("resource", str(payload["evidence_hash"]))
+            )
+            by_hash = {event.event_hash: event for event in self.query_events()}
+            schedule_event = by_hash.get(str(evidence["pair_schedule_event_hash"]))
+            claim_event = by_hash.get(str(evidence["execution_claim_event_hash"]))
+            if (
+                schedule_event is None
+                or schedule_event.event_type != "ActivationPairExecutionScheduled"
+                or claim_event is None
+                or claim_event.event_type != "ActivationPairExecutionClaimed"
+            ):
+                raise ValueError("Activation resource v2 schedule authority is missing")
+            schedule = ActivationPairExecutionScheduleV1.from_dict(
+                artifacts.get("pair_schedule", str(evidence["pair_schedule_hash"]))
+            )
+            expected_policy_hash = canonical_json_hash(
+                {
+                    "schema_version": "activation_resource_measurement_policy.v2",
+                    "wall_clock": "time.perf_counter.v1",
+                    "cpu_clock": "time.process_time.v1",
+                    "measurement_boundary": (
+                        "immediately_around_scheduled_arm_executor.v1"
+                    ),
+                    "arm_order_rule": schedule.order_rule,
+                    "arm_order": list(schedule.arm_order),
+                    "pair_schedule_event_hash": schedule_event.event_hash,
+                    "pair_schedule_hash": schedule.schedule_hash,
+                    "execution_claim_event_hash": claim_event.event_hash,
+                    "timeout_limit_seconds": schedule.timeout_seconds,
+                    "timeout_enforcement": "observed_not_enforced.v1",
+                    "peak_rss_method": (
+                        "unavailable_without_isolated_worker.v1"
+                    ),
+                }
+            )
+            if (
+                schedule_event.payload["schedule_hash"] != schedule.schedule_hash
+                or claim_event.payload["schedule_event_hash"]
+                != schedule_event.event_hash
+                or claim_event.payload["schedule_hash"] != schedule.schedule_hash
+                or schedule.plan_hash != evidence["plan_hash"]
+                or schedule.pair_id != evidence["pair_id"]
+                or schedule.run_group_id != evidence["run_group_id"]
+                or schedule.arm_order[int(evidence["arm_order_position"])]
+                != evidence["arm"]
+                or schedule.timeout_seconds != evidence["timeout_limit_seconds"]
+                or expected_policy_hash != evidence["measurement_policy_hash"]
+            ):
+                raise ValueError("Activation resource v2 schedule binding differs")
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("Activation resource v2 artifact is invalid") from exc
+        expected = {
+            key: value for key, value in evidence.items()
+            if key != "schema_version"
+        }
+        if any(payload[name] != value for name, value in expected.items()):
+            raise EventValidationError(
+                "Activation resource v2 event differs from artifact"
+            )
 
     def _validate_external_generation_consumption(
         self,
@@ -3477,6 +3575,44 @@ class ResearchEventStore:
                 )
             self._validate_activation_resource_transition(conn, payload)
             return
+        if event_type == "ActivationResourceMeasuredV2":
+            if draft.run_id != payload["run_group_id"]:
+                raise EventTransitionError(
+                    "Activation resource v2 event run differs from run group"
+                )
+            schedule = conn.execute(
+                """
+                SELECT payload FROM research_events
+                WHERE event_type = 'ActivationPairExecutionScheduled'
+                  AND event_hash = ?
+                """,
+                (payload["pair_schedule_event_hash"],),
+            ).fetchone()
+            claim = conn.execute(
+                """
+                SELECT payload FROM research_events
+                WHERE event_type = 'ActivationPairExecutionClaimed'
+                  AND event_hash = ?
+                """,
+                (payload["execution_claim_event_hash"],),
+            ).fetchone()
+            if schedule is None or claim is None:
+                raise EventTransitionError(
+                    "Activation resource v2 lacks schedule or claim"
+                )
+            schedule_payload = json.loads(str(schedule["payload"]))
+            claim_payload = json.loads(str(claim["payload"]))
+            if (
+                schedule_payload["schedule_hash"] != payload["pair_schedule_hash"]
+                or claim_payload["schedule_event_hash"]
+                != payload["pair_schedule_event_hash"]
+                or claim_payload["schedule_hash"] != payload["pair_schedule_hash"]
+            ):
+                raise EventTransitionError(
+                    "Activation resource v2 schedule authority differs"
+                )
+            self._validate_activation_resource_transition(conn, payload)
+            return
         if event_type == "ActivationGenerationConsumptionRecorded":
             if draft.run_id != payload["execution_run_id"]:
                 raise EventTransitionError(
@@ -4241,7 +4377,9 @@ class ResearchEventStore:
         prior = conn.execute(
             """
             SELECT 1 FROM research_events
-            WHERE event_type = 'ActivationResourceMeasured'
+            WHERE event_type IN (
+              'ActivationResourceMeasured', 'ActivationResourceMeasuredV2'
+            )
               AND (
                 entity_id = ?
                 OR json_extract(payload, '$.evidence_hash') = ?
@@ -5002,6 +5140,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_activation_resource_v2(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_generation_consumption(
                     event.event_type,
                     validated_payload,
@@ -5100,6 +5242,7 @@ class ResearchEventStore:
         prearm_schedule_events: dict[str, ResearchEventEnvelope] = {}
         pair_schedule_events: dict[str, ResearchEventEnvelope] = {}
         claimed_pair_schedule_hashes: set[str] = set()
+        pair_claim_events: dict[str, ResearchEventEnvelope] = {}
         activation_runs: dict[str, list[Mapping[str, Any]]] = {}
         activation_manifest_ids: set[str] = set()
         activation_manifest_hashes: set[str] = set()
@@ -5191,6 +5334,7 @@ class ResearchEventStore:
                 ):
                     return False
                 claimed_pair_schedule_hashes.add(schedule_hash)
+                pair_claim_events[event.event_hash] = event
             elif event.event_type == "OfficialSearchControlRecorded":
                 control_id = str(payload["control_id"])
                 if control_id in official_control_ids:
@@ -5733,7 +5877,9 @@ class ResearchEventStore:
                 ):
                     return False
                 activation_source_audit_ids.add(audit_id)
-            elif event.event_type == "ActivationResourceMeasured":
+            elif event.event_type in {
+                "ActivationResourceMeasured", "ActivationResourceMeasuredV2"
+            }:
                 plan_hash = str(payload["plan_hash"])
                 resource_id = str(payload["resource_id"])
                 evidence_hash = str(payload["evidence_hash"])
@@ -5745,6 +5891,24 @@ class ResearchEventStore:
                     and run["pair_id"] == payload["pair_id"]
                     and run["arm"] == payload["arm"]
                 ]
+                if event.event_type == "ActivationResourceMeasuredV2":
+                    schedule = pair_schedule_events.get(
+                        str(payload["pair_schedule_event_hash"])
+                    )
+                    claim = pair_claim_events.get(
+                        str(payload["execution_claim_event_hash"])
+                    )
+                    if (
+                        schedule is None
+                        or claim is None
+                        or schedule.payload["schedule_hash"]
+                        != payload["pair_schedule_hash"]
+                        or claim.payload["schedule_event_hash"]
+                        != schedule.event_hash
+                        or claim.payload["schedule_hash"]
+                        != payload["pair_schedule_hash"]
+                    ):
+                        return False
                 if (
                     plan_hash not in activation_plans
                     or plan_hash in activation_result_plans

@@ -942,6 +942,26 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ActivationResourceMeasuredV2": PayloadSpec(
+        "activation_resource_measured.v2",
+        {
+            "resource_id": _string, "plan_hash": _hash,
+            "pair_id": _string, "run_group_id": _string,
+            "arm": _enum("control", "treatment"), "manifest_hash": _hash,
+            "pair_schedule_event_hash": _hash, "pair_schedule_hash": _hash,
+            "execution_claim_event_hash": _hash,
+            "arm_order_position": _nonnegative_integer,
+            "timeout_limit_seconds": _positive_finite_number,
+            "measurement_policy_hash": _hash,
+            "wall_seconds": _nonnegative_finite_number,
+            "cpu_seconds": _nonnegative_finite_number,
+            "peak_rss_mb": _nullable_finite_number,
+            "peak_rss_method": _string,
+            "source_failure_codes": _reason_codes,
+            "source_complete": _boolean,
+            "evidence_hash": _hash, "artifact_refs": _artifact_list,
+        },
+    ),
     "ActivationGenerationConsumptionRecorded": PayloadSpec(
         "activation_generation_consumption_recorded.v1",
         {
@@ -2165,6 +2185,26 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         if payload["resource_id"] != expected_resource_id:
             raise EventValidationError(
                 "Activation resource identity must derive from its evidence hash"
+            )
+    if event_type == "ActivationResourceMeasuredV2":
+        expected_resource_id = (
+            "activation-resource-v2-"
+            + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
+        )
+        required = {
+            "EXECUTOR_TIMEOUT_NOT_ENFORCED",
+            "PEAK_RSS_ISOLATED_MEASUREMENT_UNAVAILABLE",
+        }
+        if (
+            payload["resource_id"] != expected_resource_id
+            or payload["peak_rss_mb"] is not None
+            or payload["source_complete"]
+            or not required.issubset(payload["source_failure_codes"])
+            or "ARM_ORDER_NOT_COUNTERBALANCED" in payload["source_failure_codes"]
+            or payload["arm_order_position"] not in {0, 1}
+        ):
+            raise EventValidationError(
+                "Activation resource v2 must retain unresolved limitations"
             )
     if event_type == "ActivationGenerationConsumptionRecorded":
         expected_identifier = (

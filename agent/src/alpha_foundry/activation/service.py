@@ -19,6 +19,7 @@ from src.alpha_foundry.activation.run_source_v2 import (
     ActivationRunSourceAuditorV2,
 )
 from src.alpha_foundry.activation.resource_v1 import ActivationResourceEvidenceV1
+from src.alpha_foundry.activation.resource_v2 import ActivationResourceEvidenceV2
 from src.alpha_foundry.activation.generation_consumption_v1 import (
     ActivationGenerationConsumptionV1,
 )
@@ -158,6 +159,38 @@ class ActivationEvidenceService:
                 run_id=evidence.run_group_id,
                 payload_schema_version="activation_resource_measured.v1",
                 idempotency_key="activation-resource-v1:" + evidence.evidence_hash,
+                payload={
+                    "resource_id": resource_id,
+                    **{
+                        key: value for key, value in evidence.to_dict().items()
+                        if key != "schema_version"
+                    },
+                    "artifact_refs": [reference],
+                },
+            )
+        )
+        return relative
+
+    def record_resource_evidence_v2(
+        self,
+        evidence: ActivationResourceEvidenceV2,
+    ) -> str:
+        if not isinstance(evidence, ActivationResourceEvidenceV2):
+            raise TypeError("typed scheduled Activation resource v2 evidence is required")
+        relative = self.artifacts.put("resource", evidence.to_dict())
+        reference = self._reference("resource", evidence.evidence_hash, relative)
+        reference["media_type"] = "application/vnd.vibe.activation-resource-v2+json"
+        resource_id = (
+            "activation-resource-v2-"
+            + evidence.evidence_hash.removeprefix("sha256:")[:24]
+        )
+        self.event_store.append_event(
+            EventDraft(
+                event_type="ActivationResourceMeasuredV2",
+                entity_id=resource_id,
+                run_id=evidence.run_group_id,
+                payload_schema_version="activation_resource_measured.v2",
+                idempotency_key="activation-resource-v2:" + evidence.evidence_hash,
                 payload={
                     "resource_id": resource_id,
                     **{
