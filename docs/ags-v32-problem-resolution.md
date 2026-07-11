@@ -31,13 +31,13 @@ Status meanings:
 
 | Item | Planned milestone | Status | Current authoritative evidence |
 |---|---|---|---|
-| P0-01 | M1 split/timing | audit_reported | none |
+| P0-01 | M1 split/timing | partial | frozen timing/split primitives exist; scorecard capability migration remains open |
 | P0-02 | M1 evidence/Decision | audit_reported | none |
 | P0-03 | M1 production evaluator | audit_reported | none |
 | P0-04 | M1/M2 PIT snapshot | audit_reported | none |
 | P0-05 | M2 A-share adapter | audit_reported | none |
 | P0-06 | M2 stateful execution | audit_reported | none |
-| P0-07 | M1 split registry | audit_reported | none |
+| P0-07 | M1 split registry | partial | content-hashed calendar/policy/plan models pass adversarial tests; producer-scoped registration remains open |
 | P0-08 | M1/M2 execution policy | audit_reported | none |
 | P0-09 | M1 immutable output | audit_reported | none |
 | P0-10 | M1 scorecard/final boundary | audit_reported | none |
@@ -47,7 +47,7 @@ Status meanings:
 | P0-14 | M1 weighting policy | audit_reported | none |
 | P0-15 | M1 Decision invariants | audit_reported | none |
 | P0-16 | M1 exact projection bundle | audit_reported | none |
-| P0-17 | M1 atomic artifact writer | audit_reported | none |
+| P0-17 | M1 atomic artifact writer | partial | canonical create-if-absent writer passes collision/concurrency tests; legacy writers and event transitions remain unmigrated |
 | P0-18 | M1 forward authority/vintage | audit_reported | none |
 | P1-01 | M1 production timing binding | audit_reported | none |
 | P1-02 | M1 executable grammar | audit_reported | none |
@@ -60,7 +60,7 @@ Status meanings:
 | P1-09 | M2 formal cache isolation | audit_reported | none |
 | P1-10 | M1/M2 Complement policy | audit_reported | none |
 | P1-11 | M1 regime producer | audit_reported | none |
-| P1-12 | M1 execution/calendar policy | audit_reported | none |
+| P1-12 | M1 execution/calendar policy | partial | horizon/holding/rebalance/entry/exit/calendar are explicit and hashed; production evaluator binding remains open |
 | P1-13 | M1 flag/route defense | audit_reported | none |
 | P1-14 | M1 final typed terminal | audit_reported | none |
 
@@ -100,3 +100,43 @@ Verification on this branch:
 M0 does not make any market, Retriever-efficacy, candidate-zoo, final-test, or
 forward claim. P1-07 remains only partial until GET/CLI formal conclusions are
 restricted to event/release-bound canonical references.
+
+## M1 authority-primitives evidence
+
+Branch `codex/ags-v32-m1-authority-primitives` was created from accepted M0
+main commit `5f9fb2141c13b01668bd822d9ae9f21947d93ef1`.
+
+The additive `AtomicContentAddressedArtifactWriter` validates strict finite
+closed JSON, recomputes the semantic hash, derives the semantic path, creates
+the path without overwrite from a fully fsynced staging file, and reopens the
+artifact to bind canonical bytes and blob hash. Existing wrong or noncanonical
+content is a typed conflict. Same-content concurrent writes are idempotent.
+The constructor performs no directory creation, preserving feature-off IO
+boundaries for future gated services.
+
+`FrozenTradingCalendarV1`, `EvaluationTimePolicyV1`, and `FrozenSplitPlanV1`
+make calendar source, signal/order/entry/exit timing, horizons, holding period,
+rebalance cadence, purge and embargo explicit and content hashed. Split gaps
+and outcome-contained signal endpoints are derived in trading-day positions;
+reversed, overlapping, unregistered-calendar and insufficient-gap plans fail.
+
+These are prerequisites, not closure claims. Legacy scorecard, generic event
+append, existing artifact writers, PIT data, production evaluator and Decision
+evidence do not yet consume these objects, so P0-01/P0-07/P0-17/P1-12 remain
+partial.
+
+Current verification:
+
+- focused atomic-writer and evaluation-policy matrix: `19 passed`;
+- same-content 32-writer concurrency case: `10/10` independent repetitions
+  passed after the Windows path correction;
+- Alpha Quality plus Research Ledger: `277 passed in 44.19s`;
+- Alpha Foundry, contracts, security and acceptance:
+  `338 passed in 65.48s`, with 21 existing deprecation warnings;
+- two-source cold mypy: passed.
+
+The first concurrent writer run exposed a Windows extended-path (`\\?\`)
+normalization race. The implementation now normalizes extended paths and
+rechecks the resolved parent immediately before linking, preserving both
+concurrency and junction/symlink containment. The complete focused and broad
+matrices were rerun after the correction.
