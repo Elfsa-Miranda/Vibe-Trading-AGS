@@ -67,6 +67,11 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "TrainValidDataSnapshotFrozen": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "RetrieverDecisionV3Recorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
@@ -307,6 +312,7 @@ class ResearchEventStore:
         self._validate_external_retriever_action_template(
             draft.event_type, payload
         )
+        self._validate_external_train_valid_snapshot(draft.event_type, payload)
         self._validate_external_retriever_evidence(draft.event_type, payload)
         self._validate_external_retriever_v4_evidence(draft.event_type, payload)
         self._validate_external_retriever_v5_evidence(draft.event_type, payload)
@@ -528,6 +534,7 @@ class ResearchEventStore:
             "TrialTerminated": "trial_id",
             "RetrieverDecisionRecorded": "decision_id",
             "RetrieverActionTemplateFrozen": "action_id",
+            "TrainValidDataSnapshotFrozen": "snapshot_id",
             "RetrieverDecisionV2Recorded": "decision_id",
             "RetrieverDecisionV3Recorded": "decision_id",
             "RetrieverDecisionV4Recorded": "decision_id",
@@ -661,6 +668,57 @@ class ResearchEventStore:
         if rebuilt.to_dict() != dict(payload):
             raise EventValidationError(
                 "Retriever action differs from its deterministic template rebuild"
+            )
+
+    def _validate_external_train_valid_snapshot(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "TrainValidDataSnapshotFrozen":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.frozen-train-valid-snapshot-v1+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError(
+                "train/valid snapshot requires one source artifact"
+            )
+        try:
+            from src.alpha_foundry.retrieval.feature_source_v1 import (
+                FrozenTrainValidSnapshotArtifactStoreV1,
+            )
+
+            snapshot = FrozenTrainValidSnapshotArtifactStoreV1(
+                self.artifact_root
+            ).read(
+                str(references[0]["relative_path"]),
+                str(payload["snapshot_hash"]),
+            )
+            contract = snapshot.snapshot_contract
+            base = contract["base_manifest_content"]
+            if not isinstance(base, Mapping):
+                raise ValueError("train/valid snapshot base contract is invalid")
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            raise EventValidationError(
+                "train/valid snapshot source cannot be rebuilt"
+            ) from exc
+        expected = {
+            "snapshot_hash": snapshot.snapshot_hash,
+            "data_scope": snapshot.data_scope,
+            "panel_content_hash": contract["panel_content_hash"],
+            "frame_content_hashes": contract["frame_content_hashes"],
+            "frame_names": list(snapshot.frames),
+            "source_config_hash": base["source_config_hash"],
+            "pit_contract_present": base["pit_contract_present"],
+            "survivorship_bias": base["survivorship_bias"],
+        }
+        if any(payload[name] != value for name, value in expected.items()):
+            raise EventValidationError(
+                "train/valid snapshot event differs from source artifact"
             )
 
     def _validate_external_retriever_evidence(
@@ -1947,6 +2005,20 @@ class ResearchEventStore:
             self._validate_retriever_action_template_transition(
                 conn, draft, payload
             )
+            return
+        if event_type == "TrainValidDataSnapshotFrozen":
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'TrainValidDataSnapshotFrozen'
+                  AND (entity_id = ? OR json_extract(payload, '$.snapshot_hash') = ?)
+                """,
+                (payload["snapshot_id"], payload["snapshot_hash"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError(
+                    "train/valid snapshot identity already exists"
+                )
             return
         if event_type == "RetrieverDecisionV2Recorded":
             self._validate_retriever_v2_transition(conn, payload)
@@ -3454,6 +3526,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_train_valid_snapshot(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_retriever_evidence(
                     event.event_type,
                     validated_payload,
@@ -3579,6 +3655,8 @@ class ResearchEventStore:
         official_control_ids: set[str] = set()
         retriever_action_ids: set[str] = set()
         retriever_action_events: dict[str, ResearchEventEnvelope] = {}
+        train_valid_snapshot_ids: set[str] = set()
+        train_valid_snapshot_hashes: set[str] = set()
         retriever_v5_ids: set[str] = set()
         retriever_v5_events: dict[str, ResearchEventEnvelope] = {}
         process_outcome_links: list[tuple[str, str, str]] = []
@@ -3691,6 +3769,16 @@ class ResearchEventStore:
                     return False
                 retriever_action_ids.add(action_id)
                 retriever_action_events[event.event_hash] = event
+            elif event.event_type == "TrainValidDataSnapshotFrozen":
+                snapshot_id = str(payload["snapshot_id"])
+                snapshot_hash = str(payload["snapshot_hash"])
+                if (
+                    snapshot_id in train_valid_snapshot_ids
+                    or snapshot_hash in train_valid_snapshot_hashes
+                ):
+                    return False
+                train_valid_snapshot_ids.add(snapshot_id)
+                train_valid_snapshot_hashes.add(snapshot_hash)
             elif event.event_type == "RetrieverDecisionV5Recorded":
                 decision_id = str(payload["decision_id"])
                 control_hash = str(payload["control_evidence_event_hash"])
