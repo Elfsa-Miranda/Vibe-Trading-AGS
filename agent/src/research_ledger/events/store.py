@@ -106,6 +106,14 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "ActivationPairExecutionScheduled": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
+    "ActivationPairExecutionClaimed": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ActivationPlanRegistered": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
@@ -354,6 +362,7 @@ class ResearchEventStore:
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
         self._validate_external_prearm_flat_schedule(draft.event_type, payload)
+        self._validate_external_pair_execution_schedule(draft.event_type, payload)
         self._validate_external_activation_resource(draft.event_type, payload)
         self._validate_external_generation_consumption(draft.event_type, payload)
         self._validate_external_generation_consumption_v2(
@@ -585,6 +594,8 @@ class ResearchEventStore:
             "RetrieverDecisionV7Recorded": "decision_id",
             "OfficialSearchControlRecorded": "control_id",
             "PreArmFlatScheduleFrozen": "schedule_id",
+            "ActivationPairExecutionScheduled": "schedule_id",
+            "ActivationPairExecutionClaimed": "claim_id",
             "ActivationPlanRegistered": "experiment_id",
             "ActivationRunRecorded": "manifest_id",
             "ActivationRunSourceAudited": "audit_id",
@@ -1745,6 +1756,55 @@ class ResearchEventStore:
         }
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("pre-arm flat schedule event differs from artifact")
+
+    def _validate_external_pair_execution_schedule(
+        self, event_type: str, payload: Mapping[str, Any]
+    ) -> None:
+        if event_type != "ActivationPairExecutionScheduled":
+            return
+        references = [
+            reference for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.activation-pair-execution-schedule-v1+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError("Activation pair schedule requires one artifact")
+        try:
+            from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
+            from src.alpha_foundry.activation.pair_schedule_v1 import (
+                ActivationPairExecutionScheduleV1,
+            )
+
+            artifacts = ActivationArtifactStore(self.artifact_root)
+            expected_path = artifacts.relative_path(
+                "pair_schedule", str(payload["schedule_hash"])
+            )
+            if str(references[0]["relative_path"]).replace("\\", "/") != expected_path:
+                raise ValueError("Activation pair schedule path is not canonical")
+            schedule = ActivationPairExecutionScheduleV1.from_dict(
+                artifacts.get("pair_schedule", str(payload["schedule_hash"]))
+            )
+            plan = artifacts.get("plan", schedule.plan_hash)
+            rebuilt = ActivationPairExecutionScheduleV1.from_plan(
+                plan_hash=schedule.plan_hash,
+                plan=plan,
+                run_group_id=schedule.run_group_id,
+                mechanism_family=schedule.mechanism_family,
+                dag_region=schedule.dag_region,
+            )
+            if rebuilt != schedule:
+                raise ValueError("Activation pair schedule does not replay")
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("Activation pair schedule cannot replay") from exc
+        raw = schedule.to_dict()
+        expected = {
+            key: raw[key] for key in payload
+            if key not in {"schedule_id", "artifact_refs"}
+        }
+        if any(payload[name] != value for name, value in expected.items()):
+            raise EventValidationError(
+                "Activation pair schedule event differs from artifact"
+            )
 
     def _validate_external_activation_resource(
         self,
@@ -3283,6 +3343,109 @@ class ResearchEventStore:
             if prior is not None or run is not None:
                 raise EventTransitionError(
                     "pre-arm schedule is duplicate or follows arm outcomes"
+                )
+            return
+        if event_type == "ActivationPairExecutionScheduled":
+            if draft.run_id != payload["run_group_id"]:
+                raise EventTransitionError("Activation pair schedule run differs")
+            self._activation_plan_payload(conn, str(payload["plan_hash"]))
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ActivationPairExecutionScheduled'
+                  AND (
+                    entity_id = ?
+                    OR json_extract(payload, '$.schedule_hash') = ?
+                    OR (
+                      json_extract(payload, '$.plan_hash') = ?
+                      AND json_extract(payload, '$.pair_id') = ?
+                    )
+                  )
+                """,
+                (
+                    payload["schedule_id"], payload["schedule_hash"],
+                    payload["plan_hash"], payload["pair_id"],
+                ),
+            ).fetchone()
+            from src.alpha_foundry.activation.runner import (
+                activation_arm_execution_run_id,
+            )
+
+            arm_run_ids = tuple(
+                activation_arm_execution_run_id(
+                    plan_hash=str(payload["plan_hash"]),
+                    run_group_id=str(payload["run_group_id"]),
+                    arm=arm,
+                )
+                for arm in ("control", "treatment")
+            )
+            outcome = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type IN (
+                  'TrialStarted', 'EvaluationRecorded', 'TrialTerminated'
+                ) AND run_id IN (?, ?)
+                """,
+                arm_run_ids,
+            ).fetchone()
+            if prior is not None or outcome is not None:
+                raise EventTransitionError(
+                    "Activation pair schedule is duplicate or follows arm outcomes"
+                )
+            return
+        if event_type == "ActivationPairExecutionClaimed":
+            schedule_row = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'ActivationPairExecutionScheduled'
+                  AND event_hash = ?
+                """,
+                (payload["schedule_event_hash"],),
+            ).fetchone()
+            if schedule_row is None:
+                raise EventTransitionError("Activation pair claim lacks its schedule")
+            schedule_payload = json.loads(str(schedule_row["payload"]))
+            if (
+                draft.run_id != payload["run_group_id"]
+                or str(schedule_row["run_id"]) != draft.run_id
+                or schedule_payload["schedule_hash"] != payload["schedule_hash"]
+                or schedule_payload["plan_hash"] != payload["plan_hash"]
+                or schedule_payload["pair_id"] != payload["pair_id"]
+                or schedule_payload["run_group_id"] != payload["run_group_id"]
+            ):
+                raise EventTransitionError("Activation pair claim differs from schedule")
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ActivationPairExecutionClaimed'
+                  AND json_extract(payload, '$.schedule_hash') = ?
+                """,
+                (payload["schedule_hash"],),
+            ).fetchone()
+            from src.alpha_foundry.activation.runner import (
+                activation_arm_execution_run_id,
+            )
+
+            arm_run_ids = tuple(
+                activation_arm_execution_run_id(
+                    plan_hash=str(payload["plan_hash"]),
+                    run_group_id=str(payload["run_group_id"]),
+                    arm=arm,
+                )
+                for arm in ("control", "treatment")
+            )
+            outcome = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type IN (
+                  'TrialStarted', 'EvaluationRecorded', 'TrialTerminated'
+                ) AND run_id IN (?, ?)
+                """,
+                arm_run_ids,
+            ).fetchone()
+            if prior is not None or outcome is not None:
+                raise EventTransitionError(
+                    "Activation pair claim is duplicate or follows arm outcomes"
                 )
             return
         if event_type == "OfficialSearchControlRecorded":
@@ -4831,6 +4994,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_pair_execution_schedule(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_activation_resource(
                     event.event_type,
                     validated_payload,
@@ -4931,6 +5098,8 @@ class ResearchEventStore:
         prearm_schedule_ids: set[str] = set()
         prearm_schedule_hashes: set[str] = set()
         prearm_schedule_events: dict[str, ResearchEventEnvelope] = {}
+        pair_schedule_events: dict[str, ResearchEventEnvelope] = {}
+        claimed_pair_schedule_hashes: set[str] = set()
         activation_runs: dict[str, list[Mapping[str, Any]]] = {}
         activation_manifest_ids: set[str] = set()
         activation_manifest_hashes: set[str] = set()
@@ -4976,6 +5145,52 @@ class ResearchEventStore:
                 if trial_id in started or trial_id in terminated:
                     return False
                 started[trial_id] = event.run_id
+            elif event.event_type == "ActivationPairExecutionScheduled":
+                schedule_hash = str(payload["schedule_hash"])
+                if (
+                    event.run_id != payload["run_group_id"]
+                    or event.event_hash in pair_schedule_events
+                    or any(
+                        prior.payload["schedule_hash"] == schedule_hash
+                        or (
+                            prior.payload["plan_hash"] == payload["plan_hash"]
+                            and prior.payload["pair_id"] == payload["pair_id"]
+                        )
+                        for prior in pair_schedule_events.values()
+                    )
+                ):
+                    return False
+                pair_schedule_events[event.event_hash] = event
+            elif event.event_type == "ActivationPairExecutionClaimed":
+                from src.alpha_foundry.activation.runner import (
+                    activation_arm_execution_run_id,
+                )
+
+                schedule = pair_schedule_events.get(
+                    str(payload["schedule_event_hash"])
+                )
+                schedule_hash = str(payload["schedule_hash"])
+                arm_run_ids = {
+                    activation_arm_execution_run_id(
+                        plan_hash=str(payload["plan_hash"]),
+                        run_group_id=str(payload["run_group_id"]),
+                        arm=arm,
+                    )
+                    for arm in ("control", "treatment")
+                }
+                if (
+                    schedule is None
+                    or schedule_hash in claimed_pair_schedule_hashes
+                    or event.run_id != payload["run_group_id"]
+                    or schedule.run_id != event.run_id
+                    or schedule.payload["schedule_hash"] != schedule_hash
+                    or schedule.payload["plan_hash"] != payload["plan_hash"]
+                    or schedule.payload["pair_id"] != payload["pair_id"]
+                    or schedule.payload["run_group_id"] != payload["run_group_id"]
+                    or any(run_id in arm_run_ids for run_id in started.values())
+                ):
+                    return False
+                claimed_pair_schedule_hashes.add(schedule_hash)
             elif event.event_type == "OfficialSearchControlRecorded":
                 control_id = str(payload["control_id"])
                 if control_id in official_control_ids:

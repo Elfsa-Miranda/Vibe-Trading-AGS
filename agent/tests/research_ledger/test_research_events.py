@@ -189,6 +189,8 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "RetrieverDecisionV7Recorded",
         "OfficialSearchControlRecorded",
         "PreArmFlatScheduleFrozen",
+        "ActivationPairExecutionScheduled",
+        "ActivationPairExecutionClaimed",
         "ActivationPlanRegistered",
         "ActivationRunRecorded",
         "ActivationRunSourceAudited",
@@ -800,7 +802,7 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "terminal_event_hashes": [digest],
             "artifact_refs": [],
         },
-        "PreArmFlatScheduleFrozen": {
+            "PreArmFlatScheduleFrozen": {
             "schedule_id": "prearm-flat-v1-" + "d" * 24,
             "schedule_hash": digest,
             "plan_hash": digest,
@@ -849,6 +851,23 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "source_complete": False,
             "evidence_hash": digest,
                 "artifact_refs": [],
+            },
+            "ActivationPairExecutionScheduled": {
+                "schedule_id": "activation-pair-schedule-v1-" + "d" * 24,
+                "schedule_hash": digest, "plan_hash": digest,
+                "pair_id": "group-1:momentum:leaf", "run_group_id": "group-1",
+                "mechanism_family": "momentum", "dag_region": "leaf",
+                "seed": 1, "arm_order": ["control", "treatment"],
+                "order_rule": "alternating_frozen_run_group_index.v1",
+                "candidate_budget": 1, "compute_budget": 1,
+                "worker_limit": 1, "timeout_seconds": 1.0,
+                "artifact_refs": [],
+            },
+            "ActivationPairExecutionClaimed": {
+                "claim_id": "activation-pair-claim-v1-" + "d" * 24,
+                "schedule_event_hash": digest, "schedule_hash": digest,
+                "plan_hash": digest, "pair_id": "group-1:momentum:leaf",
+                "run_group_id": "group-1",
             },
             "ActivationGenerationConsumptionRecorded": {
                 "generation_id": "activation-generation-v1-" + "d" * 24,

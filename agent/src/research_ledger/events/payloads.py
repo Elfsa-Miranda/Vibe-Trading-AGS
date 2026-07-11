@@ -857,6 +857,29 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ActivationPairExecutionScheduled": PayloadSpec(
+        "activation_pair_execution_scheduled.v1",
+        {
+            "schedule_id": _string, "schedule_hash": _hash,
+            "plan_hash": _hash, "pair_id": _string,
+            "run_group_id": _string, "mechanism_family": _string,
+            "dag_region": _string, "seed": _integer,
+            "arm_order": _nonempty_string_list, "order_rule": _string,
+            "candidate_budget": _candidate_budget,
+            "compute_budget": _positive_integer,
+            "worker_limit": _positive_integer,
+            "timeout_seconds": _positive_finite_number,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ActivationPairExecutionClaimed": PayloadSpec(
+        "activation_pair_execution_claimed.v1",
+        {
+            "claim_id": _string, "schedule_event_hash": _hash,
+            "schedule_hash": _hash, "plan_hash": _hash,
+            "pair_id": _string, "run_group_id": _string,
+        },
+    ),
     "ActivationPlanRegistered": PayloadSpec(
         "activation_plan_registered.v1",
         {
@@ -2097,6 +2120,30 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError(
                 "pre-arm flat schedule identity must derive from its hash"
             )
+    if event_type == "ActivationPairExecutionScheduled":
+        expected = (
+            "activation-pair-schedule-v1-"
+            + str(payload["schedule_hash"]).removeprefix("sha256:")[:24]
+        )
+        if (
+            payload["schedule_id"] != expected
+            or payload["arm_order"]
+            not in (["control", "treatment"], ["treatment", "control"])
+            or payload["order_rule"]
+            != "alternating_frozen_run_group_index.v1"
+            or payload["compute_budget"] < payload["candidate_budget"]
+            or payload["pair_id"] != (
+                f"{payload['run_group_id']}:{payload['mechanism_family']}:{payload['dag_region']}"
+            )
+        ):
+            raise EventValidationError("Activation pair schedule binding is invalid")
+    if event_type == "ActivationPairExecutionClaimed":
+        expected = (
+            "activation-pair-claim-v1-"
+            + str(payload["schedule_hash"]).removeprefix("sha256:")[:24]
+        )
+        if payload["claim_id"] != expected:
+            raise EventValidationError("Activation pair claim identity is invalid")
     if event_type == "ActivationResourceMeasured" and (
         payload["peak_rss_mb"] is not None
         or payload["source_complete"]
