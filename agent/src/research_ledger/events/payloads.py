@@ -805,6 +805,29 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "RetrieverDecisionV7Recorded": PayloadSpec(
+        "retriever_decision_recorded.v7",
+        {
+            "decision_id": _string, "decision_hash": _hash,
+            "shadow_decision_hash": _hash, "input_bundle_hash": _hash,
+            "plan_hash": _hash, "pair_id": _string,
+            "schedule_event_hash": _hash, "schedule_hash": _hash,
+            "feature_source_event_hash": _hash, "feature_source_hash": _hash,
+            "selected_action_ids": _string_list,
+            "selected_parent_factor_spec_ids": _string_list,
+            "action_template_event_hashes": _ordered_unique_hash_list,
+            "seed": _integer,
+            "policy_version": _enum("topology_activation_policy.v3"),
+            "policy_hash": _hash, "policy_config": _mapping,
+            "eligible_event_watermark": _hash, "data_snapshot_hash": _hash,
+            "candidate_budget": _candidate_budget, "official_output_hash": _hash,
+            "propensity_semantics": _enum(
+                "sequential_action_softmax_draw_probability.v1"
+            ),
+            "components": _retriever_action_component_list,
+            "shadow_only": _boolean, "artifact_refs": _artifact_list,
+        },
+    ),
     "OfficialSearchControlRecorded": PayloadSpec(
         "official_search_control_recorded.v1",
         {
@@ -1726,6 +1749,65 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         }
         if canonical_json_hash(decision_content) != payload["decision_hash"]:
             raise EventValidationError("retriever v6 source-bound decision hash is invalid")
+    if event_type == "RetrieverDecisionV7Recorded":
+        expected_identifier = (
+            "retriever-v7-"
+            + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
+        )
+        if payload["decision_id"] != expected_identifier:
+            raise EventValidationError(
+                "retriever v7 identity must derive from its decision hash"
+            )
+        try:
+            from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
+            policy = ActivationRetrieverPolicy(**dict(payload["policy_config"]))
+        except (TypeError, ValueError) as exc:
+            raise EventValidationError("retriever v7 policy config is invalid") from exc
+        selected_components = {
+            component["action_id"]: component["factor_spec_id"]
+            for component in payload["components"] if component["selected"]
+        }
+        selected_actions = list(payload["selected_action_ids"])
+        selected_parents = list(payload["selected_parent_factor_spec_ids"])
+        if (
+            policy.policy_hash != payload["policy_hash"]
+            or policy.policy_version != payload["policy_version"]
+            or not payload["shadow_only"]
+            or len(selected_actions) != len(set(selected_actions))
+            or len(selected_actions) != len(selected_parents)
+            or len(selected_actions) > payload["candidate_budget"]
+            or set(selected_actions) != set(selected_components)
+            or any(
+                selected_components.get(action_id) != parent_id
+                for action_id, parent_id in zip(
+                    selected_actions, selected_parents, strict=True
+                )
+            )
+            or len(payload["action_template_event_hashes"])
+            != len(payload["components"])
+        ):
+            raise EventValidationError("retriever v7 action selection is inconsistent")
+        decision_content = {
+            "schema_version": "retriever_action_schedule_bound_decision.v7",
+            **{
+                key: payload[key]
+                for key in (
+                    "shadow_decision_hash", "input_bundle_hash", "plan_hash",
+                    "pair_id", "schedule_event_hash", "schedule_hash",
+                    "feature_source_event_hash", "feature_source_hash",
+                    "selected_action_ids", "selected_parent_factor_spec_ids",
+                    "action_template_event_hashes", "seed", "policy_version",
+                    "policy_hash", "policy_config", "eligible_event_watermark",
+                    "data_snapshot_hash", "candidate_budget",
+                    "official_output_hash", "propensity_semantics", "components",
+                    "shadow_only",
+                )
+            },
+        }
+        if canonical_json_hash(decision_content) != payload["decision_hash"]:
+            raise EventValidationError(
+                "retriever v7 schedule-bound decision hash is invalid"
+            )
     if event_type == "TrainValidDataSnapshotFrozen":
         expected_identifier = (
             "train-valid-snapshot-v1-"
@@ -2174,6 +2256,7 @@ def envelope_diagnostics(
         "RetrieverDecisionV2Recorded", "RetrieverDecisionV3Recorded",
         "RetrieverDecisionV4Recorded", "RetrieverDecisionV5Recorded",
         "RetrieverDecisionV6Recorded",
+        "RetrieverDecisionV7Recorded",
     }:
         warnings.add("TOPOLOGY_RETRIEVER_SHADOW_ONLY")
     if event_type == "ActivationResultRecorded" and payload["invalidation_reasons"]:

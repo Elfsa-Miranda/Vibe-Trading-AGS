@@ -94,6 +94,11 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "RetrieverDecisionV7Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "OfficialSearchControlRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
     ),
@@ -339,6 +344,7 @@ class ResearchEventStore:
         self._validate_external_retriever_v4_evidence(draft.event_type, payload)
         self._validate_external_retriever_v5_evidence(draft.event_type, payload)
         self._validate_external_retriever_v6_evidence(draft.event_type, payload)
+        self._validate_external_retriever_v7_evidence(draft.event_type, payload)
         self._validate_external_quality_decision_evidence(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
@@ -568,6 +574,7 @@ class ResearchEventStore:
             "RetrieverDecisionV4Recorded": "decision_id",
             "RetrieverDecisionV5Recorded": "decision_id",
             "RetrieverDecisionV6Recorded": "decision_id",
+            "RetrieverDecisionV7Recorded": "decision_id",
             "OfficialSearchControlRecorded": "control_id",
             "PreArmFlatScheduleFrozen": "schedule_id",
             "ActivationPlanRegistered": "experiment_id",
@@ -1370,6 +1377,82 @@ class ResearchEventStore:
         }
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("retriever v6 differs from deterministic rebuild")
+
+    def _validate_external_retriever_v7_evidence(
+        self, event_type: str, payload: Mapping[str, Any]
+    ) -> None:
+        if event_type != "RetrieverDecisionV7Recorded":
+            return
+        references = [
+            reference for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.retriever-decision-input-v7+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError("retriever v7 requires one minimal input bundle")
+        try:
+            from src.alpha_foundry.retrieval.evidence_v7 import (
+                RetrieverDecisionInputArtifactStoreV7,
+            )
+            from src.alpha_foundry.retrieval.service_v7 import (
+                RetrieverDecisionV7Service,
+            )
+
+            bundle = RetrieverDecisionInputArtifactStoreV7(self.artifact_root).read(
+                str(references[0]["relative_path"]),
+                str(payload["input_bundle_hash"]),
+            )
+            by_hash = {event.event_hash: event for event in self.query_events()}
+            schedule_event = by_hash.get(bundle.schedule_event_hash)
+            source_event = by_hash.get(bundle.feature_source_event_hash)
+            if schedule_event is None or source_event is None:
+                raise ValueError("retriever v7 upstream event is missing")
+            self._validate_external_prearm_flat_schedule(
+                schedule_event.event_type, schedule_event.to_dict()["payload"]
+            )
+            self._validate_external_retriever_feature_source(
+                source_event.event_type, source_event.to_dict()["payload"]
+            )
+            decision, rebuilt_bundle, schedule, source, _ = (
+                RetrieverDecisionV7Service(self).rebuild(
+                    schedule_event_hash=bundle.schedule_event_hash,
+                    feature_source_event_hash=bundle.feature_source_event_hash,
+                )
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "retriever v7 evidence cannot rebuild the pre-arm decision"
+            ) from exc
+        expected = {
+            "shadow_decision_hash": decision.decision_hash,
+            "input_bundle_hash": rebuilt_bundle.bundle_hash,
+            "plan_hash": schedule.plan_hash,
+            "pair_id": schedule.pair_id,
+            "schedule_event_hash": bundle.schedule_event_hash,
+            "schedule_hash": schedule.schedule_hash,
+            "feature_source_event_hash": bundle.feature_source_event_hash,
+            "feature_source_hash": source.source_hash,
+            "selected_action_ids": list(decision.selected_action_ids),
+            "selected_parent_factor_spec_ids": list(
+                decision.selected_parent_factor_spec_ids
+            ),
+            "action_template_event_hashes": list(decision.action_template_event_hashes),
+            "seed": decision.seed,
+            "policy_version": decision.policy_version,
+            "policy_hash": decision.policy_hash,
+            "policy_config": dict(decision.policy_config),
+            "eligible_event_watermark": decision.eligible_event_watermark,
+            "data_snapshot_hash": decision.data_snapshot_hash,
+            "candidate_budget": decision.candidate_budget,
+            "official_output_hash": decision.official_output_hash,
+            "propensity_semantics": decision.propensity_semantics,
+            "components": [component.to_dict() for component in decision.components],
+            "shadow_only": decision.shadow_only,
+        }
+        if bundle != rebuilt_bundle or any(
+            payload[name] != value for name, value in expected.items()
+        ):
+            raise EventValidationError("retriever v7 differs from deterministic rebuild")
 
     def _validate_external_quality_decision_evidence(
         self,
@@ -2923,6 +3006,58 @@ class ResearchEventStore:
                 ):
                     raise EventTransitionError("retriever v6 frozen action binding differs")
             return
+        if event_type == "RetrieverDecisionV7Recorded":
+            from src.alpha_foundry.activation.runner import (
+                activation_arm_execution_run_id,
+            )
+            self._validate_retriever_v2_transition(conn, payload)
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'RetrieverDecisionV7Recorded' AND entity_id = ?",
+                (payload["decision_id"],),
+            ).fetchone()
+            schedule = conn.execute(
+                "SELECT seq, payload FROM research_events WHERE event_type = 'PreArmFlatScheduleFrozen' AND event_hash = ?",
+                (payload["schedule_event_hash"],),
+            ).fetchone()
+            source = conn.execute(
+                "SELECT seq, run_id, payload FROM research_events WHERE event_type = 'RetrieverFeatureSourceRecorded' AND event_hash = ?",
+                (payload["feature_source_event_hash"],),
+            ).fetchone()
+            if prior is not None or schedule is None or source is None:
+                raise EventTransitionError("retriever v7 authority is missing or duplicate")
+            schedule_payload = json.loads(str(schedule["payload"]))
+            source_payload = json.loads(str(source["payload"]))
+            if (
+                int(schedule["seq"]) >= int(source["seq"])
+                or str(source["run_id"]) != draft.run_id
+                or schedule_payload["schedule_hash"] != payload["schedule_hash"]
+                or schedule_payload["plan_hash"] != payload["plan_hash"]
+                or schedule_payload["pair_id"] != payload["pair_id"]
+                or schedule_payload["output_hash"] != payload["official_output_hash"]
+                or schedule_payload["candidate_count"] != payload["candidate_budget"]
+                or source_payload["source_hash"] != payload["feature_source_hash"]
+                or source_payload["snapshot_hash"] != payload["data_snapshot_hash"]
+                or source_payload["retrieval_policy_hash"] != payload["policy_hash"]
+                or source_payload["action_event_hashes"]
+                != payload["action_template_event_hashes"]
+            ):
+                raise EventTransitionError("retriever v7 authoritative binding differs")
+            control_run_id = activation_arm_execution_run_id(
+                plan_hash=str(payload["plan_hash"]),
+                run_group_id=str(schedule_payload["run_group_id"]),
+                arm="control",
+            )
+            observed = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type IN ('TrialStarted', 'TrialTerminated', 'EvaluationRecorded')
+                  AND run_id IN (?, ?)
+                """,
+                (draft.run_id, control_run_id),
+            ).fetchone()
+            if observed is not None:
+                raise EventTransitionError("retriever v7 follows paired-arm outcomes")
+            return
         if event_type == "PreArmFlatScheduleFrozen":
             if draft.run_id != payload["run_group_id"]:
                 raise EventTransitionError("pre-arm schedule run group differs")
@@ -4402,6 +4537,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_retriever_v7_evidence(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_quality_decision_evidence(
                     event.event_type,
                     validated_payload,
@@ -4513,6 +4652,7 @@ class ResearchEventStore:
         activation_experiments: set[str] = set()
         prearm_schedule_ids: set[str] = set()
         prearm_schedule_hashes: set[str] = set()
+        prearm_schedule_events: dict[str, ResearchEventEnvelope] = {}
         activation_runs: dict[str, list[Mapping[str, Any]]] = {}
         activation_manifest_ids: set[str] = set()
         activation_manifest_hashes: set[str] = set()
@@ -4535,6 +4675,8 @@ class ResearchEventStore:
         retriever_v5_events: dict[str, ResearchEventEnvelope] = {}
         retriever_v6_ids: set[str] = set()
         retriever_v6_events: dict[str, ResearchEventEnvelope] = {}
+        retriever_v7_ids: set[str] = set()
+        retriever_v7_events: dict[str, ResearchEventEnvelope] = {}
         process_outcome_links: list[tuple[str, str, str]] = []
         retriever_v4_events: dict[str, ResearchEventEnvelope] = {}
         activation_results: dict[str, Mapping[str, Any]] = {}
@@ -4816,6 +4958,56 @@ class ResearchEventStore:
                         return False
                 retriever_v6_ids.add(decision_id)
                 retriever_v6_events[event.event_hash] = event
+            elif event.event_type == "RetrieverDecisionV7Recorded":
+                from src.alpha_foundry.activation.runner import (
+                    activation_arm_execution_run_id,
+                )
+                decision_id = str(payload["decision_id"])
+                schedule = prearm_schedule_events.get(
+                    str(payload["schedule_event_hash"])
+                )
+                source = retriever_feature_source_events.get(
+                    str(payload["feature_source_event_hash"])
+                )
+                if schedule is None or source is None:
+                    return False
+                control_run_id = activation_arm_execution_run_id(
+                    plan_hash=str(payload["plan_hash"]),
+                    run_group_id=str(schedule.payload["run_group_id"]),
+                    arm="control",
+                )
+                if (
+                    decision_id in retriever_v7_ids
+                    or source.run_id != event.run_id
+                    or not event_order[schedule.event_hash]
+                    < event_order[source.event_hash]
+                    < event_order[event.event_hash]
+                    or schedule.payload["schedule_hash"] != payload["schedule_hash"]
+                    or schedule.payload["plan_hash"] != payload["plan_hash"]
+                    or schedule.payload["pair_id"] != payload["pair_id"]
+                    or schedule.payload["output_hash"]
+                    != payload["official_output_hash"]
+                    or schedule.payload["candidate_count"]
+                    != payload["candidate_budget"]
+                    or source.payload["source_hash"]
+                    != payload["feature_source_hash"]
+                    or source.payload["snapshot_hash"]
+                    != payload["data_snapshot_hash"]
+                    or tuple(source.payload["action_event_hashes"])
+                    != tuple(payload["action_template_event_hashes"])
+                    or any(
+                        candidate.run_id in {event.run_id, control_run_id}
+                        and candidate.event_type in {
+                            "TrialStarted", "TrialTerminated", "EvaluationRecorded"
+                        }
+                        and event_order[candidate.event_hash]
+                        < event_order[event.event_hash]
+                        for candidate in events
+                    )
+                ):
+                    return False
+                retriever_v7_ids.add(decision_id)
+                retriever_v7_events[event.event_hash] = event
             elif event.event_type == "DerivationRecorded":
                 terminal = terminal_payloads.get(str(payload["trial_terminal_event_hash"]))
                 definition = definitions.get(str(payload["child_factor_spec_id"]))
@@ -5020,6 +5212,7 @@ class ResearchEventStore:
                     return False
                 prearm_schedule_ids.add(schedule_id)
                 prearm_schedule_hashes.add(schedule_hash)
+                prearm_schedule_events[event.event_hash] = event
             elif event.event_type == "ActivationRunRecorded":
                 plan_hash = str(payload["plan_hash"])
                 manifest_id = str(payload["manifest_id"])
