@@ -187,6 +187,7 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "RetrieverDecisionV5Recorded",
         "RetrieverDecisionV6Recorded",
         "OfficialSearchControlRecorded",
+        "PreArmFlatScheduleFrozen",
         "ActivationPlanRegistered",
         "ActivationRunRecorded",
         "ActivationRunSourceAudited",
@@ -741,7 +742,7 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "outcome": "inconclusive",
             "artifact_refs": [],
         },
-        "OfficialSearchControlRecorded": {
+            "OfficialSearchControlRecorded": {
             "control_id": "official-control-1",
             "evidence_hash": digest,
             "policy_hash": digest,
@@ -750,6 +751,18 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "data_snapshot_hash": digest,
             "candidate_count": 1,
             "terminal_event_hashes": [digest],
+            "artifact_refs": [],
+        },
+        "PreArmFlatScheduleFrozen": {
+            "schedule_id": "prearm-flat-v1-" + "d" * 24,
+            "schedule_hash": digest,
+            "plan_hash": digest,
+            "pair_id": "group-1:momentum:leaf",
+            "run_group_id": "group-1",
+            "data_snapshot_hash": digest,
+            "policy_hash": digest,
+            "candidate_count": 1,
+            "output_hash": digest,
             "artifact_refs": [],
         },
         "ActivationRunSourceAudited": {

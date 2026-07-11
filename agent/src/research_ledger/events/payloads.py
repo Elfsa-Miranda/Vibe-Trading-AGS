@@ -819,6 +819,21 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "PreArmFlatScheduleFrozen": PayloadSpec(
+        "prearm_flat_schedule_frozen.v1",
+        {
+            "schedule_id": _string,
+            "schedule_hash": _hash,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
+            "data_snapshot_hash": _hash,
+            "policy_hash": _hash,
+            "candidate_count": _positive_integer,
+            "output_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "ActivationPlanRegistered": PayloadSpec(
         "activation_plan_registered.v1",
         {
@@ -1966,6 +1981,15 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         raise EventValidationError(
             "official control terminals must cover every generated candidate"
         )
+    if event_type == "PreArmFlatScheduleFrozen":
+        expected = (
+            "prearm-flat-v1-"
+            + str(payload["schedule_hash"]).removeprefix("sha256:")[:24]
+        )
+        if payload["schedule_id"] != expected:
+            raise EventValidationError(
+                "pre-arm flat schedule identity must derive from its hash"
+            )
     if event_type == "ActivationResourceMeasured" and (
         payload["peak_rss_mb"] is not None
         or payload["source_complete"]

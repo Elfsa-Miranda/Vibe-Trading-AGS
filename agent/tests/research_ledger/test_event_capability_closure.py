@@ -28,6 +28,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "RetrieverDecisionV5Recorded",
     "RetrieverDecisionV6Recorded",
     "OfficialSearchControlRecorded",
+    "PreArmFlatScheduleFrozen",
     "ActivationPlanRegistered",
     "ActivationRunRecorded",
     "ActivationRunSourceAudited",

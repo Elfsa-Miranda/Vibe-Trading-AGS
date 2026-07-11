@@ -97,6 +97,10 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "OfficialSearchControlRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
     ),
+    "PreArmFlatScheduleFrozen": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ActivationPlanRegistered": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
@@ -338,6 +342,7 @@ class ResearchEventStore:
         self._validate_external_quality_decision_evidence(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
+        self._validate_external_prearm_flat_schedule(draft.event_type, payload)
         self._validate_external_activation_resource(draft.event_type, payload)
         self._validate_external_generation_consumption(draft.event_type, payload)
         self._validate_external_generation_consumption_v2(
@@ -564,6 +569,7 @@ class ResearchEventStore:
             "RetrieverDecisionV5Recorded": "decision_id",
             "RetrieverDecisionV6Recorded": "decision_id",
             "OfficialSearchControlRecorded": "control_id",
+            "PreArmFlatScheduleFrozen": "schedule_id",
             "ActivationPlanRegistered": "experiment_id",
             "ActivationRunRecorded": "manifest_id",
             "ActivationRunSourceAudited": "audit_id",
@@ -1569,6 +1575,72 @@ class ResearchEventStore:
                 raise EventValidationError(
                     "official control trial order or snapshot binding is invalid"
                 )
+
+    def _validate_external_prearm_flat_schedule(
+        self, event_type: str, payload: Mapping[str, Any]
+    ) -> None:
+        if event_type != "PreArmFlatScheduleFrozen":
+            return
+        references = [
+            reference for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.prearm-flat-schedule-v1+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError("pre-arm flat schedule requires one artifact")
+        try:
+            from src.alpha_foundry.flat_schedule_v1 import (
+                PreArmFlatScheduleArtifactStoreV1,
+            )
+
+            schedule = PreArmFlatScheduleArtifactStoreV1(self.artifact_root).read(
+                str(references[0]["relative_path"]),
+                str(payload["schedule_hash"]),
+            )
+            from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
+
+            plans = [
+                event for event in self.query_events(event_type="ActivationPlanRegistered")
+                if event.payload["plan_hash"] == schedule.plan_hash
+            ]
+            if len(plans) != 1:
+                raise ValueError("pre-arm flat schedule lacks a registered plan")
+            plan = ActivationArtifactStore(self.artifact_root).get(
+                "plan", schedule.plan_hash
+            )
+            design = plan.get("design")
+            provenance = plan.get("provenance")
+            if not isinstance(design, Mapping) or not isinstance(provenance, Mapping):
+                raise ValueError("pre-arm flat schedule plan is invalid")
+            parts = schedule.pair_id.split(":", 2)
+            if (
+                len(parts) != 3
+                or parts[0] != schedule.run_group_id
+                or schedule.run_group_id not in design.get("run_group_ids", [])
+                or parts[1] not in design.get("mechanism_families", [])
+                or parts[2] not in design.get("dag_regions", [])
+                or provenance.get("train_snapshot_hash")
+                != schedule.data_snapshot_hash
+                or provenance.get("control_policy_hash")
+                != schedule.policy.policy_hash
+                or design.get("candidate_budget")
+                != schedule.policy.max_candidates
+                or design.get("compute_budget") != schedule.policy.trial_budget
+            ):
+                raise ValueError("pre-arm flat schedule differs from registered plan")
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("pre-arm flat schedule cannot replay") from exc
+        expected = {
+            "plan_hash": schedule.plan_hash,
+            "pair_id": schedule.pair_id,
+            "run_group_id": schedule.run_group_id,
+            "data_snapshot_hash": schedule.data_snapshot_hash,
+            "policy_hash": schedule.policy.policy_hash,
+            "candidate_count": len(schedule.candidates),
+            "output_hash": schedule.output_hash,
+        }
+        if any(payload[name] != value for name, value in expected.items()):
+            raise EventValidationError("pre-arm flat schedule event differs from artifact")
 
     def _validate_external_activation_resource(
         self,
@@ -2850,6 +2922,32 @@ class ResearchEventStore:
                     or action_payload["identity_action"]
                 ):
                     raise EventTransitionError("retriever v6 frozen action binding differs")
+            return
+        if event_type == "PreArmFlatScheduleFrozen":
+            if draft.run_id != payload["run_group_id"]:
+                raise EventTransitionError("pre-arm schedule run group differs")
+            self._activation_plan_payload(conn, str(payload["plan_hash"]))
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'PreArmFlatScheduleFrozen'
+                  AND (entity_id = ? OR json_extract(payload, '$.schedule_hash') = ?)
+                """,
+                (payload["schedule_id"], payload["schedule_hash"]),
+            ).fetchone()
+            run = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ActivationRunRecorded'
+                  AND json_extract(payload, '$.plan_hash') = ?
+                  AND json_extract(payload, '$.pair_id') = ?
+                """,
+                (payload["plan_hash"], payload["pair_id"]),
+            ).fetchone()
+            if prior is not None or run is not None:
+                raise EventTransitionError(
+                    "pre-arm schedule is duplicate or follows arm outcomes"
+                )
             return
         if event_type == "OfficialSearchControlRecorded":
             prior = conn.execute(
@@ -4316,6 +4414,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_prearm_flat_schedule(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_activation_resource(
                     event.event_type,
                     validated_payload,
@@ -4409,6 +4511,8 @@ class ResearchEventStore:
         forward_v2_observations: dict[str, list[Mapping[str, Any]]] = {}
         activation_plans: dict[str, Mapping[str, Any]] = {}
         activation_experiments: set[str] = set()
+        prearm_schedule_ids: set[str] = set()
+        prearm_schedule_hashes: set[str] = set()
         activation_runs: dict[str, list[Mapping[str, Any]]] = {}
         activation_manifest_ids: set[str] = set()
         activation_manifest_hashes: set[str] = set()
@@ -4899,6 +5003,23 @@ class ResearchEventStore:
                 activation_plans[plan_hash] = payload
                 activation_experiments.add(experiment_id)
                 activation_runs[plan_hash] = []
+            elif event.event_type == "PreArmFlatScheduleFrozen":
+                plan_hash = str(payload["plan_hash"])
+                schedule_id = str(payload["schedule_id"])
+                schedule_hash = str(payload["schedule_hash"])
+                if (
+                    plan_hash not in activation_plans
+                    or event.run_id != payload["run_group_id"]
+                    or schedule_id in prearm_schedule_ids
+                    or schedule_hash in prearm_schedule_hashes
+                    or any(
+                        run["pair_id"] == payload["pair_id"]
+                        for run in activation_runs.get(plan_hash, [])
+                    )
+                ):
+                    return False
+                prearm_schedule_ids.add(schedule_id)
+                prearm_schedule_hashes.add(schedule_hash)
             elif event.event_type == "ActivationRunRecorded":
                 plan_hash = str(payload["plan_hash"])
                 manifest_id = str(payload["manifest_id"])
