@@ -127,6 +127,7 @@ class RetrieverDecisionV7Service:
 
     def rebuild(
         self, *, schedule_event_hash: str, feature_source_event_hash: str,
+        decision_event_hash: str | None = None,
     ) -> tuple[
         ActionShadowDecisionV5, RetrieverDecisionInputV7, PreArmFlatScheduleV1,
         RetrieverFeatureSourceV1, tuple[FrozenRetrieverActionTemplateV1, ...],
@@ -166,6 +167,22 @@ class RetrieverDecisionV7Service:
             run_group_id=schedule.run_group_id,
             arm="treatment",
         )
+        historical_decision = (
+            None if decision_event_hash is None else by_hash.get(decision_event_hash)
+        )
+        if decision_event_hash is not None and (
+            historical_decision is None
+            or historical_decision.event_type != "RetrieverDecisionV7Recorded"
+            or historical_decision.run_id != run_id
+            or historical_decision.payload["schedule_event_hash"]
+            != schedule_event_hash
+            or historical_decision.payload["feature_source_event_hash"]
+            != feature_source_event_hash
+            or not order[schedule_event_hash]
+            < order[feature_source_event_hash]
+            < order[decision_event_hash]
+        ):
+            raise ValueError("Retriever v7 historical decision binding is invalid")
         if (
             source.execution_run_id != run_id
             or source.snapshot_hash != schedule.data_snapshot_hash
@@ -183,9 +200,18 @@ class RetrieverDecisionV7Service:
             )
             for arm in ("control", "treatment")
         }
+        decision_order = (
+            None if decision_event_hash is None else order.get(decision_event_hash)
+        )
+        if decision_event_hash is not None and decision_order is None:
+            raise ValueError("Retriever v7 historical decision event is missing")
         if any(
             event.run_id in arm_ids
             and event.event_type in {"TrialStarted", "TrialTerminated", "EvaluationRecorded"}
+            and (
+                decision_order is None
+                or order[event.event_hash] < decision_order
+            )
             for event in events
         ):
             raise ValueError("Retriever v7 decision must precede both arm outcomes")

@@ -1413,10 +1413,22 @@ class ResearchEventStore:
             self._validate_external_retriever_feature_source(
                 source_event.event_type, source_event.to_dict()["payload"]
             )
+            historical = [
+                event for event in self.query_events(
+                    event_type="RetrieverDecisionV7Recorded"
+                )
+                if event.entity_id == payload["decision_id"]
+                and event.payload["decision_hash"] == payload["decision_hash"]
+            ]
+            if len(historical) > 1:
+                raise ValueError("retriever v7 historical identity is ambiguous")
             decision, rebuilt_bundle, schedule, source, _ = (
                 RetrieverDecisionV7Service(self).rebuild(
                     schedule_event_hash=bundle.schedule_event_hash,
                     feature_source_event_hash=bundle.feature_source_event_hash,
+                    decision_event_hash=(
+                        None if not historical else historical[0].event_hash
+                    ),
                 )
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:

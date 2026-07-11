@@ -151,6 +151,7 @@ def test_v7_rejects_decision_after_either_arm_outcome(tmp_path: Path) -> None:
         mutator=SeedMutator(max_candidates_per_seed=1), max_candidates=1,
         trial_budget=1, lifecycle=lifecycle, run_id=control_run_id,
     ).generate()
+    assert store.verify_chain()
     with pytest.raises(ValueError, match="precede both arm outcomes"):
         RetrieverDecisionV7Service(store).record(
             schedule_event_hash=schedule.event.event_hash,
