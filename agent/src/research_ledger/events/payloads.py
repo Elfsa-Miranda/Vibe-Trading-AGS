@@ -128,6 +128,17 @@ def _mapping(value: Any, path: str) -> None:
         raise EventValidationError(f"{path} must be an object")
 
 
+def _sorted_hash_mapping(value: Any, path: str) -> None:
+    if not isinstance(value, Mapping) or not value:
+        raise EventValidationError(f"{path} must be a non-empty object")
+    keys = [str(key) for key in value]
+    if keys != sorted(keys) or len(keys) != len(set(keys)):
+        raise EventValidationError(f"{path} keys must be sorted and unique")
+    for key, item in value.items():
+        _string(str(key), f"{path}.key")
+        _hash(item, f"{path}.{key}")
+
+
 def _nullable_mapping(value: Any, path: str) -> None:
     if value is not None:
         _mapping(value, path)
@@ -632,6 +643,21 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "expected_motif_version": _nullable_string,
             "expected_motif": _nullable_string,
             "identity_action": _boolean,
+        },
+    ),
+    "TrainValidDataSnapshotFrozen": PayloadSpec(
+        "train_valid_data_snapshot_frozen.v1",
+        {
+            "snapshot_id": _string,
+            "snapshot_hash": _hash,
+            "data_scope": _enum("train_valid"),
+            "panel_content_hash": _hash,
+            "frame_content_hashes": _sorted_hash_mapping,
+            "frame_names": _nonempty_string_list,
+            "source_config_hash": _hash,
+            "pit_contract_present": _boolean,
+            "survivorship_bias": _boolean,
+            "artifact_refs": _artifact_list,
         },
     ),
     "RetrieverDecisionV2Recorded": PayloadSpec(
@@ -1527,6 +1553,23 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         }
         if canonical_json_hash(decision_content) != payload["decision_hash"]:
             raise EventValidationError("retriever v5 source-bound decision hash is invalid")
+    if event_type == "TrainValidDataSnapshotFrozen":
+        expected_identifier = (
+            "train-valid-snapshot-v1-"
+            + str(payload["snapshot_hash"]).removeprefix("sha256:")[:24]
+        )
+        if payload["snapshot_id"] != expected_identifier:
+            raise EventValidationError(
+                "train/valid snapshot identity must derive from its hash"
+            )
+        frame_names = list(payload["frame_names"])
+        if (
+            frame_names != sorted(set(frame_names))
+            or frame_names != list(payload["frame_content_hashes"])
+        ):
+            raise EventValidationError(
+                "train/valid snapshot frame inventory is inconsistent"
+            )
     if event_type == "ActivationRunRecorded":
         attempted = sum(int(value) for value in payload["terminal_status_counts"].values())
         if payload["complete"] and attempted == 0:

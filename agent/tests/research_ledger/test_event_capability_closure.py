@@ -20,6 +20,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "ProcessActionFrozenV2",
     "ProcessOutcomeRecordedV2",
     "RetrieverActionTemplateFrozen",
+    "TrainValidDataSnapshotFrozen",
     "RetrieverDecisionV2Recorded",
     "RetrieverDecisionV3Recorded",
     "RetrieverDecisionV4Recorded",
