@@ -12,7 +12,7 @@ from src.research_ledger.hash_utils import canonical_json, canonical_json_hash, 
 
 ArtifactKind = Literal[
     "plan", "run", "run_source", "resource", "generation_consumption",
-    "generation_consumption_v2", "result", "decision"
+    "generation_consumption_v2", "generation_consumption_v3", "result", "decision"
 ]
 _HASH_FIELD = {
     "plan": "plan_hash",
@@ -21,6 +21,7 @@ _HASH_FIELD = {
     "resource": "evidence_hash",
     "generation_consumption": "evidence_hash",
     "generation_consumption_v2": "evidence_hash",
+    "generation_consumption_v3": "evidence_hash",
     "result": "result_hash",
     "decision": "decision_hash",
 }

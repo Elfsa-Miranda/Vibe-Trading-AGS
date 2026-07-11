@@ -255,6 +255,7 @@ class ActiveRetrieverResolver:
             or event.event_type not in {
                 "ActivationGenerationConsumptionRecorded",
                 "ActivationGenerationConsumptionV2Recorded",
+                "ActivationGenerationConsumptionV3Recorded",
             }
             or event.payload.get("plan_hash") != result.get("plan_hash")
             for event in sources

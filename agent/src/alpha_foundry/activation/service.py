@@ -25,6 +25,9 @@ from src.alpha_foundry.activation.generation_consumption_v1 import (
 from src.alpha_foundry.activation.generation_consumption_v2 import (
     ActivationGenerationConsumptionV2,
 )
+from src.alpha_foundry.activation.generation_consumption_v3 import (
+    ActivationGenerationConsumptionV3,
+)
 from src.research_ledger.events import EventDraft, ResearchEventStore
 
 
@@ -292,6 +295,57 @@ class ActivationEvidenceService:
                     "evidence_hash": evidence.evidence_hash,
                     "artifact_refs": [reference],
                 },
+            )
+        )
+        return relative
+
+    def record_generation_consumption_v3(
+        self,
+        evidence: ActivationGenerationConsumptionV3,
+    ) -> str:
+        if not isinstance(evidence, ActivationGenerationConsumptionV3):
+            raise TypeError("typed source-bound generation evidence is required")
+        kind: ArtifactKind = "generation_consumption_v3"
+        relative = self.artifacts.put(kind, evidence.to_dict())
+        reference = self._reference(kind, evidence.evidence_hash, relative)
+        reference["media_type"] = (
+            "application/vnd.vibe.activation-generation-consumption-v3+json"
+        )
+        generation_id = (
+            "activation-generation-v3-"
+            + evidence.evidence_hash.removeprefix("sha256:")[:24]
+        )
+        raw = evidence.to_dict()
+        payload_fields = {
+            "plan_hash", "pair_id", "run_group_id", "mechanism_family",
+            "dag_region", "execution_run_id", "retriever_decision_event_hash",
+            "retriever_decision_hash", "control_evidence_event_hash",
+            "retriever_input_bundle_hash", "feature_source_event_hash",
+            "feature_source_hash", "feature_snapshot_event_hash",
+            "feature_snapshot_hash", "feature_policy_hash",
+            "feature_scorecard_event_hashes", "generator_policy_hash",
+            "selected_action_ids", "selected_action_event_hashes",
+            "selected_parent_factor_spec_ids", "consumed_action_ids",
+            "consumed_parent_factor_spec_ids", "candidate_budget",
+            "compute_budget", "source_failure_codes", "source_complete",
+            "evidence_hash",
+        }
+        payload = {key: raw[key] for key in payload_fields}
+        payload["generation_id"] = generation_id
+        payload["generated_candidate_count"] = len(
+            evidence.base.generated_candidates
+        )
+        payload["artifact_refs"] = [reference]
+        self.event_store.append_event(
+            EventDraft(
+                event_type="ActivationGenerationConsumptionV3Recorded",
+                entity_id=generation_id,
+                run_id=evidence.base.execution_run_id,
+                payload_schema_version="activation_generation_consumption_recorded.v3",
+                idempotency_key=(
+                    "activation-generation-v3:" + evidence.evidence_hash
+                ),
+                payload=payload,
             )
         )
         return relative
