@@ -185,6 +185,7 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "RetrieverDecisionV3Recorded",
         "RetrieverDecisionV4Recorded",
         "RetrieverDecisionV5Recorded",
+        "RetrieverDecisionV6Recorded",
         "OfficialSearchControlRecorded",
         "ActivationPlanRegistered",
         "ActivationRunRecorded",
@@ -541,7 +542,7 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                     "shadow_only": True,
                     "artifact_refs": [],
                 },
-        "RetrieverDecisionV5Recorded": {
+            "RetrieverDecisionV5Recorded": {
                     "decision_id": "retriever-v5-1",
                     "decision_hash": digest,
                     "shadow_decision_hash": digest,
@@ -581,8 +582,52 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                         }
                     ],
                     "shadow_only": True,
-                    "artifact_refs": [],
-                },
+                        "artifact_refs": [],
+                    },
+            "RetrieverDecisionV6Recorded": {
+                        "decision_id": "retriever-v6-1",
+                        "decision_hash": digest,
+                        "shadow_decision_hash": digest,
+                        "input_bundle_hash": digest,
+                        "control_evidence_event_hash": digest,
+                        "control_evidence_hash": digest,
+                        "control_policy_hash": digest,
+                        "feature_source_event_hash": digest,
+                        "feature_source_hash": digest,
+                        "selected_action_ids": ["action-1"],
+                        "selected_parent_factor_spec_ids": ["factor-1"],
+                        "action_template_event_hashes": [digest],
+                        "seed": 7,
+                        "policy_version": "topology_activation_policy.v3",
+                        "policy_hash": digest,
+                        "policy_config": ActivationRetrieverPolicy().to_dict(),
+                        "eligible_event_watermark": digest,
+                        "data_snapshot_hash": digest,
+                        "candidate_budget": 1,
+                        "official_output_hash": digest,
+                        "propensity_semantics": (
+                            "sequential_action_softmax_draw_probability.v1"
+                        ),
+                        "components": [
+                            {
+                                "factor_spec_id": "factor-1", "action_id": "action-1",
+                                "motif": "Wrap:rank", "node_kind": "leaf",
+                                "output_panel_hash": digest,
+                                "semantic_model_id": "embedding-model",
+                                "semantic_model_version": "1",
+                                "semantic_embedding_hash": digest,
+                                "cost_evidence_hash": digest, "valdiv": 0.5,
+                                "semdiv": 0.5, "syndiv": 0.5,
+                                "topology_score": 0.125, "base_score": 0.1,
+                                "memory_adjustment": 0.0, "action_score": -2.3,
+                                "confidence": 0.0, "selected": True,
+                                "selection_propensity": 1.0, "warnings": [],
+                                "veto_reason": None,
+                            }
+                        ],
+                        "shadow_only": True,
+                        "artifact_refs": [],
+                    },
             "ActivationPlanRegistered": {
                 "experiment_id": "activation-1",
                 "plan_hash": digest,
@@ -1152,6 +1197,22 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
     retriever_v5["decision_id"] = (
         "retriever-v5-"
         + retriever_v5["decision_hash"].removeprefix("sha256:")[:20]
+    )
+    retriever_v6 = samples["RetrieverDecisionV6Recorded"]
+    retriever_v6["policy_hash"] = canonical_json_hash(retriever_v6["policy_config"])
+    retriever_v6["decision_hash"] = canonical_json_hash(
+        {
+            "schema_version": "retriever_action_source_bound_decision.v6",
+            **{
+                key: value
+                for key, value in retriever_v6.items()
+                if key not in {"decision_id", "decision_hash", "artifact_refs"}
+            },
+        }
+    )
+    retriever_v6["decision_id"] = (
+        "retriever-v6-"
+        + retriever_v6["decision_hash"].removeprefix("sha256:")[:20]
     )
 
     for event_type, spec in PAYLOAD_SPECS.items():
