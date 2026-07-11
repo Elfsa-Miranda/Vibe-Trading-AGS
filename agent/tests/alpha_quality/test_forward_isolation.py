@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.alpha_foundry.dag import FactorDAGProjector, FactorDAGQuery
+from src.alpha_foundry.dag import FactorDAGError, FactorDAGProjector, FactorDAGQuery
 from src.alpha_foundry.dsl.identity import FactorIdentityService, FactorSpecSemantics
 from src.alpha_foundry.retrieval import ShadowRetriever
 from src.alpha_foundry.retrieval.model import DiscoveryEvidenceView
@@ -204,10 +204,11 @@ def test_forward_report_view_cannot_be_cast_to_discovery_view(tmp_path: Path) ->
     monitoring = ForwardProjector.monitoring_view(plan, (observation,))
 
     with pytest.raises(TypeError, match="monitoring or final"):
-        DiscoveryEvidenceView.from_terminal_views(
+        DiscoveryEvidenceView.from_verified_subsequence(
             factual=monitoring,  # type: ignore[arg-type]
             episodic=monitoring,  # type: ignore[arg-type]
             data_snapshot_hash=candidate.data_snapshot_hash,
+            verified_subsequence=object(),  # type: ignore[arg-type]
         )
     retriever = ShadowRetriever(flags=flags)
     dag = FactorDAGProjector(flags=flags).project(store.query_events())
@@ -228,7 +229,7 @@ def test_forward_event_does_not_change_discovery_projection_or_retriever(
     flags, store, candidate, artifact = _final_context(tmp_path)
     discovery_projector = DiscoveryEvidenceProjector(flags=flags)
     before_view = discovery_projector.project(
-        store.query_events(), data_snapshot_hash=candidate.data_snapshot_hash
+        store, data_snapshot_hash=candidate.data_snapshot_hash
     )
     retriever = ShadowRetriever(flags=flags)
     before_decision = retriever.decide(
@@ -253,7 +254,7 @@ def test_forward_event_does_not_change_discovery_projection_or_retriever(
         run_id="run-forward",
     )
     after_view = discovery_projector.project(
-        store.query_events(), data_snapshot_hash=candidate.data_snapshot_hash
+        store, data_snapshot_hash=candidate.data_snapshot_hash
     )
     after_decision = retriever.decide(
         official_candidate_ids=(),
@@ -266,6 +267,95 @@ def test_forward_event_does_not_change_discovery_projection_or_retriever(
 
     assert after_view == before_view
     assert after_decision == before_decision
+
+
+def test_interleaved_monitoring_cannot_break_or_mint_discovery_evidence(
+    tmp_path: Path,
+) -> None:
+    flags, store, candidate, artifact = _final_context(tmp_path)
+    plan = _plan(candidate, artifact.artifact_hash)
+    ForwardMonitoringService(store=store, flags=flags).record_plan(
+        plan, run_id="run-forward"
+    )
+    monitoring_hashes = {
+        event.event_hash
+        for event in store.query_events()
+        if event.event_type.startswith("Forward")
+        or event.event_type.startswith("Final")
+    }
+
+    digest = canonical_json_hash({"fixture": "second-cycle"})
+    second = FactorIdentityService(store=store, flags=flags).record_attempt(
+        trial_id="trial-second-cycle",
+        run_id="run-second-cycle",
+        candidate_id="candidate-second-cycle",
+        formula="rank(open)",
+        semantics=FactorSpecSemantics(
+            transform_pipeline_hash=digest,
+            field_semantics={"open": "pit_eod"},
+            signal_time="close",
+            order_time="next_open",
+            entry_price_time="next_open",
+            execution_lag=1,
+            return_horizon=5,
+            universe_mask_hash=digest,
+            tradability_mask_hash=digest,
+        ),
+    )
+    assert second.factor_spec_id is not None
+    evaluation = store.append_event(
+        EventDraft(
+            event_type="EvaluationRecorded",
+            entity_id="evaluation-second-cycle",
+            run_id="run-second-cycle",
+            payload_schema_version="evaluation_recorded.v1",
+            payload={
+                "evaluation_id": "evaluation-second-cycle",
+                "trial_id": "trial-second-cycle",
+                "factor_spec_id": second.factor_spec_id,
+                "data_scope": "valid",
+                "scorecard_hash": digest,
+                "artifact_refs": [],
+                "metadata": {},
+            },
+        )
+    )
+    terminal = store.append_event(
+        EventDraft(
+            event_type="TrialTerminated",
+            entity_id="trial-second-cycle",
+            run_id="run-second-cycle",
+            payload_schema_version="trial_terminated.v1",
+            payload={
+                "trial_id": "trial-second-cycle",
+                "status": "success",
+                "reason_codes": [],
+                "decision": "candidate_zoo",
+                "evaluation_event_hash": evaluation.event_hash,
+                "terminated_at": utc_now_iso(),
+            },
+        )
+    )
+
+    projector = DiscoveryEvidenceProjector(flags=flags)
+    raw_eligible = projector.eligible_events(store.query_events())
+    with pytest.raises(FactorDAGError, match="out of order"):
+        FactorDAGProjector(flags=flags).project(raw_eligible)
+
+    view = projector.project(store, data_snapshot_hash=digest)
+    assert len(view.factual.factor_ids()) == 2
+    assert view.source_watermark == terminal.event_hash
+    assert not monitoring_hashes.intersection(
+        event.event_hash for event in view._verified_subsequence.events
+    )
+    assert not hasattr(store, "verified_subsequence")
+    with pytest.raises(TypeError, match="store-verified"):
+        DiscoveryEvidenceView.from_verified_subsequence(
+            factual=view.factual,
+            episodic=view.episodic,
+            data_snapshot_hash=digest,
+            verified_subsequence=object(),  # type: ignore[arg-type]
+        )
 
 
 def test_forward_success_is_forbidden_before_min_effective_observations(

@@ -8,7 +8,11 @@ from src.alpha_foundry.dag import FactorDAGProjector
 from src.alpha_foundry.memory import EpisodicProjector, FactualMemoryView
 from src.alpha_foundry.retrieval import DiscoveryEvidenceView
 from src.alpha_quality.flags import ResolvedAGSFlags
-from src.research_ledger.events import ResearchEventEnvelope
+from src.research_ledger.events import (
+    ResearchEventEnvelope,
+    ResearchEventStore,
+)
+from src.research_ledger.events.model import VerifiedEventSubsequence
 
 _DISCOVERY_SCOPES = frozenset({"train", "valid", "train_valid"})
 _ALLOWED_EVENT_TYPES = frozenset(
@@ -16,6 +20,7 @@ _ALLOWED_EVENT_TYPES = frozenset(
         "TrialStarted",
         "FactorDefinitionRecorded",
         "RegistryBootstrapRecorded",
+        "RegistryBootstrapRecordedV2",
         "DerivationRecorded",
         "ProcessActionFrozenV2",
         "ProcessOutcomeRecordedV2",
@@ -121,6 +126,10 @@ class DiscoveryEvidenceProjector:
                 str(payload["trial_id"]) not in eligible_trial_ids
             ):
                 continue
+            if event.event_type == "GenerationFailureRecorded" and (
+                str(payload["trial_id"]) not in eligible_trial_ids
+            ):
+                continue
             if event.event_type == "FactorDefinitionRecorded" and (
                 event.entity_id not in lineage_factor_ids
             ):
@@ -163,29 +172,81 @@ class DiscoveryEvidenceProjector:
             result.append(event)
         return tuple(result)
 
-    def factual_view(
-        self, events: Iterable[ResearchEventEnvelope]
-    ) -> FactualMemoryView:
-        eligible = self.eligible_events(events)
-        dag = FactorDAGProjector(flags=self.flags).project(eligible)
-        return FactualMemoryView.from_terminal_discovery_events(dag, eligible)
+    def verified_events(self, store: ResearchEventStore) -> VerifiedEventSubsequence:
+        if not isinstance(store, ResearchEventStore):
+            raise TypeError("discovery evidence requires the authoritative event store")
+        if store.flags.as_dict() != self.flags.as_dict():
+            raise ValueError("discovery projector and event store flag snapshots differ")
+        full = store.query_events()
+        eligible = self.eligible_events(full)
+        return store._verified_subsequence(eligible)
+
+    def verified_events_at_watermark(
+        self,
+        store: ResearchEventStore,
+        *,
+        watermark_event_hash: str,
+    ) -> VerifiedEventSubsequence:
+        if not isinstance(store, ResearchEventStore):
+            raise TypeError("discovery evidence requires the authoritative event store")
+        if store.flags.as_dict() != self.flags.as_dict():
+            raise ValueError("discovery projector and event store flag snapshots differ")
+        prefix = store._events_through_watermark(watermark_event_hash)
+        eligible = self.eligible_events(prefix)
+        if not eligible or eligible[-1].event_hash != watermark_event_hash:
+            raise ValueError("watermark is not the terminal discovery evidence boundary")
+        return store._verified_subsequence_at_watermark(
+            eligible,
+            watermark_event_hash=watermark_event_hash,
+        )
+
+    def factual_view(self, store: ResearchEventStore) -> FactualMemoryView:
+        verified = self.verified_events(store)
+        dag = FactorDAGProjector(flags=self.flags).project(verified)
+        return FactualMemoryView.from_terminal_discovery_events(dag, verified.events)
 
     def project(
         self,
-        events: Iterable[ResearchEventEnvelope],
+        store: ResearchEventStore,
         *,
         data_snapshot_hash: str,
     ) -> DiscoveryEvidenceView:
-        eligible = self.eligible_events(events)
-        if not eligible:
+        verified = self.verified_events(store)
+        if not verified.events:
             raise ValueError("no terminal train/valid discovery evidence is available")
-        dag = FactorDAGProjector(flags=self.flags).project(eligible)
-        episodic = EpisodicProjector().project(eligible)
-        factual = FactualMemoryView.from_terminal_discovery_events(dag, eligible)
-        return DiscoveryEvidenceView.from_terminal_views(
+        dag = FactorDAGProjector(flags=self.flags).project(verified)
+        episodic = EpisodicProjector().project(verified.events)
+        factual = FactualMemoryView.from_terminal_discovery_events(
+            dag, verified.events
+        )
+        return DiscoveryEvidenceView.from_verified_subsequence(
             factual=factual,
             episodic=episodic,
             data_snapshot_hash=data_snapshot_hash,
+            verified_subsequence=verified,
+        )
+
+    def project_at_watermark(
+        self,
+        store: ResearchEventStore,
+        *,
+        data_snapshot_hash: str,
+        watermark_event_hash: str,
+    ) -> DiscoveryEvidenceView:
+        verified = self.verified_events_at_watermark(
+            store,
+            watermark_event_hash=watermark_event_hash,
+        )
+        dag = FactorDAGProjector(flags=self.flags).project(verified)
+        episodic = EpisodicProjector().project(verified.events)
+        factual = FactualMemoryView.from_terminal_discovery_events(
+            dag, verified.events
+        )
+        return DiscoveryEvidenceView.from_verified_subsequence(
+            factual=factual,
+            episodic=episodic,
+            data_snapshot_hash=data_snapshot_hash,
+            verified_subsequence=verified,
         )
 
 

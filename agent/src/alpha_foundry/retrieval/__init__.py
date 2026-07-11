@@ -10,12 +10,17 @@ from src.alpha_foundry.retrieval.model import (
     ShadowDecision,
     ShadowRunResult,
 )
-from src.alpha_foundry.retrieval.policy import RetrieverPolicy
+from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy, RetrieverPolicy
 from src.alpha_foundry.retrieval.shadow import ShadowRetriever
+from src.alpha_foundry.retrieval.evidence_v4 import (
+    RetrieverInputArtifactStoreV4,
+    RetrieverInputBundleV4,
+)
 
 __all__ = [
     "DiscoveryEvidenceView", "FactorOutputPanel", "OutputPoint",
-    "RetrievalCandidate", "RetrievalComponent", "RetrieverPolicy",
+    "ActivationRetrieverPolicy", "RetrievalCandidate", "RetrievalComponent",
+    "RetrieverPolicy",
     "SemanticEmbeddingEvidence", "ShadowDecision", "ShadowRetriever",
-    "ShadowRunResult",
+    "ShadowRunResult", "RetrieverInputArtifactStoreV4", "RetrieverInputBundleV4",
 ]

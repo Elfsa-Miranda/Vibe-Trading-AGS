@@ -27,6 +27,7 @@ def _flags() -> ResolvedAGSFlags:
             "VIBE_TRADING_RESEARCH_EVENTS": "1",
             "VIBE_TRADING_FACTOR_DAG": "1",
             "VIBE_TRADING_PROCESS_MEMORY": "1",
+            "VIBE_TRADING_FORWARD_TRACKING": "1",
         }
     )
 

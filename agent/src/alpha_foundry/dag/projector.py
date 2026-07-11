@@ -16,6 +16,7 @@ from src.alpha_foundry.dag.model import (
 from src.alpha_foundry.dsl.identity import validate_factor_definition_payload
 from src.alpha_quality.flags import ResolvedAGSFlags
 from src.research_ledger.events import ResearchEventEnvelope
+from src.research_ledger.events.model import VerifiedEventSubsequence
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
@@ -31,9 +32,21 @@ class FactorDAGProjector:
             raise RuntimeError("factor DAG capability is disabled")
         self.flags = flags
 
-    def project(self, events: Iterable[ResearchEventEnvelope]) -> FactorDAGProjection:
+    def project(
+        self,
+        events: Iterable[ResearchEventEnvelope] | VerifiedEventSubsequence,
+    ) -> FactorDAGProjection:
+        if isinstance(events, VerifiedEventSubsequence):
+            if not events.is_authorized():
+                raise FactorDAGError(
+                    "factor DAG received an unauthorized event subsequence"
+                )
+            verified_subsequence = True
+        else:
+            verified_subsequence = False
         ordered = list(events)
-        _validate_envelope_chain(ordered)
+        if not verified_subsequence:
+            _validate_envelope_chain(ordered)
         nodes: dict[str, FactorNode] = {}
         roots: dict[str, RegistryRootNode] = {}
         edges: list[DerivationEdge] = []

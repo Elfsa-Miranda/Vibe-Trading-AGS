@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from src.alpha_foundry.dag.query import FactorDAGQuery
 from src.alpha_foundry.memory.model import EpisodicProjection
 from src.alpha_foundry.retrieval.model import RetrievalCandidate
+from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy, RetrieverPolicy
 
 
 @dataclass(frozen=True)
@@ -30,18 +31,47 @@ def build_retrieval_features(
     *,
     query: FactorDAGQuery,
     episodic: EpisodicProjection,
+    policy: RetrieverPolicy | ActivationRetrieverPolicy | None = None,
 ) -> RetrievalFeatures:
+    activation = policy if isinstance(policy, ActivationRetrieverPolicy) else None
     descendants = query.descendants(candidate.factor_spec_id)
     if not descendants:
-        valdiv, effective, output_warnings = output_diversity(candidate)
-        semdiv, semantic_warnings = semantic_diversity(candidate)
-        syndiv, structural_warnings = structural_diversity(candidate)
+        valdiv, effective, output_warnings = output_diversity(
+            candidate,
+            minimum_alignment=(
+                3 if activation is None else activation.minimum_aligned_output_observations
+            ),
+            missing_fallback=(
+                0.0 if activation is None else activation.missing_output_diversity
+            ),
+        )
+        semdiv, semantic_warnings = semantic_diversity(
+            candidate,
+            missing_fallback=(
+                0.0 if activation is None else activation.missing_semantic_diversity
+            ),
+        )
+        syndiv, structural_warnings = structural_diversity(
+            candidate,
+            missing_fallback=(
+                0.0 if activation is None else activation.missing_structural_diversity
+            ),
+        )
+        topology_score = valdiv * semdiv * syndiv
+        if activation is not None:
+            topology_score = min(
+                activation.leaf_score_cap,
+                activation.leaf_scale
+                * valdiv ** activation.leaf_valdiv_exponent
+                * semdiv ** activation.leaf_semdiv_exponent
+                * syndiv ** activation.leaf_syndiv_exponent,
+            )
         return RetrievalFeatures(
             node_kind="leaf",
             valdiv=valdiv,
             semdiv=semdiv,
             syndiv=syndiv,
-            topology_score=valdiv * semdiv * syndiv,
+            topology_score=topology_score,
             effective_output_observations=effective,
             independent_child_groups=0,
             child_gain=None,
@@ -68,14 +98,46 @@ def build_retrieval_features(
     else:
         warnings.append("MISSING_EVALUATED_CHILD_GAIN")
     sparsity = query.branch_sparsity(candidate.factor_spec_id)
-    sibling_breadth = 1.0 / (1.0 + len(query.siblings(candidate.factor_spec_id)))
-    depth_penalty = 1.0 / (1.0 + query.depth(candidate.factor_spec_id))
-    evidence_gate = min(1.0, len(group_means) / 3.0)
-    positive_gain = max(0.0, child_gain or 0.0) * evidence_gate
-    uncertainty_penalty = 0.0 if uncertainty is None else uncertainty
-    topology = (
-        positive_gain + 0.10 * sparsity + 0.05 * sibling_breadth
-    ) * depth_penalty / (1.0 + uncertainty_penalty + candidate.estimated_cost)
+    if activation is None:
+        sibling_breadth = 1.0 / (1.0 + len(query.siblings(candidate.factor_spec_id)))
+        depth_penalty = 1.0 / (1.0 + query.depth(candidate.factor_spec_id))
+        evidence_gate = min(1.0, len(group_means) / 3.0)
+        positive_gain = max(0.0, child_gain or 0.0) * evidence_gate
+        uncertainty_penalty = 0.0 if uncertainty is None else uncertainty
+        topology = (
+            positive_gain + 0.10 * sparsity + 0.05 * sibling_breadth
+        ) * depth_penalty / (1.0 + uncertainty_penalty + candidate.estimated_cost)
+    else:
+        sibling_breadth = 1.0 / (
+            activation.nonleaf_sibling_offset
+            + len(query.siblings(candidate.factor_spec_id))
+        )
+        depth_penalty = 1.0 / (
+            activation.nonleaf_depth_offset + query.depth(candidate.factor_spec_id)
+        )
+        evidence_gate = min(
+            activation.nonleaf_evidence_gate_cap,
+            len(group_means) / activation.nonleaf_independent_group_gate,
+        )
+        positive_gain = max(
+            activation.nonleaf_child_gain_floor,
+            child_gain or 0.0,
+        ) * evidence_gate
+        uncertainty_penalty = 0.0 if uncertainty is None else uncertainty
+        numerator = (
+            activation.nonleaf_child_gain_weight * positive_gain
+            + activation.nonleaf_sparsity_weight * sparsity
+            + activation.nonleaf_sibling_weight * sibling_breadth
+        )
+        denominator = (
+            activation.nonleaf_uncertainty_offset
+            + activation.nonleaf_uncertainty_weight * uncertainty_penalty
+            + activation.nonleaf_cost_weight * candidate.estimated_cost
+        )
+        topology = max(
+            activation.nonleaf_score_floor,
+            numerator * depth_penalty / denominator,
+        )
     return RetrievalFeatures(
         node_kind="nonleaf",
         valdiv=0.0,
@@ -90,7 +152,12 @@ def build_retrieval_features(
     )
 
 
-def output_diversity(candidate: RetrievalCandidate) -> tuple[float, int, tuple[str, ...]]:
+def output_diversity(
+    candidate: RetrievalCandidate,
+    *,
+    minimum_alignment: int = 3,
+    missing_fallback: float = 0.0,
+) -> tuple[float, int, tuple[str, ...]]:
     candidate_values = {
         (point.date, point.symbol): point.value
         for point in candidate.output_panel.points if point.valid
@@ -103,7 +170,7 @@ def output_diversity(candidate: RetrievalCandidate) -> tuple[float, int, tuple[s
             for point in reference.points if point.valid
         }
         keys = sorted(set(candidate_values) & set(reference_values))
-        if len(keys) < 3:
+        if len(keys) < minimum_alignment:
             continue
         correlation = _rank_correlation(
             [candidate_values[key] for key in keys],
@@ -113,16 +180,20 @@ def output_diversity(candidate: RetrievalCandidate) -> tuple[float, int, tuple[s
             correlations.append(abs(correlation))
             effective = max(effective, len(keys))
     if not correlations:
-        return 0.0, 0, ("MISSING_ALIGNED_REFERENCE_OUTPUTS",)
+        return missing_fallback, 0, ("MISSING_ALIGNED_REFERENCE_OUTPUTS",)
     return max(0.0, 1.0 - max(correlations)), effective, ()
 
 
-def semantic_diversity(candidate: RetrievalCandidate) -> tuple[float, tuple[str, ...]]:
+def semantic_diversity(
+    candidate: RetrievalCandidate,
+    *,
+    missing_fallback: float = 0.0,
+) -> tuple[float, tuple[str, ...]]:
     evidence = candidate.semantic
     if evidence.candidate_vector is None:
-        return 0.0, (f"MISSING_SEMANTIC_EMBEDDING:{evidence.missing_reason}",)
+        return missing_fallback, (f"MISSING_SEMANTIC_EMBEDDING:{evidence.missing_reason}",)
     if not evidence.reference_vectors:
-        return 0.0, ("MISSING_SEMANTIC_REFERENCE_POOL",)
+        return missing_fallback, ("MISSING_SEMANTIC_REFERENCE_POOL",)
     similarities = [
         abs(_cosine(evidence.candidate_vector, reference))
         for reference in evidence.reference_vectors
@@ -130,9 +201,13 @@ def semantic_diversity(candidate: RetrievalCandidate) -> tuple[float, tuple[str,
     return max(0.0, 1.0 - max(similarities)), ()
 
 
-def structural_diversity(candidate: RetrievalCandidate) -> tuple[float, tuple[str, ...]]:
+def structural_diversity(
+    candidate: RetrievalCandidate,
+    *,
+    missing_fallback: float = 0.0,
+) -> tuple[float, tuple[str, ...]]:
     if not candidate.reference_asts:
-        return 0.0, ("MISSING_STRUCTURAL_REFERENCE_POOL",)
+        return missing_fallback, ("MISSING_STRUCTURAL_REFERENCE_POOL",)
     distances = [
         _normalized_tree_distance(candidate.canonical_ast, reference)
         for reference in candidate.reference_asts

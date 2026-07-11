@@ -78,6 +78,7 @@ def test_ags_feature_flags_default_false() -> None:
         "VIBE_TRADING_FACTOR_DAG": False,
         "VIBE_TRADING_PROCESS_MEMORY": False,
         "VIBE_TRADING_TOPOLOGY_RETRIEVER": False,
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER_ACTIVE": False,
         "VIBE_TRADING_FALSIFICATION_CONTRACT": False,
         "VIBE_TRADING_COMPLEMENT_V2": False,
         "VIBE_TRADING_DECISION_V2": False,

@@ -10,6 +10,7 @@ import pytest
 
 from src.alpha_quality.flags import ResolvedAGSFlags
 from src.alpha_foundry.dsl.grammar import DEFAULT_GRAMMAR
+from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 from src.research_ledger.events import (
     ArtifactReferenceError,
     EventDraft,
@@ -32,6 +33,15 @@ def _flags(*, enabled: bool = True) -> ResolvedAGSFlags:
         settings = {
             "VIBE_TRADING_AGS_ENABLED": "1",
             "VIBE_TRADING_RESEARCH_EVENTS": "1",
+            "VIBE_TRADING_ALPHA_FOUNDRY": "1",
+            "VIBE_TRADING_ADMISSION_GATE": "1",
+            "VIBE_TRADING_FORWARD_TRACKING": "1",
+            "VIBE_TRADING_FACTOR_DAG": "1",
+            "VIBE_TRADING_PROCESS_MEMORY": "1",
+            "VIBE_TRADING_TOPOLOGY_RETRIEVER": "1",
+            "VIBE_TRADING_FALSIFICATION_CONTRACT": "1",
+            "VIBE_TRADING_COMPLEMENT_V2": "1",
+            "VIBE_TRADING_DECISION_V2": "1",
         }
     return ResolvedAGSFlags.from_settings(settings)
 
@@ -168,7 +178,19 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "EvaluationRecorded",
         "TrialTerminated",
         "RetrieverDecisionRecorded",
+        "RetrieverActionTemplateFrozen",
         "RetrieverDecisionV2Recorded",
+        "RetrieverDecisionV3Recorded",
+        "RetrieverDecisionV4Recorded",
+        "RetrieverDecisionV5Recorded",
+        "OfficialSearchControlRecorded",
+        "ActivationPlanRegistered",
+        "ActivationRunRecorded",
+        "ActivationRunSourceAudited",
+        "ActivationResourceMeasured",
+        "ActivationGenerationConsumptionRecorded",
+        "ActivationResultRecorded",
+        "RetrieverActivationDecisionRecorded",
         "FalsificationContractRegistered",
         "SequentialProtocolRegistered",
         "SequentialLookRecorded",
@@ -178,6 +200,7 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "ComplementEvidenceRecorded",
         "QualityDecisionRecorded",
         "QualityDecisionV2Recorded",
+        "QualityDecisionV3Recorded",
         "FinalCandidateFrozen",
         "FinalTestCapabilityIssued",
         "FinalTestAccessRecorded",
@@ -327,16 +350,38 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "evaluation_event_hash": None,
             "terminated_at": timestamp,
         },
-            "RetrieverDecisionRecorded": {
+                "RetrieverDecisionRecorded": {
             "decision_id": "retriever-1",
             "selected_factor_spec_ids": ["factor-1"],
             "selection_propensity": 0.5,
             "seed": 7,
             "policy_hash": digest,
             "eligible_event_watermark": digest,
-                "veto_reason": None,
-            },
-            "RetrieverDecisionV2Recorded": {
+                    "veto_reason": None,
+                },
+                "RetrieverActionTemplateFrozen": {
+                    "action_id": "retriever-action-v1-fixture",
+                    "action_hash": digest,
+                    "schema_version": "frozen_retriever_action_template.v1",
+                    "execution_run_id": "retriever-action-run",
+                    "parent_factor_spec_id": "factor-1",
+                    "parent_definition_event_hash": digest,
+                    "eligible_event_watermark": digest,
+                    "data_snapshot_hash": digest,
+                    "retrieval_policy_hash": digest,
+                    "template_registry_hash": digest,
+                    "template_id": "rank_wrap",
+                    "expected_formula": "rank(close)",
+                    "expected_formula_hash": digest,
+                    "expected_candidate_id": "d" * 16,
+                    "expected_expression_id": digest,
+                    "expected_canonical_ast_hash": digest,
+                    "expected_ast_diff_hash": digest,
+                    "expected_motif_version": "ast-motif.v1",
+                    "expected_motif": "Wrap:rank",
+                    "identity_action": False,
+                },
+                    "RetrieverDecisionV2Recorded": {
                 "decision_id": "retriever-v2-1",
                 "decision_hash": digest,
                 "selected_factor_spec_ids": ["factor-1"],
@@ -382,7 +427,178 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                         "veto_reason": None,
                     }
                 ],
-                "shadow_only": True,
+                    "shadow_only": True,
+                },
+        "RetrieverDecisionV3Recorded": {
+                    "decision_id": "retriever-v3-1",
+                    "decision_hash": digest,
+                    "shadow_decision_hash": digest,
+                    "input_bundle_hash": digest,
+                    "selected_factor_spec_ids": ["factor-1"],
+                    "seed": 7,
+                    "policy_version": "topology_activation_policy.v3",
+                    "policy_hash": digest,
+                    "policy_config": ActivationRetrieverPolicy().to_dict(),
+                    "eligible_event_watermark": digest,
+                    "data_snapshot_hash": digest,
+                    "candidate_budget": 1,
+                    "official_output_hash": digest,
+                    "propensity_semantics": "sequential_softmax_draw_probability.v1",
+                    "components": [
+                        {
+                            "factor_spec_id": "factor-1",
+                            "action_id": "action-1",
+                            "motif": "Wrap:rank",
+                            "node_kind": "leaf",
+                            "output_panel_hash": digest,
+                            "semantic_model_id": "embedding-model",
+                            "semantic_model_version": "1",
+                            "semantic_embedding_hash": digest,
+                            "cost_evidence_hash": digest,
+                            "valdiv": 0.5,
+                            "semdiv": 0.5,
+                            "syndiv": 0.5,
+                            "topology_score": 0.125,
+                            "base_score": 0.1,
+                            "memory_adjustment": 0.0,
+                            "action_score": -2.3,
+                            "confidence": 0.0,
+                            "selected": True,
+                            "selection_propensity": 1.0,
+                            "warnings": [],
+                            "veto_reason": None,
+                        }
+                    ],
+                    "shadow_only": True,
+                    "artifact_refs": [],
+                },
+        "RetrieverDecisionV4Recorded": {
+                    "decision_id": "retriever-v4-1",
+                    "decision_hash": digest,
+                    "shadow_decision_hash": digest,
+                    "input_bundle_hash": digest,
+                    "control_evidence_event_hash": digest,
+                    "control_evidence_hash": digest,
+                    "control_policy_hash": digest,
+                    "selected_factor_spec_ids": ["factor-1"],
+                    "seed": 7,
+                    "policy_version": "topology_activation_policy.v3",
+                    "policy_hash": digest,
+                    "policy_config": ActivationRetrieverPolicy().to_dict(),
+                    "eligible_event_watermark": digest,
+                    "data_snapshot_hash": digest,
+                    "candidate_budget": 1,
+                    "official_output_hash": digest,
+                    "propensity_semantics": "sequential_softmax_draw_probability.v1",
+                    "components": [
+                        {
+                            "factor_spec_id": "factor-1", "action_id": "action-1",
+                            "motif": "Wrap:rank", "node_kind": "leaf",
+                            "output_panel_hash": digest,
+                            "semantic_model_id": "embedding-model",
+                            "semantic_model_version": "1",
+                            "semantic_embedding_hash": digest,
+                            "cost_evidence_hash": digest, "valdiv": 0.5,
+                            "semdiv": 0.5, "syndiv": 0.5,
+                            "topology_score": 0.125, "base_score": 0.1,
+                            "memory_adjustment": 0.0, "action_score": -2.3,
+                            "confidence": 0.0, "selected": True,
+                            "selection_propensity": 1.0, "warnings": [],
+                            "veto_reason": None,
+                        }
+                    ],
+                    "shadow_only": True,
+                    "artifact_refs": [],
+                },
+        "RetrieverDecisionV5Recorded": {
+                    "decision_id": "retriever-v5-1",
+                    "decision_hash": digest,
+                    "shadow_decision_hash": digest,
+                    "input_bundle_hash": digest,
+                    "control_evidence_event_hash": digest,
+                    "control_evidence_hash": digest,
+                    "control_policy_hash": digest,
+                    "selected_action_ids": ["action-1"],
+                    "selected_parent_factor_spec_ids": ["factor-1"],
+                    "action_template_event_hashes": [digest],
+                    "seed": 7,
+                    "policy_version": "topology_activation_policy.v3",
+                    "policy_hash": digest,
+                    "policy_config": ActivationRetrieverPolicy().to_dict(),
+                    "eligible_event_watermark": digest,
+                    "data_snapshot_hash": digest,
+                    "candidate_budget": 1,
+                    "official_output_hash": digest,
+                    "propensity_semantics": (
+                        "sequential_action_softmax_draw_probability.v1"
+                    ),
+                    "components": [
+                        {
+                            "factor_spec_id": "factor-1", "action_id": "action-1",
+                            "motif": "Wrap:rank", "node_kind": "leaf",
+                            "output_panel_hash": digest,
+                            "semantic_model_id": "embedding-model",
+                            "semantic_model_version": "1",
+                            "semantic_embedding_hash": digest,
+                            "cost_evidence_hash": digest, "valdiv": 0.5,
+                            "semdiv": 0.5, "syndiv": 0.5,
+                            "topology_score": 0.125, "base_score": 0.1,
+                            "memory_adjustment": 0.0, "action_score": -2.3,
+                            "confidence": 0.0, "selected": True,
+                            "selection_propensity": 1.0, "warnings": [],
+                            "veto_reason": None,
+                        }
+                    ],
+                    "shadow_only": True,
+                    "artifact_refs": [],
+                },
+            "ActivationPlanRegistered": {
+                "experiment_id": "activation-1",
+                "plan_hash": digest,
+                "phase": "confirmatory",
+                "registered_at": timestamp,
+                "artifact_refs": [],
+            },
+        "ActivationRunRecorded": {
+                "manifest_id": "activation-run-1",
+                "plan_hash": digest,
+                "manifest_hash": digest,
+                "pair_id": "pair-1",
+                "run_group_id": "group-1",
+                "arm": "control",
+                "terminal_status_counts": {
+                    "success": 1,
+                    "reject": 0,
+                    "skip": 0,
+                    "invalid": 0,
+                    "duplicate": 0,
+                    "timeout": 0,
+                    "error": 0,
+                    "infrastructure_failure": 0,
+                },
+                "complete": True,
+                "contaminated": False,
+                "artifact_refs": [],
+            },
+            "ActivationResultRecorded": {
+                "result_id": "activation-result-1",
+                "plan_hash": digest,
+                "result_hash": digest,
+                "complete_pairs": 0,
+                "invalidation_reasons": ["PREFLIGHT_FAILED"],
+                "replayable": False,
+                "artifact_refs": [],
+            },
+            "RetrieverActivationDecisionRecorded": {
+                "activation_decision_id": "activation-decision-1",
+                "plan_hash": digest,
+                "result_hash": digest,
+                "decision_hash": digest,
+                "policy_hash": digest,
+                "verdict": "invalidated",
+                "reasons": ["PREFLIGHT_FAILED"],
+                "active_research_only": False,
+                "artifact_refs": [],
             },
         "FalsificationContractRegistered": {
             "contract_id": "contract-1",
@@ -448,6 +664,77 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "outcome": "inconclusive",
             "artifact_refs": [],
         },
+        "OfficialSearchControlRecorded": {
+            "control_id": "official-control-1",
+            "evidence_hash": digest,
+            "policy_hash": digest,
+            "output_hash": digest,
+            "search_run_id": "control-run-1",
+            "data_snapshot_hash": digest,
+            "candidate_count": 1,
+            "terminal_event_hashes": [digest],
+            "artifact_refs": [],
+        },
+        "ActivationRunSourceAudited": {
+            "audit_id": "activation-source-v2-1",
+            "plan_hash": digest,
+            "summary_manifest_hash": digest,
+            "source_watermark_event_hash": digest,
+            "audit_hash": digest,
+            "retriever_decision_event_hashes": [],
+            "terminal_event_hashes": [],
+            "evaluation_event_hashes": [],
+            "quality_decision_event_hashes": [],
+            "source_failure_codes": [
+                "QUALITY_DECISION_UPSTREAM_AUTHORITY_UNPROVEN",
+                "RESOURCE_METRICS_SOURCE_UNBOUND",
+            ],
+            "source_complete": False,
+            "artifact_refs": [],
+        },
+            "ActivationResourceMeasured": {
+                "resource_id": "activation-resource-v1-" + "d" * 24,
+            "plan_hash": digest,
+            "pair_id": "pair-1",
+            "run_group_id": "group-1",
+            "arm": "control",
+            "manifest_hash": digest,
+            "measurement_policy_hash": digest,
+            "wall_seconds": 1.0,
+            "cpu_seconds": 0.5,
+            "peak_rss_mb": None,
+                "peak_rss_method": "unavailable_without_isolated_worker.v1",
+                "source_failure_codes": [
+                    "ARM_ORDER_NOT_COUNTERBALANCED",
+                    "EXECUTOR_TIMEOUT_NOT_ENFORCED",
+                    "PEAK_RSS_ISOLATED_MEASUREMENT_UNAVAILABLE"
+                ],
+            "source_complete": False,
+            "evidence_hash": digest,
+                "artifact_refs": [],
+            },
+            "ActivationGenerationConsumptionRecorded": {
+                "generation_id": "activation-generation-v1-" + "d" * 24,
+                "plan_hash": digest,
+                "pair_id": "pair-1",
+                "run_group_id": "group-1",
+                "mechanism_family": "momentum",
+                "dag_region": "leaf",
+                "execution_run_id": "activation-arm-fixture",
+                "retriever_decision_event_hash": digest,
+                "retriever_decision_hash": digest,
+                "control_evidence_event_hash": digest,
+                "generator_policy_hash": digest,
+                "selected_parent_factor_spec_ids": ["factor-1"],
+                "consumed_parent_factor_spec_ids": ["factor-1"],
+                "generated_candidate_count": 1,
+                "candidate_budget": 2,
+                "compute_budget": 2,
+                "source_failure_codes": ["FIXED_CANDIDATE_BUDGET_INCOMPLETE"],
+                "source_complete": False,
+                "evidence_hash": digest,
+                "artifact_refs": [],
+            },
         "MechanismEvidenceIndexRecorded": {
             "mei_id": "mei-1",
             "factor_spec_id": "factor-1",
@@ -514,6 +801,25 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "complement_evidence_hash": digest,
             "final_test_artifact_hash": None,
             "forward_plan_hash": None,
+            "evidence_hashes": [digest],
+            "reasons": ["TERMINAL_TRAIN_VALID_EVIDENCE_QUALIFIED"],
+            "warnings": [],
+            "caps": [],
+            "limitations": ["TRAIN_VALID_ONLY"],
+            "within_tier_score": 0.5,
+            "forward_success_claim": False,
+            "artifact_refs": [],
+        },
+        "QualityDecisionV3Recorded": {
+            "decision_id": "quality-v3-1",
+            "decision_hash": digest,
+            "quality_decision_hash": digest,
+            "input_bundle_hash": digest,
+            "factor_spec_id": "factor-1",
+            "decision": "candidate_zoo",
+            "tier": 2,
+            "policy_version": "decision-v2-policy.1",
+            "policy_hash": digest,
             "evidence_hashes": [digest],
             "reasons": ["TERMINAL_TRAIN_VALID_EVIDENCE_QUALIFIED"],
             "warnings": [],
@@ -707,6 +1013,26 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "forward_success_claim": decision_v2["forward_success_claim"],
         }
     )
+    decision_v3 = samples["QualityDecisionV3Recorded"]
+    decision_v3["decision_hash"] = canonical_json_hash(
+        {
+            "schema_version": "quality_decision_source_bound.v3",
+            "quality_decision_hash": decision_v3["quality_decision_hash"],
+            "input_bundle_hash": decision_v3["input_bundle_hash"],
+            "factor_spec_id": decision_v3["factor_spec_id"],
+            "decision": decision_v3["decision"],
+            "tier": decision_v3["tier"],
+            "policy_version": decision_v3["policy_version"],
+            "policy_hash": decision_v3["policy_hash"],
+            "evidence_hashes": decision_v3["evidence_hashes"],
+            "reasons": decision_v3["reasons"],
+            "warnings": decision_v3["warnings"],
+            "caps": decision_v3["caps"],
+            "limitations": decision_v3["limitations"],
+            "within_tier_score": decision_v3["within_tier_score"],
+            "forward_success_claim": decision_v3["forward_success_claim"],
+        }
+    )
 
     retriever_v2 = samples["RetrieverDecisionV2Recorded"]
     retriever_v2["policy_hash"] = canonical_json_hash(retriever_v2["policy_config"])
@@ -726,6 +1052,50 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "components": retriever_v2["components"],
             "shadow_only": retriever_v2["shadow_only"],
         }
+    )
+    retriever_v3 = samples["RetrieverDecisionV3Recorded"]
+    retriever_v3["policy_hash"] = canonical_json_hash(retriever_v3["policy_config"])
+    retriever_v3["decision_hash"] = canonical_json_hash(
+        {
+            "schema_version": "retriever_source_bound_decision.v3",
+            **{
+                key: value
+                for key, value in retriever_v3.items()
+                if key not in {"decision_id", "decision_hash", "artifact_refs"}
+            },
+        }
+    )
+    retriever_v4 = samples["RetrieverDecisionV4Recorded"]
+    retriever_v4["policy_hash"] = canonical_json_hash(retriever_v4["policy_config"])
+    retriever_v4["decision_hash"] = canonical_json_hash(
+        {
+            "schema_version": "retriever_source_bound_decision.v4",
+            **{
+                key: value
+                for key, value in retriever_v4.items()
+                if key not in {"decision_id", "decision_hash", "artifact_refs"}
+            },
+        }
+    )
+    retriever_v4["decision_id"] = (
+        "retriever-v4-"
+        + retriever_v4["decision_hash"].removeprefix("sha256:")[:20]
+    )
+    retriever_v5 = samples["RetrieverDecisionV5Recorded"]
+    retriever_v5["policy_hash"] = canonical_json_hash(retriever_v5["policy_config"])
+    retriever_v5["decision_hash"] = canonical_json_hash(
+        {
+            "schema_version": "retriever_action_source_bound_decision.v5",
+            **{
+                key: value
+                for key, value in retriever_v5.items()
+                if key not in {"decision_id", "decision_hash", "artifact_refs"}
+            },
+        }
+    )
+    retriever_v5["decision_id"] = (
+        "retriever-v5-"
+        + retriever_v5["decision_hash"].removeprefix("sha256:")[:20]
     )
 
     for event_type, spec in PAYLOAD_SPECS.items():

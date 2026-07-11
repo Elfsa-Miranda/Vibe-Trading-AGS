@@ -17,7 +17,7 @@ from src.alpha_foundry.retrieval.model import (
     ShadowDecision,
     ShadowRunResult,
 )
-from src.alpha_foundry.retrieval.policy import RetrieverPolicy
+from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy, RetrieverPolicy
 from src.alpha_quality.flags import ResolvedAGSFlags
 from src.research_ledger.events import EventDraft, ResearchEventStore
 from src.research_ledger.hash_utils import canonical_json_hash
@@ -28,7 +28,7 @@ class ShadowRetriever:
         self,
         *,
         flags: ResolvedAGSFlags,
-        policy: RetrieverPolicy | None = None,
+        policy: RetrieverPolicy | ActivationRetrieverPolicy | None = None,
     ) -> None:
         required = (
             "VIBE_TRADING_ALPHA_FOUNDRY",
@@ -74,6 +74,23 @@ class ShadowRetriever:
             node = query.projection.factor_nodes[candidate.factor_spec_id]
             if canonical_json_hash(thaw_canonical_ast(candidate.canonical_ast)) != node.canonical_ast_hash:
                 raise ValueError("retrieval canonical AST does not match the DAG definition")
+            for reference_panel, reference_ast in zip(
+                candidate.reference_panels, candidate.reference_asts
+            ):
+                reference_node = query.projection.factor_nodes.get(
+                    reference_panel.factor_spec_id
+                )
+                if reference_node is None:
+                    raise ValueError(
+                        "retrieval reference factor is absent from the frozen DAG"
+                    )
+                if (
+                    canonical_json_hash(thaw_canonical_ast(reference_ast))
+                    != reference_node.canonical_ast_hash
+                ):
+                    raise ValueError(
+                        "retrieval reference AST does not match the DAG definition"
+                    )
 
         posteriors = {
             (posterior.parent_context_hash, posterior.motif): posterior
@@ -82,12 +99,20 @@ class ShadowRetriever:
         components: list[RetrievalComponent] = []
         for candidate in candidates:
             features = build_retrieval_features(
-                candidate, query=query, episodic=evidence.episodic
+                candidate,
+                query=query,
+                episodic=evidence.episodic,
+                policy=self.policy,
             )
             topology = features.topology_score
+            topology_floor = (
+                self.policy.topology_floor
+                if isinstance(self.policy, ActivationRetrieverPolicy)
+                else self.policy.epsilon
+            )
             base_score = max(
                 self.policy.epsilon,
-                candidate.base_ledger_score * max(topology, self.policy.epsilon),
+                candidate.base_ledger_score * max(topology, topology_floor),
             )
             posterior = posteriors.get((candidate.parent_context_hash, candidate.motif))
             memory_adjustment = 0.0
@@ -151,8 +176,13 @@ class ShadowRetriever:
         official_output_hash = canonical_json_hash(
             {"official_candidate_ids": list(official_candidate_ids)}
         )
+        schema_version = (
+            "retriever_shadow_decision.v3"
+            if isinstance(self.policy, ActivationRetrieverPolicy)
+            else "retriever_shadow_decision.v2"
+        )
         content = {
-            "schema_version": "retriever_shadow_decision.v2",
+            "schema_version": schema_version,
             "selected_factor_spec_ids": list(selected),
             "seed": seed,
             "policy_version": self.policy.policy_version,
@@ -167,7 +197,7 @@ class ShadowRetriever:
             "shadow_only": True,
         }
         return ShadowDecision(
-            schema_version="retriever_shadow_decision.v2",
+            schema_version=schema_version,
             selected_factor_spec_ids=selected,
             seed=seed,
             policy_version=self.policy.policy_version,
@@ -228,6 +258,10 @@ class ShadowRetriever:
         *,
         run_id: str,
     ):
+        if decision.schema_version != "retriever_shadow_decision.v2":
+            raise RuntimeError(
+                "activation retriever decisions require the source-bound v3 recorder"
+            )
         identifier = "retriever-v2-" + decision.decision_hash.removeprefix("sha256:")[:20]
         return store.append_event(
             EventDraft(

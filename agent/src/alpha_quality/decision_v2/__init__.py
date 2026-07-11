@@ -17,6 +17,12 @@ from src.alpha_quality.decision_v2.service import (
     QualityDecisionV2Service,
     RecordedQualityDecisionV2,
 )
+from src.alpha_quality.decision_v2.source_v3 import (
+    QualityDecisionInputArtifactStoreV3,
+    QualityDecisionInputBundleV3,
+    QualityDecisionV3Service,
+    RecordedQualityDecisionV3,
+)
 
 __all__ = [
     "AlphaQualityDecisionV2",
@@ -29,5 +35,9 @@ __all__ = [
     "EvidenceResolutionError",
     "QualityDecisionV2Runner",
     "QualityDecisionV2Service",
+    "QualityDecisionInputArtifactStoreV3",
+    "QualityDecisionInputBundleV3",
+    "QualityDecisionV3Service",
     "RecordedQualityDecisionV2",
+    "RecordedQualityDecisionV3",
 ]

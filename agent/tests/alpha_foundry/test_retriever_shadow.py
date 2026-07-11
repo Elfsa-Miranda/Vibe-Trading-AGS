@@ -19,6 +19,7 @@ from src.alpha_foundry.retrieval import (
     ShadowRetriever,
 )
 from src.alpha_quality.flags import ResolvedAGSFlags
+from src.alpha_quality.scope import DiscoveryEvidenceProjector
 from src.research_ledger.events import (
     EventDraft, EventTransitionError, EventValidationError, ResearchEventStore,
 )
@@ -48,16 +49,13 @@ def _views(tmp_path):
         code_version="retriever-test",
     )
     events = store.query_events()
-    dag = FactorDAGProjector(flags=_flags()).project(events)
     episodic = EpisodicProjector().project(events)
-    factual = FactualMemoryView.from_terminal_discovery_events(dag, events)
     observation = episodic.observations[0]
-    evidence = DiscoveryEvidenceView.from_terminal_views(
-        factual=factual,
-        episodic=episodic,
+    evidence = DiscoveryEvidenceProjector(flags=_flags()).project(
+        store,
         data_snapshot_hash=observation.data_snapshot_hash,
     )
-    return store, FactorDAGQuery(dag), evidence
+    return store, FactorDAGQuery(evidence.factual.dag), evidence
 
 
 def _panel(
@@ -95,6 +93,7 @@ def _candidate(query: FactorDAGQuery, evidence: DiscoveryEvidenceView, *, missin
         )
     )
     assert node.factor_spec_id == factor_id
+    parent_factor_id = observation.parent_factor_spec_id
     return RetrievalCandidate(
         factor_spec_id=factor_id,
         action_id="shadow-action",
@@ -106,7 +105,9 @@ def _candidate(query: FactorDAGQuery, evidence: DiscoveryEvidenceView, *, missin
         ),
         reference_panels=(
             _panel(
-                "reference", (1.0, 3.0, 2.0, 4.0), evidence.data_snapshot_hash
+                parent_factor_id,
+                (1.0, 3.0, 2.0, 4.0),
+                evidence.data_snapshot_hash,
             ),
         ),
         canonical_ast=ast,
@@ -183,6 +184,29 @@ def test_shadow_decision_is_seeded_deterministic_and_records_propensity(tmp_path
     assert next(iter(propensity_two.values())) == pytest.approx(0.5)
 
 
+def test_reference_pools_must_align_and_reference_ast_is_authoritative(
+    tmp_path,
+) -> None:
+    _, query, evidence = _views(tmp_path)
+    candidate = _candidate(query, evidence)
+    with pytest.raises(ValueError, match="reference pools must align"):
+        replace(candidate, reference_asts=())
+
+    forged_reference = replace(
+        candidate,
+        reference_asts=(candidate.canonical_ast,),
+    )
+    with pytest.raises(ValueError, match="reference AST does not match"):
+        ShadowRetriever(flags=_flags()).decide(
+            official_candidate_ids=(),
+            evidence=evidence,
+            query=query,
+            candidates=(forged_reference,),
+            seed=1,
+            candidate_budget=1,
+        )
+
+
 def test_only_matching_negative_memory_vetoes_and_positive_is_bounded(tmp_path) -> None:
     _, query, evidence = _views(tmp_path)
     candidate = _candidate(query, evidence)
@@ -194,10 +218,8 @@ def test_only_matching_negative_memory_vetoes_and_positive_is_bounded(tmp_path) 
     no_escape = RetrieverPolicy(veto_exploration_probability=0.0)
     retriever = ShadowRetriever(flags=_flags(), policy=no_escape)
 
-    unrelated_evidence = DiscoveryEvidenceView.from_terminal_views(
-        factual=evidence.factual,
-        episodic=replace(evidence.episodic, posteriors=(unrelated,)),
-        data_snapshot_hash=evidence.data_snapshot_hash,
+    unrelated_evidence = evidence.with_episodic_projection(
+        replace(evidence.episodic, posteriors=(unrelated,)),
     )
     allowed = retriever.decide(
         official_candidate_ids=(), evidence=unrelated_evidence, query=query,
@@ -206,10 +228,8 @@ def test_only_matching_negative_memory_vetoes_and_positive_is_bounded(tmp_path) 
     assert allowed.selected_factor_spec_ids == (candidate.factor_spec_id,)
     assert allowed.components[0].memory_adjustment == 0.0
 
-    matching_evidence = DiscoveryEvidenceView.from_terminal_views(
-        factual=evidence.factual,
-        episodic=replace(evidence.episodic, posteriors=(matching,)),
-        data_snapshot_hash=evidence.data_snapshot_hash,
+    matching_evidence = evidence.with_episodic_projection(
+        replace(evidence.episodic, posteriors=(matching,)),
     )
     vetoed = retriever.decide(
         official_candidate_ids=(), evidence=matching_evidence, query=query,
@@ -261,13 +281,16 @@ def test_final_generic_or_mismatched_views_and_flag_off_are_rejected(tmp_path) -
     with pytest.raises(TypeError, match="terminal discovery"):
         DiscoveryEvidenceView(
             factual=evidence.factual, episodic=evidence.episodic,
-            data_snapshot_hash=evidence.data_snapshot_hash, _token=object(),
+            data_snapshot_hash=evidence.data_snapshot_hash,
+            verified_subsequence=evidence._verified_subsequence,
+            _token=object(),
         )
     with pytest.raises(ValueError, match="watermark"):
-        DiscoveryEvidenceView.from_terminal_views(
-            factual=evidence.factual,
-            episodic=replace(evidence.episodic, source_watermark_event_hash="sha256:" + "a" * 64),
-            data_snapshot_hash=evidence.data_snapshot_hash,
+        evidence.with_episodic_projection(
+            replace(
+                evidence.episodic,
+                source_watermark_event_hash="sha256:" + "a" * 64,
+            ),
         )
     with pytest.raises(RuntimeError, match="disabled"):
         ShadowRetriever(

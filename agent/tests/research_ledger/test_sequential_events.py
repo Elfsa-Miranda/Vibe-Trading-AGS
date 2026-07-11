@@ -28,6 +28,7 @@ def _store(tmp_path: Path) -> ResearchEventStore:
         {
             "VIBE_TRADING_AGS_ENABLED": "1",
             "VIBE_TRADING_RESEARCH_EVENTS": "1",
+            "VIBE_TRADING_FALSIFICATION_CONTRACT": "1",
         }
     )
     return ResearchEventStore(

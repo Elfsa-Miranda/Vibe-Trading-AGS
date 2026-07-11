@@ -303,7 +303,7 @@ def test_final_metrics_never_enter_discovery_projection(tmp_path: Path) -> None:
     store = _store(tmp_path)
     discovery_terminal_hash = _append_discovery_evaluation(store)
     projector = DiscoveryEvidenceProjector(flags=_flags())
-    before = projector.factual_view(store.query_events())
+    before = projector.factual_view(store)
     factor_spec_id = before.factor_ids()[0]
     assert before.evidence_by_factor_spec_id[factor_spec_id].terminal_event_hash == discovery_terminal_hash
     policy = _policy()
@@ -319,7 +319,7 @@ def test_final_metrics_never_enter_discovery_projection(tmp_path: Path) -> None:
         flags=_flags(), authority=authority, provider=_Provider(), policy=policy, store=store
     )
     runner.run(candidate, capability, _request(candidate), run_id="run-final")
-    after = projector.factual_view(store.query_events())
+    after = projector.factual_view(store)
 
     assert after.evidence_by_factor_spec_id == before.evidence_by_factor_spec_id
     assert after.factor_ids() == before.factor_ids()

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Literal, Mapping
 
+from src.research_ledger.hash_utils import canonical_json_hash
+
 
 class ResearchEventError(RuntimeError):
     """Base class for typed research-event failures."""
@@ -157,6 +159,73 @@ class ReplayState:
     projection_hash: str
 
 
+_VERIFIED_SUBSEQUENCE_AUTHORITY = object()
+
+
+@dataclass(frozen=True, init=False)
+class VerifiedEventSubsequence:
+    """An ordered event subset proven against one fully verified global chain."""
+
+    events: tuple[ResearchEventEnvelope, ...]
+    full_event_count: int
+    full_chain_head: str
+    full_replay_hash: str
+    subsequence_hash: str
+    _authority: object
+
+    def __init__(
+        self,
+        *,
+        events: tuple[ResearchEventEnvelope, ...],
+        full_event_count: int,
+        full_chain_head: str,
+        full_replay_hash: str,
+        _authority: object,
+    ) -> None:
+        if _authority is not _VERIFIED_SUBSEQUENCE_AUTHORITY:
+            raise TypeError("verified event subsequences must be issued by the event store")
+        if full_event_count < len(events) or not full_chain_head or not full_replay_hash:
+            raise ValueError("verified event subsequence has invalid full-chain provenance")
+        content = {
+            "schema_version": "verified_event_subsequence.v1",
+            "event_hashes": [event.event_hash for event in events],
+            "full_event_count": full_event_count,
+            "full_chain_head": full_chain_head,
+            "full_replay_hash": full_replay_hash,
+        }
+        object.__setattr__(self, "events", tuple(events))
+        object.__setattr__(self, "full_event_count", full_event_count)
+        object.__setattr__(self, "full_chain_head", full_chain_head)
+        object.__setattr__(self, "full_replay_hash", full_replay_hash)
+        object.__setattr__(self, "subsequence_hash", canonical_json_hash(content))
+        object.__setattr__(self, "_authority", _authority)
+
+    def is_authorized(self) -> bool:
+        return self._authority is _VERIFIED_SUBSEQUENCE_AUTHORITY
+
+    def __iter__(self):
+        return iter(self.events)
+
+    def __len__(self) -> int:
+        return len(self.events)
+
+
+def _issue_verified_event_subsequence(
+    *,
+    events: tuple[ResearchEventEnvelope, ...],
+    full_event_count: int,
+    full_chain_head: str,
+    full_replay_hash: str,
+) -> VerifiedEventSubsequence:
+    return VerifiedEventSubsequence(
+        events=events,
+        full_event_count=full_event_count,
+        full_chain_head=full_chain_head,
+        full_replay_hash=full_replay_hash,
+        _authority=_VERIFIED_SUBSEQUENCE_AUTHORITY,
+    )
+
+
 __all__ = [
     "ArtifactReferenceError",
     "EventDraft",
@@ -169,4 +238,5 @@ __all__ = [
     "ResearchEventAppendError",
     "ResearchEventEnvelope",
     "ResearchEventError",
+    "VerifiedEventSubsequence",
 ]

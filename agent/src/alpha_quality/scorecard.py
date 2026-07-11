@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Literal
 
 import pandas as pd
 
@@ -65,6 +65,10 @@ def compute_scorecard(
     scope: ScorecardScope = "discovery",
     data_snapshot_ref: str | None = None,
     trial_ledger_ref: str | None = None,
+    execution_timing_policy: Literal[
+        "legacy_weight_shift.v1",
+        "signal_date_forward_return.v2",
+    ] = "legacy_weight_shift.v1",
 ) -> AlphaQualityScorecard:
     if scope == "final_quality_decision" and (
         not data_snapshot_ref or not trial_ledger_ref
@@ -127,7 +131,13 @@ def compute_scorecard(
         cost_model = CostModel(
             bps_per_one_way_turnover=10.0 if cost_profile == "ashare_base" else 0.0
         )
-        net, costs = compute_execution_return(weights, first_returns, turnover, cost_model)
+        net, costs = compute_execution_return(
+            weights,
+            first_returns,
+            turnover,
+            cost_model,
+            timing_policy=execution_timing_policy,
+        )
         execution = ExecutionMetrics(
             uses_execution_return=True,
             return_mean=float(net.mean()) if not net.empty else None,

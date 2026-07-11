@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -12,6 +12,7 @@ from src.alpha_foundry.memory.factual import FactualMemoryView
 from src.alpha_foundry.memory.model import (
     EpisodicProjection, is_authorized_episodic_projection,
 )
+from src.research_ledger.events.model import VerifiedEventSubsequence
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
@@ -37,6 +38,12 @@ class DiscoveryEvidenceView:
     source_watermark: str
     data_snapshot_hash: str
     scope: str
+    full_chain_head: str = field(compare=False)
+    full_replay_hash: str = field(compare=False)
+    eligible_subsequence_hash: str = field(compare=False)
+    _verified_subsequence: VerifiedEventSubsequence = field(
+        repr=False, compare=False
+    )
 
     def __init__(
         self,
@@ -44,6 +51,7 @@ class DiscoveryEvidenceView:
         factual: FactualMemoryView,
         episodic: EpisodicProjection,
         data_snapshot_hash: str,
+        verified_subsequence: VerifiedEventSubsequence,
         _token: object,
     ) -> None:
         if _token is not _DISCOVERY_TOKEN:
@@ -54,9 +62,17 @@ class DiscoveryEvidenceView:
             raise TypeError("discovery views reject monitoring or final evidence types")
         if not factual.is_authorized() or not is_authorized_episodic_projection(episodic):
             raise TypeError("discovery views require authorized projection builders")
+        if (
+            not isinstance(verified_subsequence, VerifiedEventSubsequence)
+            or not verified_subsequence.is_authorized()
+            or not verified_subsequence.events
+        ):
+            raise TypeError("discovery views require a store-verified event subsequence")
         dag_watermark = factual.dag.source_watermark_event_hash
         if not dag_watermark or dag_watermark != episodic.source_watermark_event_hash:
             raise ValueError("discovery projections must share one non-empty event watermark")
+        if dag_watermark != verified_subsequence.events[-1].event_hash:
+            raise ValueError("discovery watermark differs from its verified subsequence")
         if any(factor_id not in factual.dag.factor_nodes for factor_id in factual.factor_ids()):
             raise ValueError("discovery factual evidence is not a subset of the DAG")
         if not _HASH_RE.fullmatch(data_snapshot_hash):
@@ -66,20 +82,39 @@ class DiscoveryEvidenceView:
         object.__setattr__(self, "source_watermark", dag_watermark)
         object.__setattr__(self, "data_snapshot_hash", data_snapshot_hash)
         object.__setattr__(self, "scope", "discovery")
+        object.__setattr__(self, "full_chain_head", verified_subsequence.full_chain_head)
+        object.__setattr__(self, "full_replay_hash", verified_subsequence.full_replay_hash)
+        object.__setattr__(
+            self, "eligible_subsequence_hash", verified_subsequence.subsequence_hash
+        )
+        object.__setattr__(self, "_verified_subsequence", verified_subsequence)
 
     @classmethod
-    def from_terminal_views(
+    def from_verified_subsequence(
         cls,
         *,
         factual: FactualMemoryView,
         episodic: EpisodicProjection,
         data_snapshot_hash: str,
+        verified_subsequence: VerifiedEventSubsequence,
     ) -> "DiscoveryEvidenceView":
         return cls(
             factual=factual,
             episodic=episodic,
             data_snapshot_hash=data_snapshot_hash,
+            verified_subsequence=verified_subsequence,
             _token=_DISCOVERY_TOKEN,
+        )
+
+    def with_episodic_projection(
+        self,
+        episodic: EpisodicProjection,
+    ) -> "DiscoveryEvidenceView":
+        return type(self).from_verified_subsequence(
+            factual=self.factual,
+            episodic=episodic,
+            data_snapshot_hash=self.data_snapshot_hash,
+            verified_subsequence=self._verified_subsequence,
         )
 
 
@@ -265,6 +300,17 @@ class RetrievalCandidate:
             for panel in self.reference_panels
         ):
             raise ValueError("retrieval output panels must share snapshot and scope")
+        if len(self.reference_panels) != len(self.reference_asts):
+            raise ValueError(
+                "retrieval numerical and structural reference pools must align"
+            )
+        if (
+            self.semantic.candidate_vector is not None
+            and len(self.semantic.reference_vectors) != len(self.reference_panels)
+        ):
+            raise ValueError(
+                "retrieval numerical, structural, and semantic reference pools must align"
+            )
         if len(self.reference_panels) > _MAX_REFERENCE_ITEMS or len(self.reference_asts) > _MAX_REFERENCE_ITEMS:
             raise ValueError("retrieval reference pool exceeds its resource limit")
         if _ast_node_count(self.canonical_ast) > 1_024 or any(
