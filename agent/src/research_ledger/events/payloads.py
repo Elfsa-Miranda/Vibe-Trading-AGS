@@ -181,6 +181,17 @@ def _unique_hash_list(value: Any, path: str) -> None:
     _hash_list(value, path, allow_empty=True)
 
 
+def _ordered_unique_hash_list(value: Any, path: str) -> None:
+    if not isinstance(value, (list, tuple)) or not value:
+        raise EventValidationError(f"{path} must be a non-empty list")
+    normalized: list[str] = []
+    for index, item in enumerate(value):
+        _hash(item, f"{path}[{index}]")
+        normalized.append(str(item))
+    if len(normalized) != len(set(normalized)):
+        raise EventValidationError(f"{path} must contain unique hashes")
+
+
 def _artifact_list(value: Any, path: str) -> None:
     if not isinstance(value, (list, tuple)):
         raise EventValidationError(f"{path} must be a list")
@@ -295,7 +306,12 @@ def _reason_codes(value: Any, path: str) -> None:
             raise EventValidationError(f"{path} contains an invalid reason code")
 
 
-def _retriever_component_list(value: Any, path: str) -> None:
+def _validate_retriever_component_list(
+    value: Any,
+    path: str,
+    *,
+    require_unique_factors: bool,
+) -> None:
     if not isinstance(value, (list, tuple)):
         raise EventValidationError(f"{path} must be a list")
     seen_factors: set[str] = set()
@@ -318,7 +334,10 @@ def _retriever_component_list(value: Any, path: str) -> None:
             _string(item[name], f"{item_path}.{name}")
         for name in ("output_panel_hash", "semantic_embedding_hash", "cost_evidence_hash"):
             _hash(item[name], f"{item_path}.{name}")
-        if item["factor_spec_id"] in seen_factors or item["action_id"] in seen_actions:
+        if (
+            (require_unique_factors and item["factor_spec_id"] in seen_factors)
+            or item["action_id"] in seen_actions
+        ):
             raise EventValidationError(f"{path} contains duplicate factor or action identity")
         seen_factors.add(item["factor_spec_id"])
         seen_actions.add(item["action_id"])
@@ -339,6 +358,22 @@ def _retriever_component_list(value: Any, path: str) -> None:
             raise EventValidationError(f"{item_path} selected component needs a propensity")
         if item["veto_reason"] is not None and item["selected"]:
             raise EventValidationError(f"{item_path} vetoed component cannot be selected")
+
+
+def _retriever_component_list(value: Any, path: str) -> None:
+    _validate_retriever_component_list(
+        value,
+        path,
+        require_unique_factors=True,
+    )
+
+
+def _retriever_action_component_list(value: Any, path: str) -> None:
+    _validate_retriever_component_list(
+        value,
+        path,
+        require_unique_factors=False,
+    )
 
 
 def _retriever_policy_config(value: Any, path: str) -> None:
@@ -661,6 +696,35 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "official_output_hash": _hash,
             "propensity_semantics": _enum("sequential_softmax_draw_probability.v1"),
             "components": _retriever_component_list,
+            "shadow_only": _boolean,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "RetrieverDecisionV5Recorded": PayloadSpec(
+        "retriever_decision_recorded.v5",
+        {
+            "decision_id": _string,
+            "decision_hash": _hash,
+            "shadow_decision_hash": _hash,
+            "input_bundle_hash": _hash,
+            "control_evidence_event_hash": _hash,
+            "control_evidence_hash": _hash,
+            "control_policy_hash": _hash,
+            "selected_action_ids": _string_list,
+            "selected_parent_factor_spec_ids": _string_list,
+            "action_template_event_hashes": _ordered_unique_hash_list,
+            "seed": _integer,
+            "policy_version": _enum("topology_activation_policy.v3"),
+            "policy_hash": _hash,
+            "policy_config": _mapping,
+            "eligible_event_watermark": _hash,
+            "data_snapshot_hash": _hash,
+            "candidate_budget": _candidate_budget,
+            "official_output_hash": _hash,
+            "propensity_semantics": _enum(
+                "sequential_action_softmax_draw_probability.v1"
+            ),
+            "components": _retriever_action_component_list,
             "shadow_only": _boolean,
             "artifact_refs": _artifact_list,
         },
@@ -1364,6 +1428,77 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         }
         if canonical_json_hash(decision_content) != payload["decision_hash"]:
             raise EventValidationError("retriever v4 source-bound decision hash is invalid")
+    if event_type == "RetrieverDecisionV5Recorded":
+        expected_identifier = (
+            "retriever-v5-"
+            + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
+        )
+        if payload["decision_id"] != expected_identifier:
+            raise EventValidationError(
+                "retriever v5 identity must derive from its decision hash"
+            )
+        try:
+            from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
+
+            policy = ActivationRetrieverPolicy(**dict(payload["policy_config"]))
+        except (TypeError, ValueError) as exc:
+            raise EventValidationError("retriever v5 policy config is invalid") from exc
+        if (
+            policy.policy_hash != payload["policy_hash"]
+            or policy.policy_version != payload["policy_version"]
+            or not payload["shadow_only"]
+        ):
+            raise EventValidationError("retriever v5 policy or shadow state is invalid")
+        selected_components = {
+            component["action_id"]: component["factor_spec_id"]
+            for component in payload["components"]
+            if component["selected"]
+        }
+        selected_actions = list(payload["selected_action_ids"])
+        selected_parents = list(payload["selected_parent_factor_spec_ids"])
+        if (
+            len(selected_actions) != len(set(selected_actions))
+            or len(selected_actions) != len(selected_parents)
+            or len(selected_actions) > payload["candidate_budget"]
+            or set(selected_actions) != set(selected_components)
+            or any(
+                selected_components.get(action_id) != parent_id
+                for action_id, parent_id in zip(
+                    selected_actions, selected_parents, strict=True
+                )
+            )
+            or len(payload["action_template_event_hashes"])
+            != len(payload["components"])
+        ):
+            raise EventValidationError("retriever v5 action selection is inconsistent")
+        decision_content = {
+            "schema_version": "retriever_action_source_bound_decision.v5",
+            "shadow_decision_hash": payload["shadow_decision_hash"],
+            "input_bundle_hash": payload["input_bundle_hash"],
+            "control_evidence_event_hash": payload["control_evidence_event_hash"],
+            "control_evidence_hash": payload["control_evidence_hash"],
+            "control_policy_hash": payload["control_policy_hash"],
+            "selected_action_ids": payload["selected_action_ids"],
+            "selected_parent_factor_spec_ids": payload[
+                "selected_parent_factor_spec_ids"
+            ],
+            "action_template_event_hashes": payload[
+                "action_template_event_hashes"
+            ],
+            "seed": payload["seed"],
+            "policy_version": payload["policy_version"],
+            "policy_hash": payload["policy_hash"],
+            "policy_config": payload["policy_config"],
+            "eligible_event_watermark": payload["eligible_event_watermark"],
+            "data_snapshot_hash": payload["data_snapshot_hash"],
+            "candidate_budget": payload["candidate_budget"],
+            "official_output_hash": payload["official_output_hash"],
+            "propensity_semantics": payload["propensity_semantics"],
+            "components": payload["components"],
+            "shadow_only": payload["shadow_only"],
+        }
+        if canonical_json_hash(decision_content) != payload["decision_hash"]:
+            raise EventValidationError("retriever v5 source-bound decision hash is invalid")
     if event_type == "ActivationRunRecorded":
         attempted = sum(int(value) for value in payload["terminal_status_counts"].values())
         if payload["complete"] and attempted == 0:
@@ -1709,7 +1844,7 @@ def envelope_diagnostics(
         hard_failures.add(str(payload["failure_code"]))
     if event_type in {
         "RetrieverDecisionV2Recorded", "RetrieverDecisionV3Recorded",
-        "RetrieverDecisionV4Recorded",
+        "RetrieverDecisionV4Recorded", "RetrieverDecisionV5Recorded",
     }:
         warnings.add("TOPOLOGY_RETRIEVER_SHADOW_ONLY")
     if event_type == "ActivationResultRecorded" and payload["invalidation_reasons"]:
