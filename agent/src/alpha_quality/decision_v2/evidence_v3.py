@@ -31,6 +31,26 @@ LEDGER_EVIDENCE_MEDIA_TYPE: Literal[
 LEDGER_PRODUCER_SCHEMA: Literal[
     "decision_ledger_evidence_service.v3"
 ] = "decision_ledger_evidence_service.v3"
+SCORECARD_PRODUCER_SCHEMA: Literal[
+    "decision_scorecard_evidence_service.v3"
+] = "decision_scorecard_evidence_service.v3"
+SCORECARD_IDENTITY_TRANSFORM_PIPELINE_HASH = canonical_json_hash(
+    {"schema_version": "transform_pipeline.v1", "steps": []}
+)
+SCORECARD_UNIVERSE_MASK_POLICY_HASH = canonical_json_hash(
+    {
+        "schema_version": "universe_mask_policy.v1",
+        "source_field": "universe_mask",
+        "interpretation": "finite_nonzero_is_member",
+    }
+)
+SCORECARD_TRADABILITY_MASK_POLICY_HASH = canonical_json_hash(
+    {
+        "schema_version": "tradability_mask_policy.v1",
+        "source_field": "tradable_mask",
+        "interpretation": "finite_nonzero_is_tradable",
+    }
+)
 _MUTABLE_LEDGER_SOURCE_EVENT_TYPES = frozenset(
     {
         "TrialStarted",
@@ -54,6 +74,28 @@ LEDGER_PRODUCER_POLICY_HASH = canonical_json_hash(
             "GenerationFailureRecorded.infrastructure_failure",
             "TrialTerminated.infrastructure_failure",
         ],
+    }
+)
+SCORECARD_PRODUCER_POLICY_HASH = canonical_json_hash(
+    {
+        "schema_version": "decision_scorecard_evidence_policy.v1",
+        "formula_source": "canonical_factor_definition_event.v1",
+        "data_source": "frozen_train_valid_snapshot_event.v1",
+        "split_source": "registered_evaluation_policy_event.v1",
+        "backend": "core_dsl_evaluator.v1",
+        "test_isolation": "backend_receives_dates_through_valid_end_only.v1",
+        "metric_engine": "alpha_quality_scorecard.v2",
+        "mask_policy": "snapshot_masks_or_explicit_unavailable.v1",
+        "supported_transform_pipeline_hash": (
+            SCORECARD_IDENTITY_TRANSFORM_PIPELINE_HASH
+        ),
+        "supported_universe_mask_policy_hash": (
+            SCORECARD_UNIVERSE_MASK_POLICY_HASH
+        ),
+        "supported_tradability_mask_policy_hash": (
+            SCORECARD_TRADABILITY_MASK_POLICY_HASH
+        ),
+        "authority": "computed_but_pit_and_mask_provenance_unverified.v1",
     }
 )
 
@@ -84,6 +126,22 @@ _LEDGER_PAYLOAD_KEYS = frozenset(
         "infrastructure_failure_event_hashes",
     }
 )
+_SCORECARD_PAYLOAD_KEYS = frozenset(
+    {
+        "factor_definition_event_hash",
+        "evaluation_policy_event_hash",
+        "snapshot_event_hash",
+        "source_watermark_event_hash",
+        "data_scope",
+        "scorecard_hash",
+        "factor_output_content_hash",
+        "computed_scorecard",
+        "factor_output_manifest",
+        "authority_status",
+        "decision_grade",
+        "caps",
+    }
+)
 
 
 def _require_hash(value: str, name: str) -> None:
@@ -106,13 +164,24 @@ def _plain(value: Any) -> Any:
     return value
 
 
+def _freeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({str(key): _freeze(item) for key, item in value.items()})
+    if isinstance(value, (tuple, list)):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
 @dataclass(frozen=True, init=False)
 class DecisionEvidenceRecordV3:
     schema_version: Literal["decision_evidence_record.v3"]
-    evidence_kind: Literal["ledger"]
+    evidence_kind: Literal["ledger", "scorecard"]
     factor_spec_id: str
     evidence_run_id: str
-    producer_schema_version: Literal["decision_ledger_evidence_service.v3"]
+    producer_schema_version: Literal[
+        "decision_ledger_evidence_service.v3",
+        "decision_scorecard_evidence_service.v3",
+    ]
     producer_policy_hash: str
     source_event_hashes: tuple[str, ...]
     source_artifact_hashes: tuple[str, ...]
@@ -123,10 +192,13 @@ class DecisionEvidenceRecordV3:
         self,
         *,
         schema_version: Literal["decision_evidence_record.v3"],
-        evidence_kind: Literal["ledger"],
+        evidence_kind: Literal["ledger", "scorecard"],
         factor_spec_id: str,
         evidence_run_id: str,
-        producer_schema_version: Literal["decision_ledger_evidence_service.v3"],
+        producer_schema_version: Literal[
+            "decision_ledger_evidence_service.v3",
+            "decision_scorecard_evidence_service.v3",
+        ],
         producer_policy_hash: str,
         source_event_hashes: tuple[str, ...],
         source_artifact_hashes: tuple[str, ...],
@@ -150,21 +222,28 @@ class DecisionEvidenceRecordV3:
             "source_artifact_hashes",
             tuple(source_artifact_hashes),
         )
-        object.__setattr__(self, "evidence_payload", MappingProxyType(dict(evidence_payload)))
+        object.__setattr__(self, "evidence_payload", _freeze(evidence_payload))
         object.__setattr__(self, "evidence_hash", evidence_hash)
         self._validate()
 
     def _validate(self) -> None:
         if self.schema_version != "decision_evidence_record.v3":
             raise ValueError("unsupported Decision evidence v3 schema")
-        if self.evidence_kind != "ledger":
+        if self.evidence_kind not in {"ledger", "scorecard"}:
             raise ValueError("unsupported producer-bound evidence kind")
         if not self.factor_spec_id or not self.evidence_run_id:
             raise ValueError("Decision evidence factor and run are required")
-        if self.producer_schema_version != LEDGER_PRODUCER_SCHEMA:
-            raise ValueError("unknown Decision ledger evidence producer")
-        if self.producer_policy_hash != LEDGER_PRODUCER_POLICY_HASH:
-            raise ValueError("Decision ledger evidence policy differs")
+        expected_producer = {
+            "ledger": (LEDGER_PRODUCER_SCHEMA, LEDGER_PRODUCER_POLICY_HASH),
+            "scorecard": (
+                SCORECARD_PRODUCER_SCHEMA,
+                SCORECARD_PRODUCER_POLICY_HASH,
+            ),
+        }[self.evidence_kind]
+        if self.producer_schema_version != expected_producer[0]:
+            raise ValueError("Decision evidence producer schema differs")
+        if self.producer_policy_hash != expected_producer[1]:
+            raise ValueError("Decision evidence producer policy differs")
         _sorted_hashes(self.source_event_hashes, "source_event_hashes", allow_empty=False)
         _sorted_hashes(
             self.source_artifact_hashes,
@@ -172,8 +251,20 @@ class DecisionEvidenceRecordV3:
             allow_empty=True,
         )
         payload = dict(self.evidence_payload)
-        if set(payload) != _LEDGER_PAYLOAD_KEYS:
-            raise ValueError("Decision ledger evidence payload is not closed")
+        expected_payload_keys = (
+            _LEDGER_PAYLOAD_KEYS
+            if self.evidence_kind == "ledger"
+            else _SCORECARD_PAYLOAD_KEYS
+        )
+        if set(payload) != expected_payload_keys:
+            raise ValueError("Decision evidence payload is not closed")
+        if self.evidence_kind == "scorecard":
+            self._validate_scorecard_payload(payload)
+            object.__setattr__(self, "evidence_payload", _freeze(payload))
+            _require_hash(self.evidence_hash, "evidence_hash")
+            if self.evidence_hash != canonical_json_hash(self._content_dict()):
+                raise ValueError("Decision evidence v3 hash does not match content")
+            return
         for name in (
             "factor_definition_event_hash",
             "evaluation_event_hash",
@@ -199,10 +290,73 @@ class DecisionEvidenceRecordV3:
             "source_artifact_hashes",
             tuple(self.source_artifact_hashes),
         )
-        object.__setattr__(self, "evidence_payload", MappingProxyType(payload))
+        object.__setattr__(self, "evidence_payload", _freeze(payload))
         _require_hash(self.evidence_hash, "evidence_hash")
         if self.evidence_hash != canonical_json_hash(self._content_dict()):
             raise ValueError("Decision evidence v3 hash does not match content")
+
+    def _validate_scorecard_payload(self, payload: dict[str, Any]) -> None:
+        for name in (
+            "factor_definition_event_hash",
+            "evaluation_policy_event_hash",
+            "snapshot_event_hash",
+            "source_watermark_event_hash",
+            "scorecard_hash",
+            "factor_output_content_hash",
+        ):
+            _require_hash(str(payload[name]), name)
+        if payload["data_scope"] != "train_valid":
+            raise ValueError("Decision scorecard evidence must be train/valid only")
+        if payload["decision_grade"] is not False:
+            raise ValueError("unverified scorecard evidence cannot be decision grade")
+        if payload["authority_status"] != (
+            "computed_but_pit_and_mask_provenance_unverified"
+        ):
+            raise ValueError("Decision scorecard authority status is invalid")
+        if not isinstance(payload["computed_scorecard"], Mapping) or not isinstance(
+            payload["factor_output_manifest"],
+            Mapping,
+        ):
+            raise ValueError("Decision scorecard computed content is invalid")
+        scorecard = _plain(payload["computed_scorecard"])
+        factor_output = _plain(payload["factor_output_manifest"])
+        if canonical_json_hash(scorecard) != payload["scorecard_hash"]:
+            raise ValueError("Decision scorecard hash differs from computed content")
+        if canonical_json_hash(factor_output) != payload["factor_output_content_hash"]:
+            raise ValueError("Decision factor-output hash differs from manifest")
+        if (
+            scorecard.get("schema_version") != "alpha_quality_scorecard.v2"
+            or scorecard.get("factor_spec_id") != self.factor_spec_id
+            or scorecard.get("decision_grade") is not False
+            or scorecard.get("authority_status")
+            != "fixture_only_not_decision_evidence"
+            or scorecard.get("execution_evidence_status")
+            != "separate_producer_required"
+            or factor_output.get("factor_spec_id") != self.factor_spec_id
+            or factor_output.get("decision_grade") is not False
+            or factor_output.get("storage_status")
+            != "fixture_only_partition_artifact_unavailable"
+            or scorecard.get("snapshot_hash")
+            != factor_output.get("snapshot_hash")
+            or scorecard.get("split_plan_hash")
+            != factor_output.get("split_plan_hash")
+            or scorecard.get("evaluation_time_policy_hash")
+            != factor_output.get("evaluation_time_policy_hash")
+            or scorecard.get("factor_output_content_hash")
+            != payload["factor_output_content_hash"]
+        ):
+            raise ValueError("Decision scorecard computed identity is inconsistent")
+        predictive = scorecard.get("predictive")
+        if not isinstance(predictive, list) or not predictive or any(
+            not isinstance(item, Mapping)
+            or item.get("split") not in {"train", "valid"}
+            for item in predictive
+        ):
+            raise ValueError("Decision scorecard contains a non-discovery split")
+        caps = tuple(str(item) for item in payload["caps"])
+        if caps != tuple(sorted(set(caps))) or not caps:
+            raise ValueError("Decision scorecard caps must be sorted and non-empty")
+        payload["caps"] = caps
 
     @classmethod
     def _from_artifact_dict(
@@ -218,11 +372,17 @@ class DecisionEvidenceRecordV3:
                 Literal["decision_evidence_record.v3"],
                 value["schema_version"],
             ),
-            evidence_kind=cast(Literal["ledger"], value["evidence_kind"]),
+            evidence_kind=cast(
+                Literal["ledger", "scorecard"],
+                value["evidence_kind"],
+            ),
             factor_spec_id=str(value["factor_spec_id"]),
             evidence_run_id=str(value["evidence_run_id"]),
             producer_schema_version=cast(
-                Literal["decision_ledger_evidence_service.v3"],
+                Literal[
+                    "decision_ledger_evidence_service.v3",
+                    "decision_scorecard_evidence_service.v3",
+                ],
                 value["producer_schema_version"],
             ),
             producer_policy_hash=str(value["producer_policy_hash"]),
@@ -286,6 +446,40 @@ def _mint_ledger_record(
     )
 
 
+def _mint_scorecard_record(
+    *,
+    factor_spec_id: str,
+    evidence_run_id: str,
+    source_event_hashes: tuple[str, ...],
+    source_artifact_hashes: tuple[str, ...],
+    evidence_payload: Mapping[str, Any],
+) -> DecisionEvidenceRecordV3:
+    content = {
+        "schema_version": "decision_evidence_record.v3",
+        "evidence_kind": "scorecard",
+        "factor_spec_id": factor_spec_id,
+        "evidence_run_id": evidence_run_id,
+        "producer_schema_version": SCORECARD_PRODUCER_SCHEMA,
+        "producer_policy_hash": SCORECARD_PRODUCER_POLICY_HASH,
+        "source_event_hashes": list(source_event_hashes),
+        "source_artifact_hashes": list(source_artifact_hashes),
+        "evidence_payload": _plain(evidence_payload),
+    }
+    return DecisionEvidenceRecordV3(
+        schema_version="decision_evidence_record.v3",
+        evidence_kind="scorecard",
+        factor_spec_id=factor_spec_id,
+        evidence_run_id=evidence_run_id,
+        producer_schema_version=SCORECARD_PRODUCER_SCHEMA,
+        producer_policy_hash=SCORECARD_PRODUCER_POLICY_HASH,
+        source_event_hashes=source_event_hashes,
+        source_artifact_hashes=source_artifact_hashes,
+        evidence_payload=evidence_payload,
+        evidence_hash=canonical_json_hash(content),
+        _authority=_RECORD_MINT_AUTHORITY,
+    )
+
+
 class DecisionEvidenceArtifactStoreV3:
     namespace = "decision-evidence-v3"
 
@@ -315,6 +509,12 @@ class DecisionEvidenceArtifactStoreV3:
             "media_type": LEDGER_EVIDENCE_MEDIA_TYPE,
         }
         normalized = validate_artifact_references(self.writer.root, [reference])[0]
+        digest = expected_evidence_hash.removeprefix("sha256:")
+        expected_relative_path = (
+            f"{self.namespace}/{digest[:2]}/{digest}.json"
+        )
+        if normalized["relative_path"] != expected_relative_path:
+            raise ValueError("Decision evidence artifact path is not content addressed")
         target = self.writer.root.joinpath(*normalized["relative_path"].split("/"))
 
         def reject_constant(value: str) -> None:
@@ -613,5 +813,10 @@ __all__ = [
     "LEDGER_EVIDENCE_MEDIA_TYPE",
     "LEDGER_PRODUCER_POLICY_HASH",
     "LEDGER_PRODUCER_SCHEMA",
+    "SCORECARD_PRODUCER_POLICY_HASH",
+    "SCORECARD_PRODUCER_SCHEMA",
+    "SCORECARD_IDENTITY_TRANSFORM_PIPELINE_HASH",
+    "SCORECARD_TRADABILITY_MASK_POLICY_HASH",
+    "SCORECARD_UNIVERSE_MASK_POLICY_HASH",
     "RecordedDecisionEvidenceV3",
 ]

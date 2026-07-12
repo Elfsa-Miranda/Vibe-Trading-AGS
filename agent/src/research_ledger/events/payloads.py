@@ -1291,6 +1291,31 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ScorecardDecisionEvidenceV3Recorded": PayloadSpec(
+        "scorecard_decision_evidence_recorded.v3",
+        {
+            "evidence_id": _string,
+            "evidence_hash": _hash,
+            "evidence_kind": _enum("scorecard"),
+            "factor_spec_id": _string,
+            "evidence_run_id": _string,
+            "trial_id": _string,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "source_artifact_hashes": _nonempty_hash_list,
+            "evidence_payload_hash": _hash,
+            "factor_definition_event_hash": _hash,
+            "evaluation_policy_event_hash": _hash,
+            "snapshot_event_hash": _hash,
+            "source_watermark_event_hash": _hash,
+            "scorecard_hash": _hash,
+            "factor_output_content_hash": _hash,
+            "decision_grade": _boolean,
+            "caps": _nonempty_string_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "QualityDecisionV2Recorded": PayloadSpec(
         "quality_decision_recorded.v2",
         {
@@ -2076,6 +2101,25 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError(
                 "evaluation policy registration requires one artifact"
             )
+    if event_type == "ScorecardDecisionEvidenceV3Recorded":
+        cited = {
+            payload["factor_definition_event_hash"],
+            payload["evaluation_policy_event_hash"],
+            payload["snapshot_event_hash"],
+            payload["source_watermark_event_hash"],
+        }
+        if not cited.issubset(set(payload["source_event_hashes"])):
+            raise EventValidationError(
+                "scorecard evidence source hashes omit cited events"
+            )
+        if payload["decision_grade"] is not False:
+            raise EventValidationError(
+                "unverified scorecard evidence cannot be decision grade"
+            )
+        if payload["caps"] != sorted(set(payload["caps"])):
+            raise EventValidationError("scorecard evidence caps must be canonical")
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("scorecard evidence requires one artifact")
     if event_type == "QualityDecisionV2Recorded":
         decision = payload["decision"]
         expected_tier = {
