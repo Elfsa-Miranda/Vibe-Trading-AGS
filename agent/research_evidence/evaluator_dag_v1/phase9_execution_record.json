@@ -1,0 +1,56 @@
+{
+  "schema_version": "phase_execution_record.v1",
+  "phase": "Phase 9 — deterministic evaluator DAG scheduler",
+  "base_commit": "d325a65a",
+  "branch": "codex/ags-v32-evaluator-dag-v1",
+  "pre_phase_dirty_state": "clean",
+  "remote_operations": [],
+  "dependency_installs": [
+    {"package": "types-psutil", "version": "7.2.2.20260518", "source": "official PyPI"}
+  ],
+  "authority_model": {
+    "worker_role": "closed pure content-hash computation only",
+    "ledger_writer": "parent process only",
+    "decision_authority": "ProductionCandidateEvaluatorV1 serial reference",
+    "dag_decision_authority": "none"
+  },
+  "resource_controls": {
+    "start_method": "spawn",
+    "timeout_enforced_by": "parent process",
+    "rss_enforced_by": "parent process via psutil",
+    "default_maximum_workers": 4,
+    "default_timeout_seconds": 30.0,
+    "default_maximum_worker_rss_bytes": 536870912
+  },
+  "validation": [
+    {"command": "python -m pytest -q tests/alpha_quality/test_evaluator_dag_v1.py", "result": "16 passed in 126.30s"},
+    {"command": "python -m pytest -q tests/alpha_quality/test_evaluator_dag_v1.py tests/alpha_quality/test_production_evaluator_v1.py tests/alpha_quality/test_baseline_v1.py", "result": "42 passed in 262.61s"},
+    {"command": "python -m pytest -q tests/alpha_quality tests/research_ledger", "result": "559 passed in 711.65s"},
+    {"command": "python -m pytest -q agent/tests/contracts agent/tests/security agent/tests/acceptance agent/tests/performance/test_ags_acceptance_budget.py agent/tests/alpha_quality/test_feature_off_identity.py", "result": "95 passed in 13.29s"},
+    {"command": "python -m ruff check <phase9-files>", "result": "passed"},
+    {"command": "python -m mypy --strict --follow-imports=skip src/alpha_quality/evaluator_dag_v1.py", "result": "passed"}
+  ],
+  "performance_evidence": {
+    "fixture": "four independent 350ms spawn workers",
+    "acceptance": "parallel wall time below 85 percent of one-worker wall time",
+    "semantic_check": "all node output hashes equal",
+    "result": "passed"
+  },
+  "red_team": [
+    "cycle and unknown dependency rejected",
+    "dynamic caller node rejected",
+    "multiple randomized legal schedules converge",
+    "same-content race converges and conflicting content separates",
+    "timeout crash cancellation and RSS produce typed states",
+    "timeout integration creates exactly one typed trial terminal",
+    "worker source has no ledger append API",
+    "feature-off factory performs no write"
+  ],
+  "known_unrelated_baseline_failure": "test_tracked_release_manifest_matches_deterministic_rebuild reads user-owned problem.md and was reproduced before Phase 1",
+  "outcome": "ACCEPTED",
+  "limitations": [
+    "DAG workers do not mint evidence or decisions; serial reference remains authoritative",
+    "cross-chain event-bound hashes are position-sensitive and are not mislabelled as independent semantic identities",
+    "performance evidence covers the registered pure-worker scheduler, not live trading or broker workloads"
+  ]
+}

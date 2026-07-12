@@ -27,6 +27,7 @@ Pillow>=12.2.0
 # ML Strategy
 scikit-learn>=1.3.0
 joblib>=1.3.0
+psutil>=5.9.0
 
 # Signal Skills
 smartmoneyconcepts>=0.0.1
