@@ -21,6 +21,9 @@ from src.alpha_quality.decision_v2.repository import (
     EvidenceResolutionError,
 )
 from src.alpha_quality.decision_v2.runner import QualityDecisionV2Runner
+from src.alpha_quality.decision_v2.authority_gate_v1 import (
+    QualityDecisionAuthorityGateV1,
+)
 from src.alpha_quality.flags import ResolvedAGSFlags
 from src.research_ledger.events import (
     EventDraft,
@@ -369,10 +372,12 @@ class QualityDecisionV3Service:
             policy=self.policy,
             repository=self.repository,
         )
-        decision = QualityDecisionV2Runner(
-            flags=self.flags,
-            policy=self.policy,
-            repository=FrozenDecisionEvidenceRepository(bundle.evidence_records),
+        decision = QualityDecisionAuthorityGateV1(
+            QualityDecisionV2Runner(
+                flags=self.flags,
+                policy=self.policy,
+                repository=FrozenDecisionEvidenceRepository(bundle.evidence_records),
+            )
         ).run(bundle.evidence_refs)
         reference = self.artifacts.write(bundle)
         content = source_bound_quality_decision_content(

@@ -7,6 +7,7 @@ from src.alpha_foundry.dsl.identity import build_expression_identity
 from src.alpha_foundry.retrieval import RetrievalCandidate, SemanticEmbeddingEvidence
 from src.alpha_foundry.retrieval.features import build_retrieval_features, output_diversity
 from src.research_ledger.hash_utils import canonical_json_hash
+from projection_fixtures import unit_episodic_projection
 from test_retriever_shadow import _candidate, _panel, _views
 
 
@@ -79,11 +80,17 @@ def test_nonleaf_policy_uses_independent_child_gain_sparsity_and_cost(tmp_path) 
     )
     features = build_retrieval_features(
         parent, query=query,
-        episodic=replace(evidence.episodic, observations=observations),
+        episodic=unit_episodic_projection(
+            evidence.episodic,
+            observations=observations,
+        ),
     )
     expensive = build_retrieval_features(
         replace(parent, estimated_cost=2.0), query=query,
-        episodic=replace(evidence.episodic, observations=observations),
+        episodic=unit_episodic_projection(
+            evidence.episodic,
+            observations=observations,
+        ),
     )
     assert features.node_kind == "nonleaf"
     assert features.independent_child_groups == 3

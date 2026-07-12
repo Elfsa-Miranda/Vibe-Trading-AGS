@@ -11,10 +11,11 @@ from src.alpha_foundry.memory.model import (
     EpisodicProjection,
     ProcessMemoryObservation,
     ProcessPosterior,
-    authorized_episodic_projection,
+    _build_episodic_projection,
 )
 from src.alpha_foundry.memory.motif import derive_motif
 from src.research_ledger.events import ResearchEventEnvelope
+from src.research_ledger.events.model import VerifiedEventSubsequence
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
@@ -38,8 +39,33 @@ class EpisodicProjector:
         self.negative_veto_threshold = negative_veto_threshold
         self.veto_confidence_threshold = veto_confidence_threshold
 
-    def project(self, events: Iterable[ResearchEventEnvelope]) -> EpisodicProjection:
+    @property
+    def policy_hash(self) -> str:
+        return canonical_json_hash(
+            {
+                "schema_version": "episodic_projector_policy.v1",
+                "minimum_effective_count": self.minimum_effective_count,
+                "max_positive_adjustment": self.max_positive_adjustment,
+                "negative_veto_threshold": self.negative_veto_threshold,
+                "veto_confidence_threshold": self.veto_confidence_threshold,
+            }
+        )
+
+    def project(
+        self,
+        events: Iterable[ResearchEventEnvelope] | VerifiedEventSubsequence,
+    ) -> EpisodicProjection:
         ordered = list(events)
+        source_subsequence_hash = (
+            events.subsequence_hash
+            if isinstance(events, VerifiedEventSubsequence)
+            else canonical_json_hash(
+                {
+                    "schema_version": "unverified_event_sequence.v1",
+                    "event_hashes": [event.event_hash for event in ordered],
+                }
+            )
+        )
         by_hash = {event.event_hash: event for event in ordered}
         if len(by_hash) != len(ordered):
             raise ValueError("episodic replay contains duplicate event hashes")
@@ -150,13 +176,17 @@ class EpisodicProjector:
         posteriors = self._posteriors(observations)
         state = {
             "schema_version": "episodic_process_projection.v2",
+            "source_subsequence_hash": source_subsequence_hash,
+            "projector_policy_hash": self.policy_hash,
             "source_event_hashes": [event.event_hash for event in ordered],
             "observations": [observation.__dict__ for observation in observations],
             "posteriors": [posterior.__dict__ for posterior in posteriors],
         }
-        return authorized_episodic_projection(
+        return _build_episodic_projection(
             schema_version="episodic_process_projection.v2",
             source_watermark_event_hash=ordered[-1].event_hash if ordered else None,
+            source_subsequence_hash=source_subsequence_hash,
+            projector_policy_hash=self.policy_hash,
             observations=tuple(observations),
             posteriors=tuple(posteriors),
             projection_hash=canonical_json_hash(state),

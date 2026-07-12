@@ -14,18 +14,25 @@ def test_evaluate_formula_does_not_use_dynamic_execution(monkeypatch: pytest.Mon
     def fail(*args, **kwargs):  # noqa: ANN002, ANN003
         raise AssertionError("dynamic execution called")
 
-    monkeypatch.setattr(builtins, "eval", fail)
-    monkeypatch.setattr(builtins, "compile", fail)
-    monkeypatch.setattr(importlib, "import_module", fail)
-    monkeypatch.setattr(subprocess, "run", fail)
     panel = {
         "close": pd.DataFrame(
             {"AAA": [1.0, 2.0, 3.0], "BBB": [3.0, 2.0, 1.0]},
             index=pd.date_range("2024-01-01", periods=3, freq="D"),
         )
     }
+    # Pandas performs process-global lazy initialization on the first rank/shift
+    # call and may compile its own generated helper code. Keep that third-party
+    # cold-start outside the guard so the test measures the complete DSL path.
+    warmed_delta = panel["close"] - panel["close"].shift(1)
+    warmed_delta.rank(axis=1, pct=True)
+
+    monkeypatch.setattr(builtins, "eval", fail)
+    monkeypatch.setattr(builtins, "compile", fail)
+    monkeypatch.setattr(importlib, "import_module", fail)
+    monkeypatch.setattr(subprocess, "run", fail)
 
     result = evaluate_formula("rank(delta(close, 1))", panel)
+    monkeypatch.undo()
 
     assert list(result.columns) == ["AAA", "BBB"]
     assert result.iloc[-1].notna().all()

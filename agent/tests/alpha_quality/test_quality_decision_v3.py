@@ -71,7 +71,8 @@ def _record(tmp_path: Path, *, unresolved_scorecard: bool = False):
 def test_source_bound_v3_rebuilds_decision_and_replays(tmp_path: Path) -> None:
     store, _, refs, service, recorded = _record(tmp_path)
     assert recorded.event.event_type == "QualityDecisionV3Recorded"
-    assert recorded.decision.decision == "candidate_zoo"
+    assert recorded.decision.decision == "research_only"
+    assert "LEGACY_CALLER_CONSTRUCTABLE_EVIDENCE" in recorded.decision.caps
     assert recorded.event.payload["quality_decision_hash"] == recorded.decision.decision_hash
     assert recorded.event.payload["input_bundle_hash"] == recorded.input_bundle.bundle_hash
     assert store.verify_chain()
@@ -118,6 +119,21 @@ def test_unresolved_source_is_frozen_and_caps_at_research_only(tmp_path: Path) -
     assert recorded.decision.decision == "research_only"
     assert "EVIDENCE_REFERENCE_UNRESOLVED" in recorded.decision.caps
     assert len(recorded.input_bundle.evidence_records) == 5
+    assert store.verify_chain()
+
+
+def test_all_pass_self_authored_records_cannot_reach_candidate_zoo(
+    tmp_path: Path,
+) -> None:
+    store, _, _, _, recorded = _record(tmp_path)
+
+    assert recorded.decision.decision == "research_only"
+    assert recorded.event.payload["decision"] == "research_only"
+    assert "LEGACY_CALLER_CONSTRUCTABLE_EVIDENCE" in recorded.event.payload["caps"]
+    assert all(
+        item.schema_version == "decision_evidence_record.v2"
+        for item in recorded.input_bundle.evidence_records
+    )
     assert store.verify_chain()
 
 

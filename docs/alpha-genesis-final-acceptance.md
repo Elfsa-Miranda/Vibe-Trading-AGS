@@ -1,4 +1,12 @@
-# Alpha Genesis Final Acceptance
+# Alpha Genesis Historical Engineering Acceptance (Superseded)
+
+This document is a historical engineering-test record. It is not an empirical
+Activation approval, a current release authority, or evidence of market alpha.
+The deterministic local release index is
+`agent/research_evidence/release_manifest.json`; it classifies the tracked
+Activation artifacts as `preflight_invalidated` and `legacy_unverified` because
+no tracked source-event ledger or closed test-run records bind them. Formal
+Activation outcomes remain unopened.
 
 ## Phase Checklist
 
@@ -70,7 +78,8 @@ research pipeline with deterministic scorecards, trial history, bounded formula
 generation, novelty/synergy checks, adversarial quality decisions, frozen
 forward tracking, redacted reports, and flagship demos.
 
-Publication is handled by the current AGS branch push and PR/compare link.
+This repository is currently local-only. This historical record does not
+authorize push, PR creation, release publication, or any remote operation.
 
 See also `docs/final-acceptance.md` for the latest P0/P1/P2 acceptance matrix
 and tool-installation notes.

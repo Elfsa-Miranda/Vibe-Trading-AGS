@@ -4,7 +4,7 @@ import logging
 from typing import cast
 
 import numpy as np
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]
 
 from src.alpha_foundry.dsl.model import ASTNode, NumberLiteral
 from src.alpha_foundry.dsl.parser import FormulaParser
@@ -12,6 +12,40 @@ from src.alpha_foundry.dsl.validator import validate_expression
 
 
 logger = logging.getLogger(__name__)
+
+
+CORE_V1_IMPLEMENTED_OPERATORS = frozenset(
+    {
+        "rank",
+        "zscore",
+        "winsorize",
+        "clip",
+        "ts_mean",
+        "delay",
+        "delta",
+        "decay_linear",
+        "add",
+        "sub",
+        "mul",
+        "div_safe",
+        "neg",
+        "log1p_abs",
+        "volume_shock",
+        "illiquidity_proxy",
+    }
+)
+CORE_V1_KNOWN_UNIMPLEMENTED_OPERATORS = frozenset(
+    {
+        "group_neutralize",
+        "ts_std",
+        "ts_rank",
+        "ts_corr",
+        "ts_cov",
+        "signed_power",
+        "vwap_deviation",
+    }
+)
+CORE_V1_BACKEND_VERSION = "core_dataframe_backend.v1"
 
 
 class FormulaValidationError(ValueError):
@@ -93,7 +127,7 @@ def _apply(op: str, args: list[pd.DataFrame | int | float]) -> pd.DataFrame:
     if op == "decay_linear":
         frame = _frame(args[0])
         window = _int(args[1])
-        weights = np.arange(1, window + 1, dtype=float)
+        weights: np.ndarray = np.arange(1, window + 1, dtype=float)
         weights /= weights.sum()
         decayed = frame.rolling(window, min_periods=window).apply(lambda x: float(np.dot(x, weights)), raw=True)
         return cast(pd.DataFrame, decayed)
@@ -110,7 +144,7 @@ def _apply(op: str, args: list[pd.DataFrame | int | float]) -> pd.DataFrame:
         if isinstance(result, pd.DataFrame):
             return result
         return pd.DataFrame(result, index=frame.index, columns=frame.columns)
-    if op in {"group_neutralize", "ts_std", "ts_rank", "ts_corr", "ts_cov", "signed_power", "vwap_deviation"}:
+    if op in CORE_V1_KNOWN_UNIMPLEMENTED_OPERATORS:
         raise NotImplementedError(f"operator {op!r} is validated but not implemented in core v1")
     raise FormulaValidationError(["OPERATOR_NOT_ALLOWED"])
 
@@ -137,3 +171,13 @@ def _float(value: pd.DataFrame | int | float) -> float:
     if isinstance(value, pd.DataFrame):
         raise TypeError("operator expected a scalar numeric argument")
     return float(value)
+
+
+__all__ = [
+    "CORE_V1_BACKEND_VERSION",
+    "CORE_V1_IMPLEMENTED_OPERATORS",
+    "CORE_V1_KNOWN_UNIMPLEMENTED_OPERATORS",
+    "FormulaValidationError",
+    "evaluate_ast",
+    "evaluate_formula",
+]

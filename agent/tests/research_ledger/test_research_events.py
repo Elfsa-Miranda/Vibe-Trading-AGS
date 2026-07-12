@@ -179,16 +179,28 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "TrialTerminated",
         "RetrieverDecisionRecorded",
         "RetrieverActionTemplateFrozen",
+        "TrainValidDataSnapshotFrozen",
+        "EvaluationPolicyRegistered",
+        "RetrieverFeatureSourceRecorded",
         "RetrieverDecisionV2Recorded",
         "RetrieverDecisionV3Recorded",
         "RetrieverDecisionV4Recorded",
         "RetrieverDecisionV5Recorded",
+        "RetrieverDecisionV6Recorded",
+        "RetrieverDecisionV7Recorded",
         "OfficialSearchControlRecorded",
+        "PreArmFlatScheduleFrozen",
+        "ActivationPairExecutionScheduled",
+        "ActivationPairExecutionClaimed",
         "ActivationPlanRegistered",
         "ActivationRunRecorded",
         "ActivationRunSourceAudited",
         "ActivationResourceMeasured",
+        "ActivationResourceMeasuredV2",
         "ActivationGenerationConsumptionRecorded",
+        "ActivationGenerationConsumptionV2Recorded",
+        "ActivationGenerationConsumptionV3Recorded",
+        "ActivationGenerationConsumptionV4Recorded",
         "ActivationResultRecorded",
         "RetrieverActivationDecisionRecorded",
         "FalsificationContractRegistered",
@@ -199,6 +211,9 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "MechanismEvidenceIndexRecorded",
         "ComplementEvidenceRecorded",
         "QualityDecisionRecorded",
+        "DecisionEvidenceV3Recorded",
+        "ScorecardDecisionEvidenceV3Recorded",
+        "SnapshotDecisionEvidenceV3Recorded",
         "QualityDecisionV2Recorded",
         "QualityDecisionV3Recorded",
         "FinalCandidateFrozen",
@@ -359,7 +374,7 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "eligible_event_watermark": digest,
                     "veto_reason": None,
                 },
-                "RetrieverActionTemplateFrozen": {
+        "RetrieverActionTemplateFrozen": {
                     "action_id": "retriever-action-v1-fixture",
                     "action_hash": digest,
                     "schema_version": "frozen_retriever_action_template.v1",
@@ -379,8 +394,36 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                     "expected_ast_diff_hash": digest,
                     "expected_motif_version": "ast-motif.v1",
                     "expected_motif": "Wrap:rank",
-                    "identity_action": False,
-                },
+                "identity_action": False,
+            },
+            "TrainValidDataSnapshotFrozen": {
+                "snapshot_id": "train-valid-snapshot-v1-" + "d" * 24,
+                "snapshot_hash": digest,
+                "data_scope": "train_valid",
+                "panel_content_hash": digest,
+                "frame_content_hashes": {"close": digest},
+                "frame_names": ["close"],
+                "source_config_hash": digest,
+                "pit_contract_present": True,
+                "survivorship_bias": False,
+                "artifact_refs": [],
+            },
+        "RetrieverFeatureSourceRecorded": {
+                "feature_source_id": "retriever-feature-source-v1-" + "d" * 24,
+                "source_hash": digest,
+                "execution_run_id": "feature-run",
+                "snapshot_event_hash": digest,
+                "snapshot_hash": digest,
+                "eligible_event_watermark": digest,
+                "retrieval_policy_hash": digest,
+                "feature_policy_hash": digest,
+                "action_event_hashes": [digest],
+                "scorecard_event_hashes": [digest],
+                "candidate_count": 1,
+                "candidate_hashes": [digest],
+                "semantic_state": "unavailable",
+                "artifact_refs": [],
+            },
                     "RetrieverDecisionV2Recorded": {
                 "decision_id": "retriever-v2-1",
                 "decision_hash": digest,
@@ -472,6 +515,23 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                     "shadow_only": True,
                     "artifact_refs": [],
                 },
+            "EvaluationPolicyRegistered": {
+                    "registration_id": "evaluation-policy-registration-v1-fixture",
+                    "bundle_hash": digest,
+                    "producer_schema_version": "evaluation_policy_registry_service.v1",
+                    "producer_policy_hash": digest,
+                    "calendar_hash": digest,
+                    "evaluation_time_policy_hash": digest,
+                    "split_plan_hash": digest,
+                    "preregistration_watermark": None,
+                    "artifact_refs": [
+                        {
+                            "relative_path": "registered-evaluation-policy-v1/fixture.json",
+                            "artifact_hash": digest,
+                            "media_type": "application/vnd.vibe.registered-evaluation-policy-v1+json",
+                        }
+                    ],
+                },
         "RetrieverDecisionV4Recorded": {
                     "decision_id": "retriever-v4-1",
                     "decision_hash": digest,
@@ -510,7 +570,7 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                     "shadow_only": True,
                     "artifact_refs": [],
                 },
-        "RetrieverDecisionV5Recorded": {
+            "RetrieverDecisionV5Recorded": {
                     "decision_id": "retriever-v5-1",
                     "decision_hash": digest,
                     "shadow_decision_hash": digest,
@@ -550,8 +610,97 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                         }
                     ],
                     "shadow_only": True,
-                    "artifact_refs": [],
-                },
+                        "artifact_refs": [],
+                    },
+            "RetrieverDecisionV6Recorded": {
+                        "decision_id": "retriever-v6-1",
+                        "decision_hash": digest,
+                        "shadow_decision_hash": digest,
+                        "input_bundle_hash": digest,
+                        "control_evidence_event_hash": digest,
+                        "control_evidence_hash": digest,
+                        "control_policy_hash": digest,
+                        "feature_source_event_hash": digest,
+                        "feature_source_hash": digest,
+                        "selected_action_ids": ["action-1"],
+                        "selected_parent_factor_spec_ids": ["factor-1"],
+                        "action_template_event_hashes": [digest],
+                        "seed": 7,
+                        "policy_version": "topology_activation_policy.v3",
+                        "policy_hash": digest,
+                        "policy_config": ActivationRetrieverPolicy().to_dict(),
+                        "eligible_event_watermark": digest,
+                        "data_snapshot_hash": digest,
+                        "candidate_budget": 1,
+                        "official_output_hash": digest,
+                        "propensity_semantics": (
+                            "sequential_action_softmax_draw_probability.v1"
+                        ),
+                        "components": [
+                            {
+                                "factor_spec_id": "factor-1", "action_id": "action-1",
+                                "motif": "Wrap:rank", "node_kind": "leaf",
+                                "output_panel_hash": digest,
+                                "semantic_model_id": "embedding-model",
+                                "semantic_model_version": "1",
+                                "semantic_embedding_hash": digest,
+                                "cost_evidence_hash": digest, "valdiv": 0.5,
+                                "semdiv": 0.5, "syndiv": 0.5,
+                                "topology_score": 0.125, "base_score": 0.1,
+                                "memory_adjustment": 0.0, "action_score": -2.3,
+                                "confidence": 0.0, "selected": True,
+                                "selection_propensity": 1.0, "warnings": [],
+                                "veto_reason": None,
+                            }
+                        ],
+                        "shadow_only": True,
+                        "artifact_refs": [],
+                    },
+            "RetrieverDecisionV7Recorded": {
+                        "decision_id": "retriever-v7-1",
+                        "decision_hash": digest,
+                        "shadow_decision_hash": digest,
+                        "input_bundle_hash": digest,
+                        "plan_hash": digest,
+                        "pair_id": "group-1:momentum:leaf",
+                        "schedule_event_hash": digest,
+                        "schedule_hash": digest,
+                        "feature_source_event_hash": digest,
+                        "feature_source_hash": digest,
+                        "selected_action_ids": ["action-1"],
+                        "selected_parent_factor_spec_ids": ["factor-1"],
+                        "action_template_event_hashes": [digest],
+                        "seed": 7,
+                        "policy_version": "topology_activation_policy.v3",
+                        "policy_hash": digest,
+                        "policy_config": ActivationRetrieverPolicy().to_dict(),
+                        "eligible_event_watermark": digest,
+                        "data_snapshot_hash": digest,
+                        "candidate_budget": 1,
+                        "official_output_hash": digest,
+                        "propensity_semantics": (
+                            "sequential_action_softmax_draw_probability.v1"
+                        ),
+                        "components": [
+                            {
+                                "factor_spec_id": "factor-1", "action_id": "action-1",
+                                "motif": "Wrap:rank", "node_kind": "leaf",
+                                "output_panel_hash": digest,
+                                "semantic_model_id": "embedding-model",
+                                "semantic_model_version": "1",
+                                "semantic_embedding_hash": digest,
+                                "cost_evidence_hash": digest, "valdiv": 0.5,
+                                "semdiv": 0.5, "syndiv": 0.5,
+                                "topology_score": 0.125, "base_score": 0.1,
+                                "memory_adjustment": 0.0, "action_score": -2.3,
+                                "confidence": 0.0, "selected": True,
+                                "selection_propensity": 1.0, "warnings": [],
+                                "veto_reason": None,
+                            }
+                        ],
+                        "shadow_only": True,
+                        "artifact_refs": [],
+                    },
             "ActivationPlanRegistered": {
                 "experiment_id": "activation-1",
                 "plan_hash": digest,
@@ -664,7 +813,7 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "outcome": "inconclusive",
             "artifact_refs": [],
         },
-        "OfficialSearchControlRecorded": {
+            "OfficialSearchControlRecorded": {
             "control_id": "official-control-1",
             "evidence_hash": digest,
             "policy_hash": digest,
@@ -673,6 +822,18 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "data_snapshot_hash": digest,
             "candidate_count": 1,
             "terminal_event_hashes": [digest],
+            "artifact_refs": [],
+        },
+            "PreArmFlatScheduleFrozen": {
+            "schedule_id": "prearm-flat-v1-" + "d" * 24,
+            "schedule_hash": digest,
+            "plan_hash": digest,
+            "pair_id": "group-1:momentum:leaf",
+            "run_group_id": "group-1",
+            "data_snapshot_hash": digest,
+            "policy_hash": digest,
+            "candidate_count": 1,
+            "output_hash": digest,
             "artifact_refs": [],
         },
         "ActivationRunSourceAudited": {
@@ -713,6 +874,40 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "evidence_hash": digest,
                 "artifact_refs": [],
             },
+            "ActivationResourceMeasuredV2": {
+                "resource_id": "activation-resource-v2-" + "d" * 24,
+                "plan_hash": digest, "pair_id": "group-1:momentum:leaf",
+                "run_group_id": "group-1", "arm": "control",
+                "manifest_hash": digest, "pair_schedule_event_hash": digest,
+                "pair_schedule_hash": digest, "execution_claim_event_hash": digest,
+                "arm_order_position": 0, "timeout_limit_seconds": 1.0,
+                "measurement_policy_hash": digest, "wall_seconds": 0.0,
+                "cpu_seconds": 0.0, "peak_rss_mb": None,
+                "peak_rss_method": "unavailable_without_isolated_worker.v1",
+                "source_failure_codes": [
+                    "EXECUTOR_TIMEOUT_NOT_ENFORCED",
+                    "PEAK_RSS_ISOLATED_MEASUREMENT_UNAVAILABLE",
+                ],
+                "source_complete": False, "evidence_hash": digest,
+                "artifact_refs": [],
+            },
+            "ActivationPairExecutionScheduled": {
+                "schedule_id": "activation-pair-schedule-v1-" + "d" * 24,
+                "schedule_hash": digest, "plan_hash": digest,
+                "pair_id": "group-1:momentum:leaf", "run_group_id": "group-1",
+                "mechanism_family": "momentum", "dag_region": "leaf",
+                "seed": 1, "arm_order": ["control", "treatment"],
+                "order_rule": "alternating_frozen_run_group_index.v1",
+                "candidate_budget": 1, "compute_budget": 1,
+                "worker_limit": 1, "timeout_seconds": 1.0,
+                "artifact_refs": [],
+            },
+            "ActivationPairExecutionClaimed": {
+                "claim_id": "activation-pair-claim-v1-" + "d" * 24,
+                "schedule_event_hash": digest, "schedule_hash": digest,
+                "plan_hash": digest, "pair_id": "group-1:momentum:leaf",
+                "run_group_id": "group-1",
+            },
             "ActivationGenerationConsumptionRecorded": {
                 "generation_id": "activation-generation-v1-" + "d" * 24,
                 "plan_hash": digest,
@@ -734,6 +929,87 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                 "source_complete": False,
                 "evidence_hash": digest,
                 "artifact_refs": [],
+            },
+                "ActivationGenerationConsumptionV2Recorded": {
+                "generation_id": "activation-generation-v2-" + "d" * 24,
+                "plan_hash": digest,
+                "pair_id": "pair-1",
+                "run_group_id": "group-1",
+                "mechanism_family": "momentum",
+                "dag_region": "leaf",
+                "execution_run_id": "activation-arm-fixture",
+                "retriever_decision_event_hash": digest,
+                "retriever_decision_hash": digest,
+                "control_evidence_event_hash": digest,
+                "generator_policy_hash": digest,
+                "selected_action_ids": ["action-1"],
+                "selected_action_event_hashes": [digest],
+                "selected_parent_factor_spec_ids": ["factor-1"],
+                "consumed_action_ids": ["action-1"],
+                "consumed_parent_factor_spec_ids": ["factor-1"],
+                "generated_candidate_count": 1,
+                "candidate_budget": 2,
+                "compute_budget": 2,
+                "source_failure_codes": ["RETRIEVER_FEATURE_SOURCE_UNVERIFIED"],
+                "source_complete": False,
+                "evidence_hash": digest,
+                "artifact_refs": [],
+            },
+            "ActivationGenerationConsumptionV3Recorded": {
+                "generation_id": "activation-generation-v3-" + "d" * 24,
+                "plan_hash": digest,
+                "pair_id": "pair-1",
+                "run_group_id": "group-1",
+                "mechanism_family": "momentum",
+                "dag_region": "leaf",
+                "execution_run_id": "activation-arm-fixture",
+                "retriever_decision_event_hash": digest,
+                "retriever_decision_hash": digest,
+                "control_evidence_event_hash": digest,
+                "retriever_input_bundle_hash": digest,
+                "feature_source_event_hash": digest,
+                "feature_source_hash": digest,
+                "feature_snapshot_event_hash": digest,
+                "feature_snapshot_hash": digest,
+                "feature_policy_hash": digest,
+                "feature_scorecard_event_hashes": [digest],
+                "generator_policy_hash": digest,
+                "selected_action_ids": ["action-1"],
+                "selected_action_event_hashes": [digest],
+                "selected_parent_factor_spec_ids": ["factor-1"],
+                "consumed_action_ids": ["action-1"],
+                "consumed_parent_factor_spec_ids": ["factor-1"],
+                "generated_candidate_count": 1,
+                "candidate_budget": 1,
+                "compute_budget": 1,
+                "source_failure_codes": [],
+                "source_complete": True,
+                "evidence_hash": digest,
+                "artifact_refs": [],
+            },
+            "ActivationGenerationConsumptionV4Recorded": {
+                "generation_id": "activation-generation-v4-" + "d" * 24,
+                "plan_hash": digest, "pair_id": "pair-1",
+                "run_group_id": "group-1", "mechanism_family": "momentum",
+                "dag_region": "leaf", "execution_run_id": "activation-arm-fixture",
+                "retriever_decision_event_hash": digest,
+                "retriever_decision_hash": digest,
+                "retriever_input_bundle_hash": digest,
+                "schedule_event_hash": digest, "schedule_hash": digest,
+                "feature_source_event_hash": digest, "feature_source_hash": digest,
+                "feature_snapshot_event_hash": digest,
+                "feature_snapshot_hash": digest, "feature_policy_hash": digest,
+                "feature_scorecard_event_hashes": [digest],
+                "generator_policy_hash": digest,
+                "selected_action_ids": ["action-1"],
+                "selected_action_event_hashes": [digest],
+                "selected_parent_factor_spec_ids": ["factor-1"],
+                "consumed_action_ids": ["action-1"],
+                "consumed_parent_factor_spec_ids": ["factor-1"],
+                "generated_candidate_count": 1,
+                "candidate_budget": 1, "compute_budget": 1,
+                "source_failure_codes": [], "source_complete": True,
+                "evidence_hash": digest, "artifact_refs": [],
             },
         "MechanismEvidenceIndexRecorded": {
             "mei_id": "mei-1",
@@ -785,7 +1061,88 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "caps": ["MISSING_EXECUTION"],
             "limitations": ["research evidence only"],
         },
-        "QualityDecisionV2Recorded": {
+            "DecisionEvidenceV3Recorded": {
+            "evidence_id": "decision-evidence-v3-fixture",
+            "evidence_hash": digest,
+            "evidence_kind": "ledger",
+            "factor_spec_id": "factor-1",
+            "evidence_run_id": "run-1",
+            "producer_schema_version": "decision_ledger_evidence_service.v3",
+            "producer_policy_hash": digest,
+            "source_event_hashes": [digest],
+            "source_artifact_hashes": [digest],
+            "evidence_payload_hash": digest,
+            "factor_definition_event_hash": digest,
+            "evaluation_event_hash": digest,
+            "terminal_event_hash": digest,
+            "ledger_watermark_event_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": "decision-evidence-v3/fixture.json",
+                    "artifact_hash": digest,
+                    "media_type": "application/vnd.vibe.decision-evidence-v3+json",
+                }
+                ],
+            },
+                "ScorecardDecisionEvidenceV3Recorded": {
+                "evidence_id": "scorecard-decision-evidence-v3-fixture",
+                "evidence_hash": digest,
+                "evidence_kind": "scorecard",
+                "factor_spec_id": "factor-1",
+                "evidence_run_id": "run-1",
+                "trial_id": "trial-1",
+                "producer_schema_version": "decision_scorecard_evidence_service.v3",
+                "producer_policy_hash": digest,
+                "source_event_hashes": [digest],
+                "source_artifact_hashes": [digest],
+                "evidence_payload_hash": digest,
+                "factor_definition_event_hash": digest,
+                "evaluation_policy_event_hash": digest,
+                "snapshot_event_hash": digest,
+                "source_watermark_event_hash": digest,
+                "scorecard_hash": digest,
+                "factor_output_content_hash": digest,
+                "decision_grade": False,
+                "caps": ["PIT_SNAPSHOT_PROVENANCE_UNVERIFIED"],
+                "artifact_refs": [
+                    {
+                        "relative_path": "decision-evidence-v3/scorecard.json",
+                        "artifact_hash": digest,
+                        "media_type": "application/vnd.vibe.decision-evidence-v3+json",
+                    }
+                    ],
+                },
+                "SnapshotDecisionEvidenceV3Recorded": {
+                    "evidence_id": "snapshot-decision-evidence-v3-fixture",
+                    "evidence_hash": digest,
+                    "evidence_kind": "snapshot",
+                    "factor_spec_id": "factor-1",
+                    "evidence_run_id": "run-1",
+                    "producer_schema_version": "decision_snapshot_evidence_service.v3",
+                    "producer_policy_hash": digest,
+                    "source_event_hashes": [digest],
+                    "source_artifact_hashes": [digest],
+                    "evidence_payload_hash": digest,
+                    "factor_definition_event_hash": digest,
+                    "evaluation_policy_event_hash": digest,
+                    "snapshot_event_hash": digest,
+                    "source_watermark_event_hash": digest,
+                    "snapshot_hash": digest,
+                    "panel_content_hash": digest,
+                    "cutoff_status": "contains_dates_after_registered_valid_end",
+                    "pit_authority_status": "unverified_legacy_caller_snapshot",
+                    "survivorship_status": "unknown",
+                    "decision_grade": False,
+                    "caps": ["PIT_SNAPSHOT_PROVENANCE_UNVERIFIED"],
+                    "artifact_refs": [
+                        {
+                            "relative_path": "decision-evidence-v3/snapshot.json",
+                            "artifact_hash": digest,
+                            "media_type": "application/vnd.vibe.decision-evidence-v3+json",
+                        }
+                    ],
+                },
+            "QualityDecisionV2Recorded": {
             "decision_id": "quality-v2-1",
             "factor_spec_id": "factor-1",
             "decision_hash": digest,
@@ -1097,6 +1454,37 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
         "retriever-v5-"
         + retriever_v5["decision_hash"].removeprefix("sha256:")[:20]
     )
+    retriever_v6 = samples["RetrieverDecisionV6Recorded"]
+    retriever_v6["policy_hash"] = canonical_json_hash(retriever_v6["policy_config"])
+    retriever_v6["decision_hash"] = canonical_json_hash(
+        {
+            "schema_version": "retriever_action_source_bound_decision.v6",
+            **{
+                key: value
+                for key, value in retriever_v6.items()
+                if key not in {"decision_id", "decision_hash", "artifact_refs"}
+            },
+        }
+    )
+    retriever_v6["decision_id"] = (
+        "retriever-v6-"
+        + retriever_v6["decision_hash"].removeprefix("sha256:")[:20]
+    )
+    retriever_v7 = samples["RetrieverDecisionV7Recorded"]
+    retriever_v7["policy_hash"] = canonical_json_hash(retriever_v7["policy_config"])
+    retriever_v7["decision_hash"] = canonical_json_hash(
+        {
+            "schema_version": "retriever_action_schedule_bound_decision.v7",
+            **{
+                key: value for key, value in retriever_v7.items()
+                if key not in {"decision_id", "decision_hash", "artifact_refs"}
+            },
+        }
+    )
+    retriever_v7["decision_id"] = (
+        "retriever-v7-"
+        + retriever_v7["decision_hash"].removeprefix("sha256:")[:20]
+    )
 
     for event_type, spec in PAYLOAD_SPECS.items():
         validated = validate_and_redact_payload(event_type, spec.version, samples[event_type])
@@ -1293,6 +1681,91 @@ def test_terminal_requires_start_and_infrastructure_cannot_promote(tmp_path: Pat
         store.append_event(
             _draft(event_type="TrialTerminated", entity_id="trial-orphan", payload=payload)
         )
+
+
+def test_trial_lifecycle_cannot_cross_run_boundaries(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    trial_id = "trial-run-boundary"
+    started = _draft(
+        event_type="TrialStarted",
+        entity_id=trial_id,
+        payload={
+            "trial_id": trial_id,
+            "candidate_id": "candidate-run-boundary",
+            "data_scope": "train_valid",
+            "objective": "rank_ic",
+            "started_at": "2025-01-01T00:00:00Z",
+        },
+    )
+    store.append_event(started)
+
+    with pytest.raises(EventTransitionError, match="same run"):
+        store.append_event(
+            EventDraft(
+                event_type="GenerationFailureRecorded",
+                entity_id=trial_id,
+                run_id="run-2",
+                payload_schema_version="generation_failure_recorded.v1",
+                payload={
+                    "trial_id": trial_id,
+                    "failure_code": "WORKER_TIMEOUT",
+                    "failure_kind": "timeout",
+                    "message": "bounded fixture timeout",
+                    "occurred_at": "2025-01-01T00:00:30Z",
+                },
+            )
+        )
+    with pytest.raises(EventTransitionError, match="share one run"):
+        store.append_event(
+            EventDraft(
+                event_type="EvaluationRecorded",
+                entity_id="evaluation-run-boundary",
+                run_id="run-2",
+                payload_schema_version="evaluation_recorded.v1",
+                payload={
+                    "evaluation_id": "evaluation-run-boundary",
+                    "trial_id": trial_id,
+                    "factor_spec_id": "factor-run-boundary",
+                    "data_scope": "train_valid",
+                    "scorecard_hash": "sha256:" + "c" * 64,
+                    "artifact_refs": [],
+                    "metadata": {},
+                },
+            )
+        )
+    with pytest.raises(EventTransitionError, match="share one run"):
+        store.append_event(
+            EventDraft(
+                event_type="TrialTerminated",
+                entity_id=trial_id,
+                run_id="run-2",
+                payload_schema_version="trial_terminated.v1",
+                payload={
+                    "trial_id": trial_id,
+                    "status": "skip",
+                    "reason_codes": ["NO_EVALUATOR"],
+                    "decision": "none",
+                    "evaluation_event_hash": None,
+                    "terminated_at": "2025-01-01T00:01:00Z",
+                },
+            )
+        )
+    terminal = store.append_event(
+        _draft(
+            event_type="TrialTerminated",
+            entity_id=trial_id,
+            payload={
+                "trial_id": trial_id,
+                "status": "skip",
+                "reason_codes": ["NO_EVALUATOR"],
+                "decision": "none",
+                "evaluation_event_hash": None,
+                "terminated_at": "2025-01-01T00:01:00Z",
+            },
+        )
+    )
+    assert terminal.run_id == started.run_id
+    assert store.verify_chain()
 
 
 def test_out_of_order_cross_event_references_are_rejected(tmp_path: Path) -> None:

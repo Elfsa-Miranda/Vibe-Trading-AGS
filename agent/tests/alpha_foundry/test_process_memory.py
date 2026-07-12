@@ -13,6 +13,7 @@ from src.alpha_foundry.memory import (
 )
 from src.alpha_foundry.memory.model import ProcessMemoryObservation
 from src.alpha_quality.flags import ResolvedAGSFlags
+from src.alpha_quality.scope.views import DiscoveryEvidenceProjector
 from src.research_ledger.events import (
     EventDraft, EventTransitionError, EventValidationError, ResearchEventStore,
 )
@@ -170,8 +171,9 @@ def test_replay_and_factual_discovery_view_are_terminal_and_deterministic(tmp_pa
     events = store.query_events()
     first = EpisodicProjector().project(events)
     second = EpisodicProjector().project(tuple(events))
-    dag = FactorDAGProjector(flags=_flags()).project(events)
-    factual = FactualMemoryView.from_terminal_discovery_events(dag, events)
+    verified = DiscoveryEvidenceProjector(flags=_flags()).verified_events(store)
+    dag = FactorDAGProjector(flags=_flags()).project(verified)
+    factual = FactualMemoryView.from_terminal_discovery_events(dag, verified)
 
     assert first == second
     assert first.projection_hash == second.projection_hash

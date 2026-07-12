@@ -8,10 +8,17 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from src.alpha_foundry.memory.factual import FactualMemoryView
+from src.alpha_foundry.dag.projector import FactorDAGProjector
+from src.alpha_foundry.dag.model import FactorDAGProjection
+from src.alpha_foundry.memory.factual import (
+    FACTUAL_PROJECTOR_POLICY_HASH,
+    FactualMemoryView,
+)
 from src.alpha_foundry.memory.model import (
     EpisodicProjection, is_authorized_episodic_projection,
 )
+from src.alpha_foundry.memory.projection import EpisodicProjector
+from src.alpha_quality.flags import ResolvedAGSFlags
 from src.research_ledger.events.model import VerifiedEventSubsequence
 from src.research_ledger.hash_utils import canonical_json_hash
 
@@ -41,9 +48,14 @@ class DiscoveryEvidenceView:
     full_chain_head: str = field(compare=False)
     full_replay_hash: str = field(compare=False)
     eligible_subsequence_hash: str = field(compare=False)
+    dag_projector_policy_hash: str = field(compare=False)
+    factual_projector_policy_hash: str = field(compare=False)
+    episodic_projector_policy_hash: str = field(compare=False)
+    projection_bundle_hash: str
     _verified_subsequence: VerifiedEventSubsequence = field(
         repr=False, compare=False
     )
+    _flags: ResolvedAGSFlags = field(repr=False, compare=False)
 
     def __init__(
         self,
@@ -52,6 +64,7 @@ class DiscoveryEvidenceView:
         episodic: EpisodicProjection,
         data_snapshot_hash: str,
         verified_subsequence: VerifiedEventSubsequence,
+        flags: ResolvedAGSFlags,
         _token: object,
     ) -> None:
         if _token is not _DISCOVERY_TOKEN:
@@ -77,6 +90,20 @@ class DiscoveryEvidenceView:
             raise ValueError("discovery factual evidence is not a subset of the DAG")
         if not _HASH_RE.fullmatch(data_snapshot_hash):
             raise ValueError("discovery data snapshot must be a content hash")
+        expected_dag, expected_factual, expected_episodic, policies = (
+            _rebuild_projection_components(flags, verified_subsequence)
+        )
+        if dag_watermark != expected_dag.source_watermark_event_hash:
+            raise ValueError("discovery DAG watermark differs from exact replay")
+        if factual != expected_factual or episodic != expected_episodic:
+            raise ValueError("discovery projection components differ from exact replay")
+        bundle_hash = _projection_bundle_hash(
+            factual=factual,
+            episodic=episodic,
+            data_snapshot_hash=data_snapshot_hash,
+            verified_subsequence=verified_subsequence,
+            policies=policies,
+        )
         object.__setattr__(self, "factual", factual)
         object.__setattr__(self, "episodic", episodic)
         object.__setattr__(self, "source_watermark", dag_watermark)
@@ -87,35 +114,125 @@ class DiscoveryEvidenceView:
         object.__setattr__(
             self, "eligible_subsequence_hash", verified_subsequence.subsequence_hash
         )
+        object.__setattr__(self, "dag_projector_policy_hash", policies[0])
+        object.__setattr__(self, "factual_projector_policy_hash", policies[1])
+        object.__setattr__(self, "episodic_projector_policy_hash", policies[2])
+        object.__setattr__(self, "projection_bundle_hash", bundle_hash)
         object.__setattr__(self, "_verified_subsequence", verified_subsequence)
+        object.__setattr__(self, "_flags", flags)
 
     @classmethod
-    def from_verified_subsequence(
+    def _from_verified_subsequence(
         cls,
         *,
         factual: FactualMemoryView,
         episodic: EpisodicProjection,
         data_snapshot_hash: str,
         verified_subsequence: VerifiedEventSubsequence,
+        flags: ResolvedAGSFlags,
     ) -> "DiscoveryEvidenceView":
         return cls(
             factual=factual,
             episodic=episodic,
             data_snapshot_hash=data_snapshot_hash,
             verified_subsequence=verified_subsequence,
+            flags=flags,
             _token=_DISCOVERY_TOKEN,
         )
 
-    def with_episodic_projection(
-        self,
-        episodic: EpisodicProjection,
-    ) -> "DiscoveryEvidenceView":
-        return type(self).from_verified_subsequence(
-            factual=self.factual,
+    def verify_integrity(self) -> None:
+        if not self._verified_subsequence.is_authorized():
+            raise ValueError("discovery event subsequence authority is invalid")
+        dag, factual, episodic, policies = _rebuild_projection_components(
+            self._flags,
+            self._verified_subsequence,
+        )
+        if self.factual.dag != dag or self.factual != factual or self.episodic != episodic:
+            raise ValueError("discovery projection content differs from exact replay")
+        if (
+            self.dag_projector_policy_hash,
+            self.factual_projector_policy_hash,
+            self.episodic_projector_policy_hash,
+        ) != policies:
+            raise ValueError("discovery projector policy binding is invalid")
+        expected = _projection_bundle_hash(
+            factual=factual,
             episodic=episodic,
             data_snapshot_hash=self.data_snapshot_hash,
             verified_subsequence=self._verified_subsequence,
+            policies=policies,
         )
+        if expected != self.projection_bundle_hash:
+            raise ValueError("discovery projection bundle hash is invalid")
+
+
+def _rebuild_projection_components(
+    flags: ResolvedAGSFlags,
+    verified_subsequence: VerifiedEventSubsequence,
+) -> tuple[
+    FactorDAGProjection,
+    FactualMemoryView,
+    EpisodicProjection,
+    tuple[str, str, str],
+]:
+    if not isinstance(flags, ResolvedAGSFlags):
+        raise TypeError("discovery projection requires frozen AGS flags")
+    dag_projector = FactorDAGProjector(flags=flags)
+    episodic_projector = EpisodicProjector()
+    dag = dag_projector.project(verified_subsequence)
+    factual = FactualMemoryView.from_terminal_discovery_events(
+        dag,
+        verified_subsequence,
+    )
+    episodic = episodic_projector.project(verified_subsequence)
+    if not (
+        dag.source_subsequence_hash
+        == factual.source_subsequence_hash
+        == episodic.source_subsequence_hash
+        == verified_subsequence.subsequence_hash
+    ):
+        raise ValueError("discovery components do not share one exact subsequence")
+    if not (
+        dag.projector_policy_hash == dag_projector.policy_hash
+        and factual.projector_policy_hash == FACTUAL_PROJECTOR_POLICY_HASH
+        and episodic.projector_policy_hash == episodic_projector.policy_hash
+    ):
+        raise ValueError("discovery component projector policy binding is invalid")
+    return (
+        dag,
+        factual,
+        episodic,
+        (
+            dag_projector.policy_hash,
+            FACTUAL_PROJECTOR_POLICY_HASH,
+            episodic_projector.policy_hash,
+        ),
+    )
+
+
+def _projection_bundle_hash(
+    *,
+    factual: FactualMemoryView,
+    episodic: EpisodicProjection,
+    data_snapshot_hash: str,
+    verified_subsequence: VerifiedEventSubsequence,
+    policies: tuple[str, str, str],
+) -> str:
+    return canonical_json_hash(
+        {
+            "schema_version": "discovery_projection_bundle.v1",
+            "source_subsequence_hash": verified_subsequence.subsequence_hash,
+            "full_chain_head": verified_subsequence.full_chain_head,
+            "full_replay_hash": verified_subsequence.full_replay_hash,
+            "data_snapshot_hash": data_snapshot_hash,
+            "dag_projection_hash": factual.dag.projection_hash,
+            "factual_content_hash": factual.content_hash,
+            "episodic_projection_hash": episodic.projection_hash,
+            "dag_projector_policy_hash": policies[0],
+            "factual_projector_policy_hash": policies[1],
+            "episodic_projector_policy_hash": policies[2],
+        }
+    )
 
 
 @dataclass(frozen=True)

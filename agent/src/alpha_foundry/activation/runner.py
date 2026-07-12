@@ -18,6 +18,9 @@ if TYPE_CHECKING:
         ActivationResourceEvidenceV1,
         MeasuredActivationPairV1,
     )
+    from src.alpha_foundry.activation.resource_v2 import (
+        MeasuredScheduledActivationPairV2,
+    )
 
 
 _REGISTRATION_AUTHORITY = object()
@@ -194,6 +197,145 @@ class PairedActivationRunner:
             self.artifact_store.put("run", manifest.to_dict())
             manifests.append(manifest)
         return manifests[0], manifests[1]
+
+    def run_scheduled_pair(
+        self,
+        registered: RegisteredActivationPlan,
+        *,
+        execution_claim: object,
+        executor: ArmExecutor,
+    ) -> tuple[ActivationRunManifest, ActivationRunManifest]:
+        """Execute a pre-outcome schedule; return control/treatment canonically."""
+        from src.alpha_foundry.activation.pair_schedule_v1 import (
+            ClaimedActivationPairExecutionV1,
+            consume_claimed_pair_execution,
+        )
+
+        if (
+            not isinstance(registered, RegisteredActivationPlan)
+            or registered._authority is not _REGISTRATION_AUTHORITY
+            or not isinstance(execution_claim, ClaimedActivationPairExecutionV1)
+        ):
+            raise TypeError("counterbalanced execution requires registered authority")
+        recorded_schedule = consume_claimed_pair_execution(execution_claim)
+        plan = registered.plan
+        schedule = recorded_schedule.schedule
+        try:
+            persisted_schedule = self.artifact_store.get(
+                "pair_schedule", schedule.schedule_hash
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "pair execution schedule is absent from the runner artifact root"
+            ) from exc
+        if (
+            persisted_schedule != schedule.to_dict()
+            or plan.plan_hash != schedule.plan_hash
+            or plan.phase != "confirmatory"
+            or schedule.run_group_id not in plan.design.run_group_ids
+            or plan.design.seeds[
+                plan.design.run_group_ids.index(schedule.run_group_id)
+            ] != schedule.seed
+            or plan.design.candidate_budget != schedule.candidate_budget
+            or plan.design.compute_budget != schedule.compute_budget
+            or plan.design.worker_limit != schedule.worker_limit
+            or plan.design.timeout_seconds != schedule.timeout_seconds
+        ):
+            raise ValueError("pair execution schedule differs from registered plan")
+        scope = TrainValidActivationScope(
+            train_snapshot_hash=plan.provenance.train_snapshot_hash,
+            valid_snapshot_hash=plan.provenance.valid_snapshot_hash,
+            discovery_chain_head=plan.provenance.eligible_event_chain_head,
+            _authority=_SCOPE_AUTHORITY,
+        )
+        by_arm: dict[str, ActivationRunManifest] = {}
+        for arm in schedule.arm_order:
+            policy_hash = (
+                plan.provenance.control_policy_hash
+                if arm == "control"
+                else plan.provenance.treatment_policy_hash
+            )
+            request = ActivationArmRequest(
+                plan_hash=plan.plan_hash,
+                pair_id=schedule.pair_id,
+                run_group_id=schedule.run_group_id,
+                execution_run_id=activation_arm_execution_run_id(
+                    plan_hash=plan.plan_hash,
+                    run_group_id=schedule.run_group_id,
+                    arm=arm,
+                ),
+                arm=arm,
+                seed=schedule.seed,
+                mechanism_family=schedule.mechanism_family,
+                dag_region=schedule.dag_region,
+                policy_hash=policy_hash,
+                rng_namespace=(
+                    f"{plan.plan_hash}:{schedule.run_group_id}:{arm}:rng"
+                ),
+                cache_namespace=(
+                    f"{plan.plan_hash}:{schedule.run_group_id}:{arm}:cache"
+                ),
+                candidate_budget=schedule.candidate_budget,
+                compute_budget=schedule.compute_budget,
+            )
+            manifest = executor(request, scope)
+            self._validate_response(request, manifest)
+            self.artifact_store.put("run", manifest.to_dict())
+            by_arm[arm] = manifest
+        return by_arm["control"], by_arm["treatment"]
+
+    def run_scheduled_pair_measured(
+        self,
+        registered: RegisteredActivationPlan,
+        *,
+        execution_claim: object,
+        executor: ArmExecutor,
+    ) -> "MeasuredScheduledActivationPairV2":
+        """Measure the scheduled boundary without claiming unavailable isolation."""
+        from src.alpha_foundry.activation.pair_schedule_v1 import (
+            ClaimedActivationPairExecutionV1,
+        )
+        from src.alpha_foundry.activation.resource_v2 import (
+            ActivationResourceEvidenceV2,
+            MeasuredScheduledActivationPairV2,
+            _mint_resource_evidence_v2,
+        )
+
+        if not isinstance(execution_claim, ClaimedActivationPairExecutionV1):
+            raise TypeError("scheduled resource measurement requires an execution claim")
+        resources: dict[str, ActivationResourceEvidenceV2] = {}
+
+        def measured_executor(
+            request: ActivationArmRequest,
+            scope: TrainValidActivationScope,
+        ) -> ActivationRunManifest:
+            wall_start = time.perf_counter()
+            cpu_start = time.process_time()
+            manifest = executor(request, scope)
+            cpu_seconds = time.process_time() - cpu_start
+            wall_seconds = time.perf_counter() - wall_start
+            resources[request.arm] = _mint_resource_evidence_v2(
+                claim=execution_claim,
+                request=request,
+                manifest=manifest,
+                wall_seconds=wall_seconds,
+                cpu_seconds=cpu_seconds,
+            )
+            return manifest
+
+        control, treatment = self.run_scheduled_pair(
+            registered,
+            execution_claim=execution_claim,
+            executor=measured_executor,
+        )
+        for evidence in resources.values():
+            self.artifact_store.put("resource", evidence.to_dict())
+        return MeasuredScheduledActivationPairV2(
+            control=control,
+            treatment=treatment,
+            control_resource=resources["control"],
+            treatment_resource=resources["treatment"],
+        )
 
     def run_pair_measured(
         self,
