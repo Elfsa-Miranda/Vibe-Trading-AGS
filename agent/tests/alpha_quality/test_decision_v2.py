@@ -16,6 +16,10 @@ from src.alpha_quality.decision_v2 import (
     QualityDecisionV2Service,
 )
 from src.alpha_quality.flags import ResolvedAGSFlags
+from src.alpha_quality.decision_v2.authority_gate_v1 import (
+    LEGACY_BOOLEAN_POLICY_CAP,
+    QualityDecisionAuthorityGateV1,
+)
 from src.research_ledger.events import EventDraft, ResearchEventStore
 from src.research_ledger.hash_utils import canonical_json_hash
 
@@ -168,6 +172,16 @@ def test_soft_score_cannot_cross_hard_cap(tmp_path: Path) -> None:
     assert result.within_tier_score <= 1.0
     assert result.decision == "research_only"
     assert "PIT_SNAPSHOT_MISSING" in result.caps
+
+
+def test_legacy_v3_boolean_policy_path_is_capped(tmp_path: Path) -> None:
+    repository = DecisionEvidenceRepository(tmp_path / "legacy-evidence")
+    result = QualityDecisionAuthorityGateV1(_runner(repository)).run(
+        _refs(repository)
+    )
+
+    assert result.decision == "research_only"
+    assert LEGACY_BOOLEAN_POLICY_CAP in result.caps
 
 
 def test_caller_cannot_supply_decision_failures_caps_or_total_score() -> None:

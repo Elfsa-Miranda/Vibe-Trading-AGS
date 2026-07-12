@@ -785,6 +785,97 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "FactorOutputRecordedV3": PayloadSpec(
+        "factor_output_recorded.v3",
+        {
+            "factor_output_id": _string,
+            "factor_output_hash": _hash,
+            "factor_spec_id": _string,
+            "resolved_contract_hash": _hash,
+            "contract_event_hash": _hash,
+            "pit_snapshot_hash": _hash,
+            "pit_snapshot_event_hash": _hash,
+            "evaluation_policy_event_hash": _hash,
+            "factor_table_semantic_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ObservedPanelPredictiveEvidenceRecorded": PayloadSpec(
+        "observed_panel_predictive_recorded.v1",
+        {
+            "evidence_id": _string,
+            "evidence_hash": _hash,
+            "evidence_type": _enum("observed_panel"),
+            "factor_spec_id": _string,
+            "factor_output_hash": _hash,
+            "factor_output_event_hash": _hash,
+            "resolved_contract_hash": _hash,
+            "contract_event_hash": _hash,
+            "pit_snapshot_hash": _hash,
+            "pit_snapshot_event_hash": _hash,
+            "availability": _enum("available", "partial", "unavailable", "invalid"),
+            "claim_scope": _enum("frozen_observed_panel"),
+            "evidence_grade": _enum("descriptive", "exploratory", "confirmatory"),
+            "promotion_effect": _enum("none"),
+            "caps": _string_list,
+            "warnings": _string_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "PITPredictiveEvidenceRecorded": PayloadSpec(
+        "pit_predictive_recorded.v1",
+        {
+            "evidence_id": _string,
+            "evidence_hash": _hash,
+            "evidence_type": _enum("pit_scoped"),
+            "factor_spec_id": _string,
+            "factor_output_hash": _hash,
+            "factor_output_event_hash": _hash,
+            "resolved_contract_hash": _hash,
+            "contract_event_hash": _hash,
+            "pit_snapshot_hash": _hash,
+            "pit_snapshot_event_hash": _hash,
+            "availability": _enum("available", "partial", "unavailable", "invalid"),
+            "claim_scope": _enum("pit_daily_membership_train_valid"),
+            "evidence_grade": _enum("descriptive", "exploratory", "confirmatory"),
+            "promotion_effect": _enum("blocked_pending_execution"),
+            "caps": _string_list,
+            "warnings": _string_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ScorecardDecisionEvidenceV4Recorded": PayloadSpec(
+        "scorecard_decision_evidence_recorded.v4",
+        {
+            "evidence_id": _string,
+            "scorecard_evidence_hash": _hash,
+            "factor_spec_id": _string,
+            "resolved_contract_hash": _hash,
+            "factor_output_hash": _hash,
+            "observed_evidence_hash": _hash,
+            "pit_evidence_hash": _hash,
+            "factor_output_event_hash": _hash,
+            "observed_event_hash": _hash,
+            "pit_event_hash": _hash,
+            "pit_predictive_authority": _enum("available", "unavailable", "contaminated"),
+            "candidate_promotion_effect": _enum("blocked_pending_execution"),
+            "caps": _string_list,
+            "warnings": _string_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "RetrieverFeatureSourceRecorded": PayloadSpec(
         "retriever_feature_source_recorded.v1",
         {
@@ -2339,6 +2430,40 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("snapshot evidence caps must be canonical")
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("snapshot evidence requires one artifact")
+    if event_type == "FactorOutputRecordedV3":
+        cited = {
+            payload["contract_event_hash"],
+            payload["pit_snapshot_event_hash"],
+            payload["evaluation_policy_event_hash"],
+        }
+        if not cited.issubset(set(payload["source_event_hashes"])):
+            raise EventValidationError("factor output sources omit cited events")
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("factor output requires one manifest artifact")
+    if event_type in {
+        "ObservedPanelPredictiveEvidenceRecorded", "PITPredictiveEvidenceRecorded"
+    }:
+        cited = {
+            payload["factor_output_event_hash"], payload["contract_event_hash"],
+            payload["pit_snapshot_event_hash"],
+        }
+        if not cited.issubset(set(payload["source_event_hashes"])):
+            raise EventValidationError("predictive evidence sources omit cited events")
+        if payload["caps"] != sorted(set(payload["caps"])) or payload["warnings"] != sorted(set(payload["warnings"])):
+            raise EventValidationError("predictive diagnostics must be canonical")
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("predictive evidence requires one artifact")
+    if event_type == "ScorecardDecisionEvidenceV4Recorded":
+        cited = {
+            payload["factor_output_event_hash"], payload["observed_event_hash"],
+            payload["pit_event_hash"],
+        }
+        if not cited.issubset(set(payload["source_event_hashes"])):
+            raise EventValidationError("scorecard v4 sources omit cited events")
+        if payload["caps"] != sorted(set(payload["caps"])) or payload["warnings"] != sorted(set(payload["warnings"])):
+            raise EventValidationError("scorecard v4 diagnostics must be canonical")
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("scorecard v4 requires one artifact")
     if event_type == "QualityDecisionV2Recorded":
         decision = payload["decision"]
         expected_tier = {

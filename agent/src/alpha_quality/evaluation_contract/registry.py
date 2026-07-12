@@ -13,6 +13,7 @@ from src.alpha_quality.evaluation_contract.model import (
     EvaluationPolicyReferencesV1,
     PromotionLevel,
 )
+from src.alpha_foundry.dsl.executable import DEFAULT_EXECUTABLE_GRAMMAR
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
@@ -52,8 +53,15 @@ DEFAULT_POLICY_REFERENCES = EvaluationPolicyReferencesV1(
     executable_grammar_snapshot_hash=_policy_hash("grammar", "default_grammar.v1"),
     code_manifest_hash=_policy_hash("code", "repository_source_manifest.v1"),
 )
+PIT_SCORECARD_POLICY_REFERENCES = EvaluationPolicyReferencesV1(
+    **{
+        **DEFAULT_POLICY_REFERENCES.to_dict(),
+        "executable_grammar_snapshot_hash": DEFAULT_EXECUTABLE_GRAMMAR.snapshot_hash,
+    }
+)
 REGISTERED_POLICY_REFERENCE_BUNDLES = (
     DEFAULT_POLICY_REFERENCES,
+    PIT_SCORECARD_POLICY_REFERENCES,
 )
 POLICY_REFERENCE_REGISTRY_HASH = canonical_json_hash(
     {
