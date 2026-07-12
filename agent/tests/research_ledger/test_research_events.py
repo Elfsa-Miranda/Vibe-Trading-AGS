@@ -180,6 +180,7 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "RetrieverDecisionRecorded",
         "RetrieverActionTemplateFrozen",
         "TrainValidDataSnapshotFrozen",
+        "EvaluationPolicyRegistered",
         "RetrieverFeatureSourceRecorded",
         "RetrieverDecisionV2Recorded",
         "RetrieverDecisionV3Recorded",
@@ -393,7 +394,7 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                     "expected_motif": "Wrap:rank",
                 "identity_action": False,
             },
-        "TrainValidDataSnapshotFrozen": {
+            "TrainValidDataSnapshotFrozen": {
                 "snapshot_id": "train-valid-snapshot-v1-" + "d" * 24,
                 "snapshot_hash": digest,
                 "data_scope": "train_valid",
@@ -511,6 +512,23 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                     ],
                     "shadow_only": True,
                     "artifact_refs": [],
+                },
+            "EvaluationPolicyRegistered": {
+                    "registration_id": "evaluation-policy-registration-v1-fixture",
+                    "bundle_hash": digest,
+                    "producer_schema_version": "evaluation_policy_registry_service.v1",
+                    "producer_policy_hash": digest,
+                    "calendar_hash": digest,
+                    "evaluation_time_policy_hash": digest,
+                    "split_plan_hash": digest,
+                    "preregistration_watermark": None,
+                    "artifact_refs": [
+                        {
+                            "relative_path": "registered-evaluation-policy-v1/fixture.json",
+                            "artifact_hash": digest,
+                            "media_type": "application/vnd.vibe.registered-evaluation-policy-v1+json",
+                        }
+                    ],
                 },
         "RetrieverDecisionV4Recorded": {
                     "decision_id": "retriever-v4-1",
