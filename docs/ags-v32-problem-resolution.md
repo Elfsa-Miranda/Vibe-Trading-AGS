@@ -32,7 +32,7 @@ Status meanings:
 | Item | Planned milestone | Status | Current authoritative evidence |
 |---|---|---|---|
 | P0-01 | M1 split/timing | partial | fixture-only train/valid capability enforces outcome-contained split dates and rejects test/gap/intraday axes; production evaluator migration remains open |
-| P0-02 | M1 evidence/Decision | audit_reported | none |
+| P0-02 | M1 evidence/Decision | partial | source-bound Decision v3 now caps every caller-constructable v2 evidence bundle at research_only; producer-scoped v3 evidence mints remain open |
 | P0-03 | M1 production evaluator | audit_reported | none |
 | P0-04 | M1/M2 PIT snapshot | audit_reported | none |
 | P0-05 | M2 A-share adapter | audit_reported | none |
@@ -289,3 +289,35 @@ Acceptance evidence:
 This closes P0-16's projection-authority defect only. It does not establish
 producer-bound Decision evidence, PIT data authority, Retriever efficacy or an
 Activation outcome; those gates remain closed.
+
+## M1 legacy Decision-evidence authority gate
+
+Branch `codex/ags-v32-m1-producer-bound-decision-evidence` was created fresh
+from accepted main `7ba2d5525c8603e8509bd5d5732dc80a79b2c3cb`.
+
+`QualityDecisionV2Runner` remains unchanged as the feature-off/audit
+compatibility baseline. The source-bound `QualityDecisionV3Service` and the
+event store's append-time deterministic rebuild now both pass that legacy
+result through `QualityDecisionAuthorityGateV1`. Because every embedded
+`DecisionEvidenceRecord.v2` can be created by a caller, any non-reject result
+is capped at `research_only` with
+`LEGACY_CALLER_CONSTRUCTABLE_EVIDENCE` and
+`PRODUCER_BOUND_DECISION_EVIDENCE_REQUIRED`. Hard rejection remains fail-safe.
+
+An all-pass, self-authored evidence bundle can therefore no longer mint a
+`candidate_zoo` `QualityDecisionV3Recorded` event. Rehashing or changing the
+event does not bypass the cap because append-time validation reopens the input
+bundle and reruns the same authority gate.
+
+This is a fail-closed prerequisite, not full P0-02 closure. No v3
+producer-scoped scorecard, execution, snapshot, complement or ledger evidence
+mint exists yet, so no path can legitimately exceed `research_only`.
+
+Current verification:
+
+- Decision v2 compatibility plus source-bound authority gate: `30 passed`;
+- full Alpha Quality: `202 passed in 29.21s`;
+- full Alpha Foundry: `273 passed in 55.06s`;
+- Research Ledger: `111 passed in 22.92s`;
+- contracts, security and acceptance: `89 passed in 11.08s`, with 21 existing
+  deprecation warnings.
