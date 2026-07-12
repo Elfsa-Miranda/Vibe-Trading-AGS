@@ -103,6 +103,10 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
     ),
+    "ExecutionEvidenceRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
     "ProductionEvaluationNodeRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
@@ -240,6 +244,7 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "ObservedPanelPredictiveEvidenceRecorded",
         "PITPredictiveEvidenceRecorded",
         "ScorecardDecisionEvidenceV4Recorded",
+        "ExecutionEvidenceRecorded",
         "ProductionEvaluationNodeRecorded",
         "TrialTerminalDossierRecorded",
         "ReportMaterializationFailed",
@@ -451,6 +456,7 @@ class ResearchEventStore:
         self._validate_external_pit_adapter_registration(draft.event_type, payload)
         self._validate_external_pit_snapshot(draft.event_type, payload)
         self._validate_external_predictive_v4(draft.event_type, payload)
+        self._validate_external_execution_evidence(draft.event_type, payload)
         self._validate_external_production_evaluator(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
@@ -688,6 +694,7 @@ class ResearchEventStore:
             "ObservedPanelPredictiveEvidenceRecorded": "evidence_id",
             "PITPredictiveEvidenceRecorded": "evidence_id",
             "ScorecardDecisionEvidenceV4Recorded": "evidence_id",
+            "ExecutionEvidenceRecorded": "evidence_id",
             "ProductionEvaluationNodeRecorded": "node_id",
             "TrialTerminalDossierRecorded": "dossier_id",
             "ReportMaterializationFailed": "failure_id",
@@ -2353,6 +2360,70 @@ class ResearchEventStore:
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
             raise EventValidationError(
                 "production evaluator artifact or source replay is invalid"
+            ) from exc
+
+    def _validate_external_execution_evidence(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "ExecutionEvidenceRecorded":
+            return
+        try:
+            from src.alpha_quality.execution_evidence_v1 import (
+                EXECUTION_ARTIFACT_MEDIA_TYPE,
+                EXECUTION_DECISION_MEDIA_TYPE,
+                ExecutionEvidenceArtifactStoreV1,
+                ExecutionEvidenceServiceV1,
+            )
+
+            artifact_refs = [
+                item for item in payload["artifact_refs"]
+                if item["media_type"] == EXECUTION_ARTIFACT_MEDIA_TYPE
+            ]
+            decision_refs = [
+                item for item in payload["artifact_refs"]
+                if item["media_type"] == EXECUTION_DECISION_MEDIA_TYPE
+            ]
+            if len(artifact_refs) != 1 or len(decision_refs) != 1:
+                raise ValueError("execution evidence artifacts are ambiguous")
+            artifact_ref = artifact_refs[0]
+            decision_ref = decision_refs[0]
+            artifacts = ExecutionEvidenceArtifactStoreV1(self.artifact_root)
+            artifact = artifacts.read_artifact(
+                str(artifact_ref["relative_path"]),
+                expected_hash=str(payload["execution_artifact_hash"]),
+                expected_blob_hash=str(artifact_ref["artifact_hash"]),
+            )
+            decision = artifacts.read_decision(
+                str(decision_ref["relative_path"]),
+                expected_hash=str(payload["execution_decision_evidence_hash"]),
+                expected_blob_hash=str(decision_ref["artifact_hash"]),
+            )
+            rebuilt_artifact, rebuilt_decision, _ = ExecutionEvidenceServiceV1.rebuild(
+                self,
+                run_id=artifact.run_id,
+                factor_output_event_hash=artifact.factor_output_event_hash,
+                observed_predictive_event_hash=str(
+                    payload["observed_predictive_event_hash"]
+                ),
+                persist_tables=True,
+            )
+            expected = ExecutionEvidenceServiceV1.event_payload(
+                rebuilt_artifact,
+                rebuilt_decision,
+                artifact_ref,
+                decision_ref,
+            )
+            if (
+                rebuilt_artifact != artifact
+                or rebuilt_decision != decision
+                or dict(payload) != expected
+            ):
+                raise ValueError("execution evidence differs from source replay")
+        except (KeyError, StopIteration, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "execution evidence artifact or source replay is invalid"
             ) from exc
 
     def _validate_external_quality_decision_evidence(
@@ -4198,6 +4269,57 @@ class ResearchEventStore:
                 )
             ):
                 raise EventTransitionError("scorecard v4 source binding differs")
+            return
+        if event_type == "ExecutionEvidenceRecorded":
+            factor = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'FactorOutputRecordedV3' AND event_hash = ?
+                """,
+                (payload["factor_output_event_hash"],),
+            ).fetchone()
+            observed = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'ObservedPanelPredictiveEvidenceRecorded'
+                  AND event_hash = ?
+                """,
+                (payload["observed_predictive_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ExecutionEvidenceRecorded'
+                  AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?
+                """,
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            execution_source_rows = [
+                conn.execute(
+                    "SELECT 1 FROM research_events WHERE event_hash = ?",
+                    (event_hash,),
+                ).fetchone()
+                for event_hash in payload["source_event_hashes"]
+            ]
+            if (
+                factor is None
+                or observed is None
+                or prior is not None
+                or str(factor["run_id"]) != draft.run_id
+                or str(observed["run_id"]) != draft.run_id
+                or any(row is None for row in execution_source_rows)
+            ):
+                raise EventTransitionError("execution evidence source identity differs")
+            factor_payload = json.loads(str(factor["payload"]))
+            observed_payload = json.loads(str(observed["payload"]))
+            if (
+                factor_payload["factor_spec_id"] != payload["factor_spec_id"]
+                or factor_payload["resolved_contract_hash"]
+                != payload["resolved_contract_hash"]
+                or observed_payload["factor_output_event_hash"]
+                != payload["factor_output_event_hash"]
+            ):
+                raise EventTransitionError("execution evidence source binding differs")
             return
         if event_type == "ProductionEvaluationNodeRecorded":
             trial = conn.execute(
@@ -6587,6 +6709,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_execution_evidence(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_production_evaluator(
                     event.event_type,
                     validated_payload,
@@ -6760,6 +6886,7 @@ class ResearchEventStore:
         pit_predictive_keys: set[tuple[str, str]] = set()
         predictive_events: dict[str, ResearchEventEnvelope] = {}
         scorecard_v4_keys: set[tuple[str, str]] = set()
+        execution_evidence_keys: set[tuple[str, str]] = set()
         production_node_keys: set[tuple[str, str]] = set()
         production_node_events: set[str] = set()
         terminal_dossier_trials: set[str] = set()
@@ -7100,6 +7227,42 @@ class ResearchEventStore:
                 ):
                     return False
                 scorecard_v4_keys.add(scorecard_key)
+            elif event.event_type == "ExecutionEvidenceRecorded":
+                factor = factor_output_events.get(
+                    str(payload["factor_output_event_hash"])
+                )
+                observed = predictive_events.get(
+                    str(payload["observed_predictive_event_hash"])
+                )
+                execution_key = (event.run_id, str(payload["factor_spec_id"]))
+                sources = [
+                    events_by_hash.get(str(item))
+                    for item in payload["source_event_hashes"]
+                ]
+                if (
+                    execution_key in execution_evidence_keys
+                    or factor is None
+                    or observed is None
+                    or observed.event_type
+                    != "ObservedPanelPredictiveEvidenceRecorded"
+                    or factor.run_id != event.run_id
+                    or observed.run_id != event.run_id
+                    or factor.payload["factor_spec_id"]
+                    != payload["factor_spec_id"]
+                    or factor.payload["resolved_contract_hash"]
+                    != payload["resolved_contract_hash"]
+                    or observed.payload["factor_output_event_hash"]
+                    != factor.event_hash
+                    or any(source is None for source in sources)
+                    or any(
+                        source is not None
+                        and event_order[source.event_hash]
+                        >= event_order[event.event_hash]
+                        for source in sources
+                    )
+                ):
+                    return False
+                execution_evidence_keys.add(execution_key)
             elif event.event_type == "ProductionEvaluationNodeRecorded":
                 production_node_key = (
                     str(payload["trial_id"]),

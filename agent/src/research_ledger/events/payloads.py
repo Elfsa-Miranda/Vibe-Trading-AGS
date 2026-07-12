@@ -876,6 +876,30 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ExecutionEvidenceRecorded": PayloadSpec(
+        "execution_evidence_recorded.v1",
+        {
+            "evidence_id": _string,
+            "factor_spec_id": _string,
+            "execution_artifact_hash": _hash,
+            "execution_decision_evidence_hash": _hash,
+            "factor_output_event_hash": _hash,
+            "observed_predictive_event_hash": _hash,
+            "resolved_contract_hash": _hash,
+            "availability": _enum("available", "partial", "unavailable"),
+            "implementability_claim": _enum(
+                "supported", "inconclusive", "unavailable"
+            ),
+            "material_unpriced_exposure": _boolean,
+            "terminal_flat": _boolean,
+            "promotion_effect": _enum("none"),
+            "caps": _string_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "ProductionEvaluationNodeRecorded": PayloadSpec(
         "production_evaluation_node_recorded.v1",
         {
@@ -2535,6 +2559,28 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("scorecard v4 diagnostics must be canonical")
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("scorecard v4 requires one artifact")
+    if event_type == "ExecutionEvidenceRecorded":
+        cited = {
+            payload["factor_output_event_hash"],
+            payload["observed_predictive_event_hash"],
+        }
+        if not cited.issubset(set(payload["source_event_hashes"])):
+            raise EventValidationError("execution evidence sources omit cited events")
+        if payload["caps"] != sorted(set(payload["caps"])):
+            raise EventValidationError("execution evidence caps must be canonical")
+        if len(payload["artifact_refs"]) != 2:
+            raise EventValidationError("execution evidence requires two artifacts")
+        if (
+            payload["implementability_claim"] == "supported"
+            and (
+                payload["availability"] != "available"
+                or payload["material_unpriced_exposure"]
+                or not payload["terminal_flat"]
+            )
+        ):
+            raise EventValidationError(
+                "execution implementability support requires complete evidence"
+            )
     if event_type == "ProductionEvaluationNodeRecorded":
         if payload["run_id"] == "" or payload["trial_id"] == "":
             raise EventValidationError("production node identity is required")
