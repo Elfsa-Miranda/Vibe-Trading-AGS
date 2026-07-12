@@ -1257,6 +1257,26 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "limitations": _string_list,
         },
     ),
+    "DecisionEvidenceV3Recorded": PayloadSpec(
+        "decision_evidence_recorded.v3",
+        {
+            "evidence_id": _string,
+            "evidence_hash": _hash,
+            "evidence_kind": _enum("ledger"),
+            "factor_spec_id": _string,
+            "evidence_run_id": _string,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "source_artifact_hashes": _unique_hash_list,
+            "evidence_payload_hash": _hash,
+            "factor_definition_event_hash": _hash,
+            "evaluation_event_hash": _hash,
+            "terminal_event_hash": _hash,
+            "ledger_watermark_event_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "QualityDecisionV2Recorded": PayloadSpec(
         "quality_decision_recorded.v2",
         {
@@ -2022,6 +2042,21 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("missing complement evidence must cap research_only")
         if not missing_status and payload["cap"] is not None:
             raise EventValidationError("complete complement evidence cannot carry a cap")
+    if event_type == "DecisionEvidenceV3Recorded":
+        cited = {
+            payload["factor_definition_event_hash"],
+            payload["evaluation_event_hash"],
+            payload["terminal_event_hash"],
+            payload["ledger_watermark_event_hash"],
+        }
+        if not cited.issubset(set(payload["source_event_hashes"])):
+            raise EventValidationError(
+                "Decision evidence source hashes omit a cited source event"
+            )
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError(
+                "Decision evidence requires one content-addressed artifact"
+            )
     if event_type == "QualityDecisionV2Recorded":
         decision = payload["decision"]
         expected_tier = {

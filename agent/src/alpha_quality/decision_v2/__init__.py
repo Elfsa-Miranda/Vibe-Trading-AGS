@@ -23,10 +23,19 @@ from src.alpha_quality.decision_v2.source_v3 import (
     QualityDecisionV3Service,
     RecordedQualityDecisionV3,
 )
+from src.alpha_quality.decision_v2.evidence_v3 import (
+    DecisionEvidenceArtifactStoreV3,
+    DecisionEvidenceRecordV3,
+    DecisionLedgerEvidenceServiceV3,
+    RecordedDecisionEvidenceV3,
+)
 
 __all__ = [
     "AlphaQualityDecisionV2",
     "DecisionEvidenceRecord",
+    "DecisionEvidenceRecordV3",
+    "DecisionEvidenceArtifactStoreV3",
+    "DecisionLedgerEvidenceServiceV3",
     "DecisionEvidenceRefs",
     "DecisionEvidenceRepository",
     "DecisionLevel",
@@ -40,4 +49,5 @@ __all__ = [
     "QualityDecisionV3Service",
     "RecordedQualityDecisionV2",
     "RecordedQualityDecisionV3",
+    "RecordedDecisionEvidenceV3",
 ]
