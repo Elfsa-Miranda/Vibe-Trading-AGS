@@ -1316,6 +1316,38 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "SnapshotDecisionEvidenceV3Recorded": PayloadSpec(
+        "snapshot_decision_evidence_recorded.v3",
+        {
+            "evidence_id": _string,
+            "evidence_hash": _hash,
+            "evidence_kind": _enum("snapshot"),
+            "factor_spec_id": _string,
+            "evidence_run_id": _string,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "source_artifact_hashes": _nonempty_hash_list,
+            "evidence_payload_hash": _hash,
+            "factor_definition_event_hash": _hash,
+            "evaluation_policy_event_hash": _hash,
+            "snapshot_event_hash": _hash,
+            "source_watermark_event_hash": _hash,
+            "snapshot_hash": _hash,
+            "panel_content_hash": _hash,
+            "cutoff_status": _enum(
+                "within_registered_valid_end",
+                "contains_dates_after_registered_valid_end",
+            ),
+            "pit_authority_status": _enum(
+                "unverified_legacy_caller_snapshot"
+            ),
+            "survivorship_status": _enum("unknown"),
+            "decision_grade": _boolean,
+            "caps": _nonempty_string_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "QualityDecisionV2Recorded": PayloadSpec(
         "quality_decision_recorded.v2",
         {
@@ -2120,6 +2152,25 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("scorecard evidence caps must be canonical")
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("scorecard evidence requires one artifact")
+    if event_type == "SnapshotDecisionEvidenceV3Recorded":
+        cited = {
+            payload["factor_definition_event_hash"],
+            payload["evaluation_policy_event_hash"],
+            payload["snapshot_event_hash"],
+            payload["source_watermark_event_hash"],
+        }
+        if not cited.issubset(set(payload["source_event_hashes"])):
+            raise EventValidationError(
+                "snapshot evidence source hashes omit cited events"
+            )
+        if payload["decision_grade"] is not False:
+            raise EventValidationError(
+                "legacy snapshot evidence cannot be decision grade"
+            )
+        if payload["caps"] != sorted(set(payload["caps"])):
+            raise EventValidationError("snapshot evidence caps must be canonical")
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("snapshot evidence requires one artifact")
     if event_type == "QualityDecisionV2Recorded":
         decision = payload["decision"]
         expected_tier = {

@@ -171,6 +171,7 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "QualityDecisionRecorded": ("VIBE_TRADING_ADMISSION_GATE",),
     "DecisionEvidenceV3Recorded": ("VIBE_TRADING_DECISION_V2",),
     "ScorecardDecisionEvidenceV3Recorded": ("VIBE_TRADING_DECISION_V2",),
+    "SnapshotDecisionEvidenceV3Recorded": ("VIBE_TRADING_DECISION_V2",),
     "QualityDecisionV2Recorded": ("VIBE_TRADING_DECISION_V2",),
     "QualityDecisionV3Recorded": ("VIBE_TRADING_DECISION_V2",),
     "FinalCandidateFrozen": ("VIBE_TRADING_DECISION_V2",),
@@ -188,6 +189,7 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "DecisionEvidenceV3Recorded",
         "EvaluationPolicyRegistered",
         "ScorecardDecisionEvidenceV3Recorded",
+        "SnapshotDecisionEvidenceV3Recorded",
     }
 )
 
@@ -390,6 +392,7 @@ class ResearchEventStore:
         self._validate_external_decision_evidence_v3(draft.event_type, payload)
         self._validate_external_evaluation_policy(draft.event_type, payload)
         self._validate_external_scorecard_evidence_v3(draft.event_type, payload)
+        self._validate_external_snapshot_evidence_v3(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
         self._validate_external_prearm_flat_schedule(draft.event_type, payload)
@@ -650,6 +653,7 @@ class ResearchEventStore:
             "QualityDecisionRecorded": "decision_id",
             "DecisionEvidenceV3Recorded": "evidence_id",
             "ScorecardDecisionEvidenceV3Recorded": "evidence_id",
+            "SnapshotDecisionEvidenceV3Recorded": "evidence_id",
             "QualityDecisionV2Recorded": "decision_id",
             "QualityDecisionV3Recorded": "decision_id",
             "FinalCandidateFrozen": "freeze_id",
@@ -1697,6 +1701,71 @@ class ResearchEventStore:
         if dict(payload) != expected:
             raise EventValidationError(
                 "scorecard evidence event differs from producer artifact"
+            )
+
+    def _validate_external_snapshot_evidence_v3(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "SnapshotDecisionEvidenceV3Recorded":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.decision-evidence-v3+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError(
+                "snapshot evidence requires one producer artifact"
+            )
+        reference = references[0]
+        try:
+            from src.alpha_quality.decision_v2.evidence_v3 import (
+                DecisionEvidenceArtifactStoreV3,
+            )
+            from src.alpha_quality.decision_v2.snapshot_evidence_v3 import (
+                DecisionSnapshotEvidenceServiceV3,
+            )
+
+            record = DecisionEvidenceArtifactStoreV3(self.artifact_root).read(
+                str(reference["relative_path"]),
+                expected_evidence_hash=str(payload["evidence_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            rebuilt = DecisionSnapshotEvidenceServiceV3.rebuild_record(
+                self,
+                factor_spec_id=record.factor_spec_id,
+                evaluation_policy_event_hash=str(
+                    record.evidence_payload["evaluation_policy_event_hash"]
+                ),
+                snapshot_event_hash=str(
+                    record.evidence_payload["snapshot_event_hash"]
+                ),
+                run_id=record.evidence_run_id,
+                source_watermark_event_hash=str(
+                    record.evidence_payload["source_watermark_event_hash"]
+                ),
+            ).record
+            expected = DecisionSnapshotEvidenceServiceV3.event_payload(
+                DecisionSnapshotEvidenceServiceV3.evidence_id(
+                    record.evidence_hash
+                ),
+                record,
+                reference,
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "snapshot evidence artifact or source replay is invalid"
+            ) from exc
+        if record.evidence_kind != "snapshot" or rebuilt != record:
+            raise EventValidationError(
+                "snapshot evidence differs from deterministic source replay"
+            )
+        if dict(payload) != expected:
+            raise EventValidationError(
+                "snapshot evidence event differs from producer artifact"
             )
 
     def _validate_external_quality_decision_evidence(
@@ -4274,6 +4343,59 @@ class ResearchEventStore:
                     "scorecard evidence already exists for factor trial"
                 )
             return
+        if event_type == "SnapshotDecisionEvidenceV3Recorded":
+            if draft.run_id != payload["evidence_run_id"]:
+                raise EventTransitionError(
+                    "snapshot evidence event run differs from producer run"
+                )
+            if self._tail_hash(conn) != payload["source_watermark_event_hash"]:
+                raise EventTransitionError("snapshot evidence watermark is stale")
+            definition = conn.execute(
+                """
+                SELECT run_id, entity_id FROM research_events
+                WHERE event_type = 'FactorDefinitionRecorded' AND event_hash = ?
+                """,
+                (payload["factor_definition_event_hash"],),
+            ).fetchone()
+            policy = conn.execute(
+                """
+                SELECT run_id FROM research_events
+                WHERE event_type = 'EvaluationPolicyRegistered' AND event_hash = ?
+                """,
+                (payload["evaluation_policy_event_hash"],),
+            ).fetchone()
+            snapshot = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'TrainValidDataSnapshotFrozen' AND event_hash = ?
+                """,
+                (payload["snapshot_event_hash"],),
+            ).fetchone()
+            if (
+                definition is None
+                or policy is None
+                or snapshot is None
+                or str(definition["run_id"]) != draft.run_id
+                or str(definition["entity_id"]) != payload["factor_spec_id"]
+                or str(policy["run_id"]) != draft.run_id
+            ):
+                raise EventTransitionError(
+                    "snapshot evidence source identity or order differs"
+                )
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'SnapshotDecisionEvidenceV3Recorded'
+                  AND run_id = ?
+                  AND json_extract(payload, '$.factor_spec_id') = ?
+                """,
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError(
+                    "snapshot evidence already exists for factor and run"
+                )
+            return
         if event_type in {"QualityDecisionV2Recorded", "QualityDecisionV3Recorded"}:
             definition = conn.execute(
                 """
@@ -5479,6 +5601,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_snapshot_evidence_v3(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_activation_source_audit(
                     event.event_type,
                     validated_payload,
@@ -5633,6 +5759,7 @@ class ResearchEventStore:
         activation_decision_plans: set[str] = set()
         decision_evidence_keys: set[tuple[str, str, str]] = set()
         scorecard_evidence_keys: set[tuple[str, str, str]] = set()
+        snapshot_evidence_keys: set[tuple[str, str]] = set()
         evaluation_policy_runs: set[str] = set()
         seen_run_ids: set[str] = set()
         event_order = {
@@ -6510,6 +6637,37 @@ class ResearchEventStore:
                 ):
                     return False
                 scorecard_evidence_keys.add(key)
+            elif event.event_type == "SnapshotDecisionEvidenceV3Recorded":
+                factor_spec_id = str(payload["factor_spec_id"])
+                snapshot_key = (event.run_id, factor_spec_id)
+                policy_event = events_by_hash.get(
+                    str(payload["evaluation_policy_event_hash"])
+                )
+                snapshot_event = events_by_hash.get(
+                    str(payload["snapshot_event_hash"])
+                )
+                if (
+                    factor_spec_id not in definitions
+                    or definition_event_hashes.get(factor_spec_id)
+                    != payload["factor_definition_event_hash"]
+                    or event.run_id != payload["evidence_run_id"]
+                    or snapshot_key in snapshot_evidence_keys
+                    or policy_event is None
+                    or policy_event.event_type != "EvaluationPolicyRegistered"
+                    or policy_event.run_id != event.run_id
+                    or snapshot_event is None
+                    or snapshot_event.event_type
+                    != "TrainValidDataSnapshotFrozen"
+                    or event.previous_event_hash
+                    != payload["source_watermark_event_hash"]
+                    or any(
+                        event_order.get(str(source_hash), len(events))
+                        >= event_order[event.event_hash]
+                        for source_hash in payload["source_event_hashes"]
+                    )
+                ):
+                    return False
+                snapshot_evidence_keys.add(snapshot_key)
             elif event.event_type in {"QualityDecisionV2Recorded", "QualityDecisionV3Recorded"}:
                 if str(payload["factor_spec_id"]) not in definitions:
                     return False

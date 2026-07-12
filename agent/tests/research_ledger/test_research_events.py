@@ -213,6 +213,7 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "QualityDecisionRecorded",
         "DecisionEvidenceV3Recorded",
         "ScorecardDecisionEvidenceV3Recorded",
+        "SnapshotDecisionEvidenceV3Recorded",
         "QualityDecisionV2Recorded",
         "QualityDecisionV3Recorded",
         "FinalCandidateFrozen",
@@ -1083,7 +1084,7 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                 }
                 ],
             },
-            "ScorecardDecisionEvidenceV3Recorded": {
+                "ScorecardDecisionEvidenceV3Recorded": {
                 "evidence_id": "scorecard-decision-evidence-v3-fixture",
                 "evidence_hash": digest,
                 "evidence_kind": "scorecard",
@@ -1109,9 +1110,39 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
                         "artifact_hash": digest,
                         "media_type": "application/vnd.vibe.decision-evidence-v3+json",
                     }
-                ],
-            },
-        "QualityDecisionV2Recorded": {
+                    ],
+                },
+                "SnapshotDecisionEvidenceV3Recorded": {
+                    "evidence_id": "snapshot-decision-evidence-v3-fixture",
+                    "evidence_hash": digest,
+                    "evidence_kind": "snapshot",
+                    "factor_spec_id": "factor-1",
+                    "evidence_run_id": "run-1",
+                    "producer_schema_version": "decision_snapshot_evidence_service.v3",
+                    "producer_policy_hash": digest,
+                    "source_event_hashes": [digest],
+                    "source_artifact_hashes": [digest],
+                    "evidence_payload_hash": digest,
+                    "factor_definition_event_hash": digest,
+                    "evaluation_policy_event_hash": digest,
+                    "snapshot_event_hash": digest,
+                    "source_watermark_event_hash": digest,
+                    "snapshot_hash": digest,
+                    "panel_content_hash": digest,
+                    "cutoff_status": "contains_dates_after_registered_valid_end",
+                    "pit_authority_status": "unverified_legacy_caller_snapshot",
+                    "survivorship_status": "unknown",
+                    "decision_grade": False,
+                    "caps": ["PIT_SNAPSHOT_PROVENANCE_UNVERIFIED"],
+                    "artifact_refs": [
+                        {
+                            "relative_path": "decision-evidence-v3/snapshot.json",
+                            "artifact_hash": digest,
+                            "media_type": "application/vnd.vibe.decision-evidence-v3+json",
+                        }
+                    ],
+                },
+            "QualityDecisionV2Recorded": {
             "decision_id": "quality-v2-1",
             "factor_spec_id": "factor-1",
             "decision_hash": digest,
