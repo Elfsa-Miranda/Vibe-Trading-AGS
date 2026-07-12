@@ -25,6 +25,8 @@ def _axis_dates(index: pd.Index) -> tuple[str, ...]:
     if not isinstance(index, pd.DatetimeIndex) or index.tz is not None:
         raise ValueError("factor output index must be a timezone-naive DatetimeIndex")
     dates = tuple(value.date().isoformat() for value in index)
+    if not index.equals(pd.DatetimeIndex(dates)):
+        raise ValueError("factor output dates must be normalized midnight dates")
     if dates != tuple(sorted(set(dates))):
         raise ValueError("factor output dates must be strictly increasing and unique")
     return dates
@@ -297,6 +299,55 @@ class FrozenFactorOutputV2:
 
     def require_exact_frame_axes(self, frame: pd.DataFrame, *, name: str) -> None:
         _require_exact_axes(frame, dates=self.dates, symbols=self.symbols, name=name)
+
+    def verify_content(self) -> None:
+        expected_size = self.shape[0] * self.shape[1]
+        if len(self._factor_bytes) != expected_size * 8:
+            raise ValueError("frozen factor byte length is invalid")
+        for name, payload in (
+            ("valid_mask", self._valid_mask_bytes),
+            ("tradable_mask", self._tradable_mask_bytes),
+            ("universe_mask", self._universe_mask_bytes),
+        ):
+            if len(payload) != expected_size:
+                raise ValueError(f"frozen {name} byte length is invalid")
+        expected = {
+            "factor_content_hash": _bytes_hash(
+                kind="factor",
+                dtype="float64-le",
+                shape=self.shape,
+                dates=self.dates,
+                symbols=self.symbols,
+                payload=self._factor_bytes,
+            ),
+            "valid_mask_content_hash": _bytes_hash(
+                kind="valid_mask",
+                dtype="bool-u8",
+                shape=self.shape,
+                dates=self.dates,
+                symbols=self.symbols,
+                payload=self._valid_mask_bytes,
+            ),
+            "tradable_mask_content_hash": _bytes_hash(
+                kind="tradable_mask",
+                dtype="bool-u8",
+                shape=self.shape,
+                dates=self.dates,
+                symbols=self.symbols,
+                payload=self._tradable_mask_bytes,
+            ),
+            "universe_mask_content_hash": _bytes_hash(
+                kind="universe_mask",
+                dtype="bool-u8",
+                shape=self.shape,
+                dates=self.dates,
+                symbols=self.symbols,
+                payload=self._universe_mask_bytes,
+            ),
+        }
+        for name, value in expected.items():
+            if getattr(self, name) != value:
+                raise ValueError(f"frozen factor output {name} does not match bytes")
 
 
 __all__ = ["FrozenFactorOutputV2"]

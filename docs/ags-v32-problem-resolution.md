@@ -31,7 +31,7 @@ Status meanings:
 
 | Item | Planned milestone | Status | Current authoritative evidence |
 |---|---|---|---|
-| P0-01 | M1 split/timing | partial | frozen timing/split primitives exist; scorecard capability migration remains open |
+| P0-01 | M1 split/timing | partial | fixture-only train/valid capability enforces outcome-contained split dates and rejects test/gap/intraday axes; production evaluator migration remains open |
 | P0-02 | M1 evidence/Decision | audit_reported | none |
 | P0-03 | M1 production evaluator | audit_reported | none |
 | P0-04 | M1/M2 PIT snapshot | audit_reported | none |
@@ -39,9 +39,9 @@ Status meanings:
 | P0-06 | M2 stateful execution | partial | strict actual-holdings/trades kernel exists; A-share fills/T+1/unavailable-holding producer remains open |
 | P0-07 | M1 split registry | partial | content-hashed calendar/policy/plan models pass adversarial tests; producer-scoped registration remains open |
 | P0-08 | M1/M2 execution policy | partial | closed cost policy and strict missing-return/initial-exit cost kernel pass; production fill authority remains open |
-| P0-09 | M1 immutable output | partial | exact-axis immutable byte content passes adversarial tests; formal Parquet/Arrow refs and evaluator consumption remain open |
-| P0-10 | M1 scorecard/final boundary | audit_reported | none |
-| P0-11 | M1 split-safe scorecard | audit_reported | none |
+| P0-09 | M1 immutable output | partial | exact-axis immutable byte content and pre-consumption byte/hash verification pass; formal Parquet/Arrow refs and producer-bound evaluator consumption remain open |
+| P0-10 | M1 scorecard/final boundary | partial | fixture scorecard exposes train/valid only and contains no test/execution artifact; one-shot final producer remains open |
+| P0-11 | M1 split-safe scorecard | partial | predictive and daily PIT-universe coverage artifacts are explicitly train/valid scoped; execution is absent and requires a separate producer; producer event lineage remains open |
 | P0-12 | M1 final eligibility/provider | audit_reported | none |
 | P0-13 | M1 falsification v2 | audit_reported | none |
 | P0-14 | M1 weighting policy | partial | permutation-invariant tie-neutral v2 weighting passes; legacy scorecard migration remains open |
@@ -52,7 +52,7 @@ Status meanings:
 | P1-01 | M1 production timing binding | audit_reported | none |
 | P1-02 | M1 executable grammar | partial | runtime grammar/backend intersection and typed pre-compute skip pass; production lifecycle integration remains open |
 | P1-03 | M2 partitioned artifacts | audit_reported | none |
-| P1-04 | M1 scorecard v2 | audit_reported | none |
+| P1-04 | M1 scorecard v2 | partial | additive v2 fixture object binds predictive/coverage input hashes and is explicitly non-decision-grade; exclusive ProductionCandidateEvaluator mint remains open |
 | P1-05 | M1 production search factory | audit_reported | none |
 | P1-06 | M1 worker/resource evidence | audit_reported | none |
 | P1-07 | M0 release baseline, then M1 report binding | partial | deterministic manifest and adversarial tests; event-bound GET/CLI refs remain open |
@@ -207,3 +207,45 @@ Current verification:
 - Alpha Foundry, Research Ledger, contracts, security and acceptance:
   `470 passed in 66.17s`, with 21 existing deprecation warnings;
 - one-source cold mypy: passed.
+
+## M1 train/valid capability and scorecard-v2 evidence
+
+Branch `codex/ags-v32-m1-scorecard-v2` was created fresh from accepted main
+`5716f2dc6b4ed5a68499f025c46972b63a48e58e`.
+
+`FixtureTrainValidDataCapabilityV1` retains only the train and validation
+calendar slices and close bytes. It rejects full panels containing test or gap
+dates, missing/reordered axes, intraday timestamps, unknown runtime split
+values, Infinity and non-positive available prices. Its outcome lookup accepts
+only outcome-contained train/valid signal dates under the frozen timing policy.
+It is explicitly fixture-only and cannot be Decision evidence.
+
+`AlphaQualityScorecardV2` computes predictive and coverage artifacts separately
+for train and valid. Coverage uses each date's point-in-time universe count and
+reports an empty universe as unavailable. The artifact contains no test metric
+or execution metric; execution has the typed status `separate_producer_required`.
+Factor and close bytes are rehashed immediately before consumption, axes and
+snapshot/split/timing hashes must match exactly, and the scorecard has no raw
+panel, caller score, warning, Decision or verdict argument.
+
+These changes close neither producer authority nor PIT market-data authority.
+The capability and scorecard remain fixture-only until the unique
+`ProductionCandidateEvaluator`, producer-scoped event mint, formal partitioned
+artifacts and replay validation are implemented. P0-01/P0-09/P0-10/P0-11 and
+P1-04 therefore remain partial.
+
+Current verification after all boundary hardening:
+
+- frozen-output plus scorecard-v2 focused matrix: `22 passed`;
+- full Alpha Quality: `201 passed in 21.90s`;
+- Alpha Foundry plus Research Ledger: `381 passed in 62.85s`;
+- contracts, security and acceptance: `89 passed in 9.31s`, with 21 existing
+  deprecation warnings;
+- two-source cold mypy and isolated-prefix compileall: passed.
+
+A cold-cache run exposed that the pre-existing no-dynamic-execution test kept
+the global `compile` replacement active during its pandas assertion. The test
+now warms the exact third-party rank/delta primitives before the guard and
+restores the runtime immediately after the complete DSL evaluation. The same
+test passes with a fresh isolated bytecode prefix, so the guard measures DSL
+execution rather than pandas/pytest lazy imports.
