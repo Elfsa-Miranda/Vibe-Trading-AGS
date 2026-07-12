@@ -18,6 +18,7 @@ from src.alpha_foundry.retrieval.model import (
     ShadowRunResult,
 )
 from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy, RetrieverPolicy
+from src.alpha_foundry.memory.model import ProcessPosterior
 from src.alpha_quality.flags import ResolvedAGSFlags
 from src.research_ledger.events import EventDraft, ResearchEventStore
 from src.research_ledger.hash_utils import canonical_json_hash
@@ -53,6 +54,7 @@ class ShadowRetriever:
     ) -> ShadowDecision:
         if not isinstance(evidence, DiscoveryEvidenceView):
             raise TypeError("retriever accepts DiscoveryEvidenceView only")
+        evidence.verify_integrity()
         if query.projection.projection_hash != evidence.factual.dag.projection_hash:
             raise ValueError("retriever DAG differs from its discovery evidence view")
         if query.projection.source_watermark_event_hash != evidence.source_watermark:
@@ -115,25 +117,11 @@ class ShadowRetriever:
                 candidate.base_ledger_score * max(topology, topology_floor),
             )
             posterior = posteriors.get((candidate.parent_context_hash, candidate.motif))
-            memory_adjustment = 0.0
-            confidence = 0.0
-            veto_reason: str | None = None
             warnings = list(features.warnings)
-            if posterior is not None:
-                confidence = posterior.confidence
-                clipped_residual = max(
-                    -self.policy.residual_clip,
-                    min(self.policy.residual_clip, posterior.mean_residual),
-                )
-                memory_adjustment = (
-                    self.policy.memory_weight * confidence * clipped_residual
-                )
-                if posterior.hard_veto:
-                    escape = self._veto_escape(seed, candidate)
-                    if escape:
-                        warnings.append("NEGATIVE_MEMORY_EXPLORATION_ESCAPE")
-                    else:
-                        veto_reason = "HIGH_CONFIDENCE_NEGATIVE_MEMORY"
+            memory_adjustment, confidence, veto_reason, memory_warnings = (
+                self._memory_terms(posterior, candidate=candidate, seed=seed)
+            )
+            warnings.extend(memory_warnings)
             action_score = math.log(base_score + self.policy.epsilon) + memory_adjustment
             components.append(
                 RetrievalComponent(
@@ -212,6 +200,27 @@ class ShadowRetriever:
             decision_hash=canonical_json_hash(content),
             shadow_only=True,
         )
+
+    def _memory_terms(
+        self,
+        posterior: ProcessPosterior | None,
+        *,
+        candidate: RetrievalCandidate,
+        seed: int,
+    ) -> tuple[float, float, str | None, tuple[str, ...]]:
+        if posterior is None:
+            return 0.0, 0.0, None, ()
+        confidence = posterior.confidence
+        clipped_residual = max(
+            -self.policy.residual_clip,
+            min(self.policy.residual_clip, posterior.mean_residual),
+        )
+        adjustment = self.policy.memory_weight * confidence * clipped_residual
+        if not posterior.hard_veto:
+            return adjustment, confidence, None, ()
+        if self._veto_escape(seed, candidate):
+            return adjustment, confidence, None, ("NEGATIVE_MEMORY_EXPLORATION_ESCAPE",)
+        return adjustment, confidence, "HIGH_CONFIDENCE_NEGATIVE_MEMORY", ()
 
     def observe_after_official_generation(
         self,

@@ -204,11 +204,12 @@ def test_forward_report_view_cannot_be_cast_to_discovery_view(tmp_path: Path) ->
     monitoring = ForwardProjector.monitoring_view(plan, (observation,))
 
     with pytest.raises(TypeError, match="monitoring or final"):
-        DiscoveryEvidenceView.from_verified_subsequence(
+        DiscoveryEvidenceView._from_verified_subsequence(
             factual=monitoring,  # type: ignore[arg-type]
             episodic=monitoring,  # type: ignore[arg-type]
             data_snapshot_hash=candidate.data_snapshot_hash,
             verified_subsequence=object(),  # type: ignore[arg-type]
+            flags=flags,
         )
     retriever = ShadowRetriever(flags=flags)
     dag = FactorDAGProjector(flags=flags).project(store.query_events())
@@ -350,11 +351,12 @@ def test_interleaved_monitoring_cannot_break_or_mint_discovery_evidence(
     )
     assert not hasattr(store, "verified_subsequence")
     with pytest.raises(TypeError, match="store-verified"):
-        DiscoveryEvidenceView.from_verified_subsequence(
+        DiscoveryEvidenceView._from_verified_subsequence(
             factual=view.factual,
             episodic=view.episodic,
             data_snapshot_hash=digest,
             verified_subsequence=object(),  # type: ignore[arg-type]
+            flags=flags,
         )
 
 

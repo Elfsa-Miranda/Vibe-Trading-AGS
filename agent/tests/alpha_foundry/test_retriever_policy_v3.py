@@ -14,6 +14,7 @@ from src.alpha_foundry.retrieval import (
 )
 from src.alpha_foundry.retrieval.features import build_retrieval_features
 from src.research_ledger.hash_utils import canonical_json_hash
+from projection_fixtures import unit_episodic_projection
 from test_retriever_shadow import _flags, _panel, _views
 
 
@@ -164,7 +165,10 @@ def test_v3_nonleaf_score_uses_only_policy_owned_coefficients(tmp_path) -> None:
         )
         for index in range(3)
     )
-    episodic = replace(evidence.episodic, observations=observations)
+    episodic = unit_episodic_projection(
+        evidence.episodic,
+        observations=observations,
+    )
     base = ActivationRetrieverPolicy()
     penalized = replace(base, nonleaf_cost_weight=4.0)
     gated = replace(base, nonleaf_independent_group_gate=6)
