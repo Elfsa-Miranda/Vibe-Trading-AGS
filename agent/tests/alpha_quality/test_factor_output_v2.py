@@ -169,3 +169,38 @@ def test_public_dataclass_replace_cannot_remint_frozen_content() -> None:
     frozen = _build()
     with pytest.raises(TypeError):
         replace(frozen, snapshot_hash=_hash("caller snapshot"))
+
+
+def test_frozen_output_recomputes_byte_hash_before_consumption() -> None:
+    frozen = _build()
+    object.__setattr__(frozen, "_factor_bytes", b"\x00" * len(frozen._factor_bytes))
+    with pytest.raises(ValueError, match="does not match bytes"):
+        frozen.verify_content()
+
+
+def test_frozen_output_rejects_intraday_axes_instead_of_truncating_them() -> None:
+    index = pd.date_range("2020-01-01 12:00:00", periods=3, freq="D")
+    columns = ["A", "B"]
+    factor = pd.DataFrame(1.0, index=index, columns=columns)
+    mask = pd.DataFrame(True, index=index, columns=columns, dtype=bool)
+
+    with pytest.raises(ValueError, match="normalized midnight dates"):
+        FrozenFactorOutputV2.build_fixture_content(
+            factor_spec_id=_hash("factor"),
+            canonical_formula="rank(close)",
+            snapshot_hash=_hash("snapshot"),
+            split_plan_hash=_hash("split"),
+            evaluation_time_policy_hash=_hash("time"),
+            executable_grammar_snapshot_hash=_hash("grammar"),
+            expected_dates=tuple(value.date().isoformat() for value in index),
+            expected_symbols=tuple(columns),
+            factor=factor,
+            valid_mask=mask,
+            tradable_mask=mask,
+            universe_mask=mask,
+            metadata={
+                "backend_version": "core_dataframe_backend.v1",
+                "field_semantics_hash": _hash("fields"),
+                "transform_pipeline_hash": _hash("transform"),
+            },
+        )
