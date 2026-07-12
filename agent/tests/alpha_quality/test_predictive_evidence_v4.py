@@ -156,7 +156,7 @@ class PredictiveFixturePITAdapterV1:
         )
 
 
-def _setup(tmp_path: Path):
+def _setup(tmp_path: Path, policy_references=PIT_SCORECARD_POLICY_REFERENCES):
     flags = _flags()
     store = ResearchEventStore(
         tmp_path / "events.sqlite",
@@ -186,7 +186,7 @@ def _setup(tmp_path: Path):
         evaluation_policy_event_hash=policy.event.event_hash,
         profile_id="production_candidate",
         profile_version="1",
-        policy_references=PIT_SCORECARD_POLICY_REFERENCES,
+        policy_references=policy_references,
     )
     snapshot = AsharePITSnapshotServiceV2(store, flags=flags, registry=registry).record(
         adapter_registration_event_hash=registration.event.event_hash,

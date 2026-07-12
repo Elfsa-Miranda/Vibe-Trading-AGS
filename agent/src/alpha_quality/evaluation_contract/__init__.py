@@ -22,6 +22,7 @@ from src.alpha_quality.evaluation_contract.model import (
 from src.alpha_quality.evaluation_contract.registry import (
     DEFAULT_PROFILE_REGISTRY,
     DEFAULT_POLICY_REFERENCES,
+    EXECUTION_POLICY_REFERENCES,
     PIT_SCORECARD_POLICY_REFERENCES,
     PRODUCER_REGISTRY_HASH,
     EvaluationProfileRegistryV1,
@@ -34,6 +35,7 @@ __all__ = [
     "CLAIM_TYPES",
     "DEFAULT_PROFILE_REGISTRY",
     "DEFAULT_POLICY_REFERENCES",
+    "EXECUTION_POLICY_REFERENCES",
     "PIT_SCORECARD_POLICY_REFERENCES",
     "EvaluationPolicyReferencesV1",
     "EvaluationProfileRegistryV1",

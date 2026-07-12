@@ -30,6 +30,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "ObservedPanelPredictiveEvidenceRecorded",
     "PITPredictiveEvidenceRecorded",
     "ScorecardDecisionEvidenceV4Recorded",
+    "ExecutionEvidenceRecorded",
     "ProductionEvaluationNodeRecorded",
     "TrialTerminalDossierRecorded",
     "ReportMaterializationFailed",

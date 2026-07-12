@@ -14,6 +14,11 @@ from src.alpha_quality.evaluation_contract.model import (
     PromotionLevel,
 )
 from src.alpha_foundry.dsl.executable import DEFAULT_EXECUTABLE_GRAMMAR
+from src.alpha_quality.execution_policy_v1 import (
+    DEFAULT_ASHARE_EXECUTION_POLICY,
+    DEFAULT_LONG_ONLY_WEIGHTING_POLICY,
+    DEFAULT_MISSING_OUTCOME_POLICY,
+)
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
@@ -59,9 +64,18 @@ PIT_SCORECARD_POLICY_REFERENCES = EvaluationPolicyReferencesV1(
         "executable_grammar_snapshot_hash": DEFAULT_EXECUTABLE_GRAMMAR.snapshot_hash,
     }
 )
+EXECUTION_POLICY_REFERENCES = EvaluationPolicyReferencesV1(
+    **{
+        **PIT_SCORECARD_POLICY_REFERENCES.to_dict(),
+        "weighting_policy_hash": DEFAULT_LONG_ONLY_WEIGHTING_POLICY.policy_hash,
+        "execution_policy_hash": DEFAULT_ASHARE_EXECUTION_POLICY.policy_hash,
+        "missing_outcome_policy_hash": DEFAULT_MISSING_OUTCOME_POLICY.policy_hash,
+    }
+)
 REGISTERED_POLICY_REFERENCE_BUNDLES = (
     DEFAULT_POLICY_REFERENCES,
     PIT_SCORECARD_POLICY_REFERENCES,
+    EXECUTION_POLICY_REFERENCES,
 )
 POLICY_REFERENCE_REGISTRY_HASH = canonical_json_hash(
     {

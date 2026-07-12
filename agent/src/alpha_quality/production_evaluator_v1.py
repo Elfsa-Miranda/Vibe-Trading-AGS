@@ -543,9 +543,29 @@ class ProductionCandidateEvaluatorV1:
                     recorded.scorecard_event,
                 ]
             )
+            execution_recorded: Any | None = None
+            from src.alpha_quality.execution_evidence_v1 import (
+                ExecutionEvidenceServiceV1,
+            )
+
+            if ExecutionEvidenceServiceV1.supports_contract(
+                self.store,
+                sources["contract"].event_hash,
+            ):
+                execution_recorded = ExecutionEvidenceServiceV1(self.store).record(
+                    run_id=request.run_id,
+                    factor_output_event_hash=recorded.factor_event.event_hash,
+                    observed_predictive_event_hash=recorded.observed_event.event_hash,
+                )
+                evidence.append(execution_recorded.event)
             nodes.extend(self._predictive_nodes(request, recorded))
             nodes.extend(
-                self._blocked_nodes(request, sources["factor"].entity_id, evidence)
+                self._blocked_nodes(
+                    request,
+                    sources["factor"].entity_id,
+                    evidence,
+                    execution_recorded=execution_recorded,
+                )
             )
             self._check_deadline(deadline)
             return self._complete_partial(
@@ -747,11 +767,12 @@ class ProductionCandidateEvaluatorV1:
         request: ProductionEvaluationRequestV1,
         factor_spec_id: str,
         evidence: list[ResearchEventEnvelope],
+        *,
+        execution_recorded: Any | None,
     ) -> list[ResearchEventEnvelope]:
         source_hashes = tuple(event.event_hash for event in evidence)
         blocked = (
             ("duplicate_identity", "IDENTITY_POOL_PRODUCER_NOT_AVAILABLE"),
-            ("execution", "EXECUTION_PRODUCER_NOT_AVAILABLE"),
             ("complement_mechanism", "SECONDARY_EVIDENCE_PRODUCER_NOT_AVAILABLE"),
             ("claim_assessments", "CLAIM_PRODUCER_NOT_AVAILABLE"),
         )
@@ -766,6 +787,35 @@ class ProductionCandidateEvaluatorV1:
             )
             for name, reason in blocked
         ]
+        if execution_recorded is None:
+            execution_node = self._node(
+                request,
+                factor_spec_id,
+                "execution",
+                "blocked",
+                ("EXECUTION_PRODUCER_NOT_AVAILABLE",),
+                source_hashes,
+            )
+        elif execution_recorded.artifact.availability == "available":
+            execution_node = self._node(
+                request,
+                factor_spec_id,
+                "execution",
+                "completed",
+                (),
+                (execution_recorded.event.event_hash,),
+            )
+        else:
+            execution_node = self._node(
+                request,
+                factor_spec_id,
+                "execution",
+                "unavailable",
+                tuple(execution_recorded.artifact.caps)
+                or ("EXECUTION_EVIDENCE_PARTIAL",),
+                (execution_recorded.event.event_hash,),
+            )
+        result.insert(1, execution_node)
         result.append(
             self._node(
                 request,
@@ -1170,6 +1220,7 @@ class ProductionCandidateEvaluatorV1:
                 "ObservedPanelPredictiveEvidenceRecorded",
                 "PITPredictiveEvidenceRecorded",
                 "ScorecardDecisionEvidenceV4Recorded",
+                "ExecutionEvidenceRecorded",
             }
         ]
         evaluations = [
