@@ -674,6 +674,53 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ResolvedEvaluationContractRegistered": PayloadSpec(
+        "resolved_evaluation_contract_registered.v1",
+        {
+            "contract_id": _string,
+            "contract_hash": _hash,
+            "research_family_id": _hash,
+            "profile_template_hash": _hash,
+            "profile_id": _string,
+            "profile_version": _string,
+            "profile_authority_class": _enum(
+                "build_time_allowlisted", "custom_research_only"
+            ),
+            "maximum_promotion": _enum(
+                "reject", "research_only", "candidate_zoo",
+                "paper_candidate", "forward_track",
+            ),
+            "evaluation_policy_event_hash": _hash,
+            "evaluation_policy_bundle_hash": _hash,
+            "producer_registry_hash": _hash,
+            "tier_invariant_manifest_hash": _hash,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "preregistration_watermark": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ApplicabilityAssessmentRecorded": PayloadSpec(
+        "applicability_assessment_recorded.v1",
+        {
+            "assessment_id": _string,
+            "schema_version": _enum("applicability_assessment.v1"),
+            "claim_type": _string,
+            "profile_template_hash": _hash,
+            "resolved_contract_hash": _hash,
+            "applicability_rule_id": _string,
+            "applicability_rule_hash": _hash,
+            "factor_spec_id": _string,
+            "factor_definition_event_hash": _hash,
+            "evaluated_input_hashes": _nonempty_hash_list,
+            "result": _enum("applicable", "not_applicable"),
+            "reason_code": _string,
+            "producer_schema_version": _string,
+            "producer_manifest_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "assessment_hash": _hash,
+        },
+    ),
     "AsharePITAdapterRegistered": PayloadSpec(
         "ashare_pit_adapter_registered.v1",
         {
@@ -2233,6 +2280,27 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError(
                 "evaluation policy registration requires one artifact"
             )
+    if event_type == "ResolvedEvaluationContractRegistered":
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("resolved evaluation contract requires one artifact")
+        if payload["preregistration_watermark"] != payload["evaluation_policy_event_hash"]:
+            raise EventValidationError("resolved contract watermark must be the policy event")
+        if (
+            payload["profile_authority_class"] == "custom_research_only"
+            and payload["maximum_promotion"] != "research_only"
+        ):
+            raise EventValidationError("custom profile cannot exceed research_only")
+    if event_type == "ApplicabilityAssessmentRecorded":
+        cited = {
+            payload["resolved_contract_hash"],
+            payload["profile_template_hash"],
+            payload["factor_definition_event_hash"],
+            payload["applicability_rule_hash"],
+        }
+        if not cited.issubset(set(payload["evaluated_input_hashes"])):
+            raise EventValidationError("applicability inputs omit cited identities")
+        if payload["factor_definition_event_hash"] not in payload["source_event_hashes"]:
+            raise EventValidationError("applicability sources omit factor definition")
     if event_type == "ScorecardDecisionEvidenceV3Recorded":
         cited = {
             payload["factor_definition_event_hash"],
