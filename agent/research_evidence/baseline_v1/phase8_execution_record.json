@@ -1,0 +1,34 @@
+{
+  "schema_version": "phase_execution_record.v1",
+  "phase": "Phase 8 — first real non-empty replayable baseline",
+  "base_commit": "6c8ecba4326ab29dba0bc6889933e6a06b30c36c",
+  "branch": "codex/ags-v32-first-real-baseline",
+  "pre_phase_dirty_state": "clean",
+  "remote_operations": [],
+  "dependency_installs": [
+    {"package": "hypothesis", "version": "6.156.6", "source": "official PyPI"},
+    {"package": "pandas-stubs", "version": "3.0.3.260530", "source": "official PyPI"}
+  ],
+  "baseline_command": "python -m src.alpha_quality.baseline_v1 --output-root <external-output-root>",
+  "baseline_exit_code": 0,
+  "failed_attempts_preserved": [
+    "unsupported fixture availability semantics",
+    "insufficient derived trading-day embargo",
+    "fixture listing-age panel shape mismatch"
+  ],
+  "validation": [
+    {"command": "python -m pytest -q tests/alpha_quality/test_baseline_v1.py", "result": "5 passed in 40.84s"},
+    {"command": "selected evaluator/PIT/dossier/contracts/security regression from agent cwd", "result": "209 passed; 2 cwd-relative security failures classified"},
+    {"command": "python -m pytest -q agent/tests/contracts agent/tests/security agent/tests/acceptance agent/tests/performance/test_ags_acceptance_budget.py agent/tests/alpha_quality/test_feature_off_identity.py", "result": "95 passed in 11.53s"},
+    {"command": "python -m ruff check <phase8-files>", "result": "passed"},
+    {"command": "python -m mypy --strict --follow-imports=skip src/alpha_quality/baseline_v1.py", "result": "passed"}
+  ],
+  "known_unrelated_baseline_failure": "test_tracked_release_manifest_matches_deterministic_rebuild reads user-owned problem.md and was reproduced before Phase 1",
+  "outcome": "ACCEPTED_RESEARCH_ONLY",
+  "limitations": [
+    "bundled fixture is external-unverified and is not production market-data authority",
+    "no final-test access and no forward observation occurred",
+    "scientific completion does not imply profitability or live authorization",
+    "pandas-stubs exposes pre-existing strict-mypy findings outside the Phase 8 module"
+  ]
+}
