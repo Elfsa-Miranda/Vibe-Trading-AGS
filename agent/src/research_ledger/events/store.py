@@ -107,6 +107,14 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
     ),
+    "ComparisonPoolFrozen": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "SecondaryEvidenceRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
     "ProductionEvaluationNodeRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
@@ -245,6 +253,8 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "PITPredictiveEvidenceRecorded",
         "ScorecardDecisionEvidenceV4Recorded",
         "ExecutionEvidenceRecorded",
+        "ComparisonPoolFrozen",
+        "SecondaryEvidenceRecorded",
         "ProductionEvaluationNodeRecorded",
         "TrialTerminalDossierRecorded",
         "ReportMaterializationFailed",
@@ -457,6 +467,7 @@ class ResearchEventStore:
         self._validate_external_pit_snapshot(draft.event_type, payload)
         self._validate_external_predictive_v4(draft.event_type, payload)
         self._validate_external_execution_evidence(draft.event_type, payload)
+        self._validate_external_secondary_evidence(draft.event_type, payload)
         self._validate_external_production_evaluator(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
@@ -695,6 +706,8 @@ class ResearchEventStore:
             "PITPredictiveEvidenceRecorded": "evidence_id",
             "ScorecardDecisionEvidenceV4Recorded": "evidence_id",
             "ExecutionEvidenceRecorded": "evidence_id",
+            "ComparisonPoolFrozen": "pool_id",
+            "SecondaryEvidenceRecorded": "evidence_id",
             "ProductionEvaluationNodeRecorded": "node_id",
             "TrialTerminalDossierRecorded": "dossier_id",
             "ReportMaterializationFailed": "failure_id",
@@ -2425,6 +2438,96 @@ class ResearchEventStore:
             raise EventValidationError(
                 "execution evidence artifact or source replay is invalid"
             ) from exc
+
+    def _validate_external_secondary_evidence(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type not in {"ComparisonPoolFrozen", "SecondaryEvidenceRecorded"}:
+            return
+        try:
+            from src.alpha_quality.secondary_evidence_v1 import (
+                PRODUCER_POLICY_HASH,
+                PRODUCER_SCHEMA_VERSION,
+                ComparisonPoolMemberV1,
+                FrozenComparisonPoolV1,
+                SecondaryEvidencePolicyV1,
+            )
+
+            if (
+                payload["producer_schema_version"] != PRODUCER_SCHEMA_VERSION
+                or payload["producer_policy_hash"] != PRODUCER_POLICY_HASH
+            ):
+                raise ValueError("secondary producer identity differs")
+            if event_type == "ComparisonPoolFrozen":
+                policy = SecondaryEvidencePolicyV1(**dict(payload["policy"]))
+                members = tuple(
+                    ComparisonPoolMemberV1(**dict(item))
+                    for item in payload["members"]
+                )
+                rebuilt = FrozenComparisonPoolV1.build(
+                    source_watermark_event_hash=str(
+                        payload["source_watermark_event_hash"]
+                    ),
+                    members=members,
+                    policy=policy,
+                    evidence_watermark=int(payload["evidence_watermark"]),
+                )
+                expected_id = (
+                    "comparison-pool-"
+                    + rebuilt.comparison_pool_hash.removeprefix("sha256:")[:24]
+                )
+                if (
+                    dict(payload)
+                    != {
+                        "pool_id": expected_id,
+                        **rebuilt.to_dict(),
+                        "producer_schema_version": PRODUCER_SCHEMA_VERSION,
+                        "producer_policy_hash": PRODUCER_POLICY_HASH,
+                    }
+                ):
+                    raise ValueError("comparison pool does not replay")
+                return
+            bundle = payload["secondary_evidence_bundle"]
+            for name in (
+                "identity",
+                "residual_prediction",
+                "portfolio_marginal_value",
+                "mechanism",
+            ):
+                assessment = dict(bundle[name])
+                assessment_hash = assessment.pop("assessment_hash")
+                if assessment_hash != canonical_json_hash(assessment):
+                    raise ValueError("secondary subassessment does not replay")
+            bundle_hash = canonical_json_hash(bundle)
+            expected_id = (
+                "secondary-evidence-" + bundle_hash.removeprefix("sha256:")[:24]
+            )
+            if (
+                payload["secondary_evidence_bundle_hash"] != bundle_hash
+                or payload["evidence_id"] != expected_id
+                or payload["identity_assessment_hash"]
+                != bundle["identity"]["assessment_hash"]
+                or payload["residual_assessment_hash"]
+                != bundle["residual_prediction"]["assessment_hash"]
+                or payload["portfolio_assessment_hash"]
+                != bundle["portfolio_marginal_value"]["assessment_hash"]
+                or payload["mechanism_assessment_hash"]
+                != bundle["mechanism"]["assessment_hash"]
+                or payload["novelty_claim"] != bundle["identity"]["novelty_claim"]
+                or payload["replication_claim"]
+                != bundle["identity"]["replication_claim"]
+                or payload["residual_status"]
+                != bundle["residual_prediction"]["status"]
+                or payload["portfolio_status"]
+                != bundle["portfolio_marginal_value"]["status"]
+                or payload["mechanism_status"] != bundle["mechanism"]["status"]
+                or payload["promotion_effect"] != "none"
+            ):
+                raise ValueError("secondary evidence envelope differs")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise EventValidationError("secondary evidence replay is invalid") from exc
 
     def _validate_external_quality_decision_evidence(
         self,
@@ -4320,6 +4423,106 @@ class ResearchEventStore:
                 != payload["factor_output_event_hash"]
             ):
                 raise EventTransitionError("execution evidence source binding differs")
+            return
+        if event_type == "ComparisonPoolFrozen":
+            watermark = conn.execute(
+                "SELECT seq FROM research_events WHERE event_hash = ?",
+                (payload["source_watermark_event_hash"],),
+            ).fetchone()
+            if watermark is None:
+                raise EventTransitionError("comparison pool watermark is missing")
+            position = conn.execute(
+                "SELECT COUNT(*) AS count FROM research_events WHERE seq <= ?",
+                (watermark["seq"],),
+            ).fetchone()
+            if int(position["count"]) - 1 != int(payload["evidence_watermark"]):
+                raise EventTransitionError("comparison pool watermark position differs")
+            for member in payload["members"]:
+                definition = conn.execute(
+                    "SELECT seq, payload FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND event_hash = ?",
+                    (member["factor_definition_event_hash"],),
+                ).fetchone()
+                if (
+                    definition is None
+                    or definition["seq"] > watermark["seq"]
+                    or json.loads(str(definition["payload"]))["factor_spec_id"]
+                    != member["factor_spec_id"]
+                ):
+                    raise EventTransitionError("comparison pool definition differs")
+                for field, expected_type in (
+                    ("factor_output_event_hash", "FactorOutputRecordedV3"),
+                    ("execution_event_hash", "ExecutionEvidenceRecorded"),
+                    ("decision_event_hash", "QualityDecisionV4Recorded"),
+                ):
+                    source_hash = member[field]
+                    if source_hash is None:
+                        continue
+                    source = conn.execute(
+                        "SELECT seq, payload FROM research_events WHERE event_type = ? AND event_hash = ?",
+                        (expected_type, source_hash),
+                    ).fetchone()
+                    if (
+                        source is None
+                        or source["seq"] > watermark["seq"]
+                        or json.loads(str(source["payload"])).get("factor_spec_id")
+                        != member["factor_spec_id"]
+                    ):
+                        raise EventTransitionError("comparison pool evidence differs")
+            return
+        if event_type == "SecondaryEvidenceRecorded":
+            factor = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?",
+                (payload["factor_spec_id"],),
+            ).fetchone()
+            pool = conn.execute(
+                "SELECT run_id FROM research_events WHERE event_type = 'ComparisonPoolFrozen' AND json_extract(payload, '$.comparison_pool_hash') = ?",
+                (payload["comparison_pool_hash"],),
+            ).fetchall()
+            applicability = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'ApplicabilityAssessmentRecorded' AND event_hash = ?",
+                (payload["applicability_event_hash"],),
+            ).fetchone()
+            if (
+                factor is None
+                or len(pool) != 1
+                or applicability is None
+                or str(factor["run_id"]) != draft.run_id
+                or str(applicability["run_id"]) != draft.run_id
+                or json.loads(str(applicability["payload"]))["factor_spec_id"]
+                != payload["factor_spec_id"]
+            ):
+                raise EventTransitionError("secondary source binding differs")
+            for field, expected_type in (
+                ("factor_output_event_hash", "FactorOutputRecordedV3"),
+                ("execution_event_hash", "ExecutionEvidenceRecorded"),
+            ):
+                source_hash = payload[field]
+                if source_hash is None:
+                    continue
+                source = conn.execute(
+                    "SELECT run_id, payload FROM research_events WHERE event_type = ? AND event_hash = ?",
+                    (expected_type, source_hash),
+                ).fetchone()
+                if (
+                    source is None
+                    or str(source["run_id"]) != draft.run_id
+                    or json.loads(str(source["payload"]))["factor_spec_id"]
+                    != payload["factor_spec_id"]
+                ):
+                    raise EventTransitionError("secondary candidate evidence differs")
+            source_count = conn.execute(
+                "SELECT COUNT(*) AS count FROM research_events WHERE event_hash IN (%s)"
+                % ",".join("?" for _ in payload["source_event_hashes"]),
+                tuple(payload["source_event_hashes"]),
+            ).fetchone()
+            if int(source_count["count"]) != len(payload["source_event_hashes"]):
+                raise EventTransitionError("secondary source event is missing")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'SecondaryEvidenceRecorded' AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?",
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("secondary evidence already exists")
             return
         if event_type == "ProductionEvaluationNodeRecorded":
             trial = conn.execute(
@@ -6887,6 +7090,9 @@ class ResearchEventStore:
         predictive_events: dict[str, ResearchEventEnvelope] = {}
         scorecard_v4_keys: set[tuple[str, str]] = set()
         execution_evidence_keys: set[tuple[str, str]] = set()
+        comparison_pool_hashes: set[str] = set()
+        comparison_pool_events: dict[str, ResearchEventEnvelope] = {}
+        secondary_evidence_keys: set[tuple[str, str]] = set()
         production_node_keys: set[tuple[str, str]] = set()
         production_node_events: set[str] = set()
         terminal_dossier_trials: set[str] = set()
@@ -7263,6 +7469,93 @@ class ResearchEventStore:
                 ):
                     return False
                 execution_evidence_keys.add(execution_key)
+            elif event.event_type == "ComparisonPoolFrozen":
+                pool_hash = str(payload["comparison_pool_hash"])
+                watermark = events_by_hash.get(
+                    str(payload["source_watermark_event_hash"])
+                )
+                valid_members = True
+                for member in payload["members"]:
+                    definition = events_by_hash.get(
+                        str(member["factor_definition_event_hash"])
+                    )
+                    if (
+                        definition is None
+                        or definition.event_type != "FactorDefinitionRecorded"
+                        or definition.payload["factor_spec_id"]
+                        != member["factor_spec_id"]
+                        or event_order[definition.event_hash]
+                        > int(payload["evidence_watermark"])
+                    ):
+                        valid_members = False
+                        break
+                    for field, expected_type in (
+                        ("factor_output_event_hash", "FactorOutputRecordedV3"),
+                        ("execution_event_hash", "ExecutionEvidenceRecorded"),
+                        ("decision_event_hash", "QualityDecisionV4Recorded"),
+                    ):
+                        source_hash = member[field]
+                        if source_hash is None:
+                            continue
+                        source = events_by_hash.get(str(source_hash))
+                        if (
+                            source is None
+                            or source.event_type != expected_type
+                            or source.payload.get("factor_spec_id")
+                            != member["factor_spec_id"]
+                            or event_order[source.event_hash]
+                            > int(payload["evidence_watermark"])
+                        ):
+                            valid_members = False
+                            break
+                if (
+                    pool_hash in comparison_pool_hashes
+                    or watermark is None
+                    or event_order[watermark.event_hash]
+                    != int(payload["evidence_watermark"])
+                    or event_order[watermark.event_hash] >= event_order[event.event_hash]
+                    or not valid_members
+                ):
+                    return False
+                comparison_pool_hashes.add(pool_hash)
+                comparison_pool_events[pool_hash] = event
+            elif event.event_type == "SecondaryEvidenceRecorded":
+                key = (event.run_id, str(payload["factor_spec_id"]))
+                definitions_for_factor = [
+                    candidate
+                    for candidate in events[:event_order[event.event_hash]]
+                    if candidate.event_type == "FactorDefinitionRecorded"
+                    and candidate.entity_id == payload["factor_spec_id"]
+                ]
+                pool = comparison_pool_events.get(
+                    str(payload["comparison_pool_hash"])
+                )
+                applicability = events_by_hash.get(
+                    str(payload["applicability_event_hash"])
+                )
+                sources = [
+                    events_by_hash.get(str(item))
+                    for item in payload["source_event_hashes"]
+                ]
+                if (
+                    key in secondary_evidence_keys
+                    or len(definitions_for_factor) != 1
+                    or definitions_for_factor[0].run_id != event.run_id
+                    or pool is None
+                    or applicability is None
+                    or applicability.event_type != "ApplicabilityAssessmentRecorded"
+                    or applicability.run_id != event.run_id
+                    or applicability.payload["factor_spec_id"]
+                    != payload["factor_spec_id"]
+                    or any(source is None for source in sources)
+                    or any(
+                        source is not None
+                        and event_order[source.event_hash] >= event_order[event.event_hash]
+                        for source in sources
+                    )
+                ):
+                    return False
+                secondary_evidence_keys.add(key)
             elif event.event_type == "ProductionEvaluationNodeRecorded":
                 production_node_key = (
                     str(payload["trial_id"]),

@@ -189,7 +189,9 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "ObservedPanelPredictiveEvidenceRecorded",
         "PITPredictiveEvidenceRecorded",
         "ScorecardDecisionEvidenceV4Recorded",
-        "ExecutionEvidenceRecorded",
+            "ExecutionEvidenceRecorded",
+            "ComparisonPoolFrozen",
+            "SecondaryEvidenceRecorded",
         "ProductionEvaluationNodeRecorded",
         "TrialTerminalDossierRecorded",
         "ReportMaterializationFailed",
@@ -1571,17 +1573,106 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "minimum_observations": 12,
             "policy_hash": digest,
         },
-        "ForwardObservationRecorded": {
+            "ForwardObservationRecorded": {
             "observation_id": "observation-1",
             "plan_id": "plan-1",
             "period_start": timestamp,
             "period_end": timestamp,
             "observation_hash": digest,
             "previous_observation_hash": None,
-            "artifact_refs": [],
-        },
-    }
+                "artifact_refs": [],
+            },
+        }
 
+    def add_secondary_evidence_samples() -> None:
+        secondary_policy = {
+            "schema_version": "secondary_evidence_policy.v1",
+            "candidate_allocation": 0.1,
+            "minimum_effective_dates": 12,
+            "minimum_coverage": 0.8,
+            "marginal_value_sesoi": 0.0,
+            "baseline_denominator_floor": 1e-8,
+            "annualization_factor": 252,
+            "bootstrap_samples": 400,
+            "bootstrap_block_length": 5,
+            "bootstrap_seed": 45432,
+            "ridge_alpha": 1.0,
+            "allocation_policy_hash": digest,
+            "cost_policy_hash": digest,
+            "capacity_policy_hash": digest,
+            "exposure_policy_hash": digest,
+        }
+        pool_content = {
+            "schema_version": "frozen_comparison_pool.v1",
+            "source_watermark_event_hash": digest,
+            "evidence_watermark": 0,
+            "members": [],
+            "policy": secondary_policy,
+            "policy_hash": canonical_json_hash(secondary_policy),
+        }
+        pool_hash = canonical_json_hash(pool_content)
+        samples["ComparisonPoolFrozen"] = {
+            "pool_id": "comparison-pool-" + pool_hash.removeprefix("sha256:")[:24],
+            **pool_content,
+            "comparison_pool_hash": pool_hash,
+            "producer_schema_version": "secondary_evidence_service.v1",
+            "producer_policy_hash": digest,
+        }
+        identity = {
+            "schema_version": "duplicate_identity_assessment.v1",
+            "duplicate_detected": False,
+            "novelty_claim": "not_rejected",
+            "replication_claim": "preserved",
+        }
+        residual = {
+            "schema_version": "residual_prediction_assessment.v1",
+            "status": "unavailable",
+        }
+        portfolio = {
+            "schema_version": "portfolio_marginal_value_assessment.v1",
+            "status": "unavailable",
+        }
+        mechanism = {
+            "schema_version": "mechanism_assessment.v1",
+            "status": "not_applicable",
+        }
+        for assessment in (identity, residual, portfolio, mechanism):
+            assessment["assessment_hash"] = canonical_json_hash(assessment)
+        secondary_bundle = {
+            "schema_version": "secondary_evidence_bundle.v1",
+            "identity": identity,
+            "residual_prediction": residual,
+            "portfolio_marginal_value": portfolio,
+            "mechanism": mechanism,
+        }
+        bundle_hash = canonical_json_hash(secondary_bundle)
+        samples["SecondaryEvidenceRecorded"] = {
+            "evidence_id": "secondary-evidence-" + bundle_hash.removeprefix("sha256:")[:24],
+            "factor_spec_id": "factor-1",
+            "comparison_pool_hash": pool_hash,
+            "identity_assessment_hash": identity["assessment_hash"],
+            "residual_assessment_hash": residual["assessment_hash"],
+            "portfolio_assessment_hash": portfolio["assessment_hash"],
+            "mechanism_assessment_hash": mechanism["assessment_hash"],
+            "duplicate_detected": False,
+            "novelty_claim": "not_rejected",
+            "replication_claim": "preserved",
+            "residual_status": "unavailable",
+            "portfolio_status": "unavailable",
+            "mechanism_status": "not_applicable",
+            "applicability_event_hash": digest,
+            "factor_output_event_hash": None,
+            "execution_event_hash": None,
+            "secondary_evidence_bundle": secondary_bundle,
+            "secondary_evidence_bundle_hash": bundle_hash,
+            "promotion_effect": "none",
+            "source_event_hashes": [digest],
+            "producer_schema_version": "secondary_evidence_service.v1",
+            "producer_policy_hash": digest,
+            "artifact_refs": [],
+        }
+
+    add_secondary_evidence_samples()
     frozen = samples["FinalCandidateFrozen"]
     frozen["candidate_hash"] = canonical_json_hash(
         {
