@@ -72,6 +72,7 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "EvaluationPolicyRegistered": ("VIBE_TRADING_ALPHA_SCORECARD",),
     "RetrieverFeatureSourceRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
@@ -181,7 +182,9 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "ForwardObservationRecorded": ("VIBE_TRADING_FORWARD_TRACKING",),
 }
 
-_PRODUCER_SCOPED_EVENT_TYPES = frozenset({"DecisionEvidenceV3Recorded"})
+_PRODUCER_SCOPED_EVENT_TYPES = frozenset(
+    {"DecisionEvidenceV3Recorded", "EvaluationPolicyRegistered"}
+)
 
 
 class ResearchEventStore:
@@ -380,6 +383,7 @@ class ResearchEventStore:
         self._validate_external_retriever_v7_evidence(draft.event_type, payload)
         self._validate_external_quality_decision_evidence(draft.event_type, payload)
         self._validate_external_decision_evidence_v3(draft.event_type, payload)
+        self._validate_external_evaluation_policy(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
         self._validate_external_prearm_flat_schedule(draft.event_type, payload)
@@ -607,6 +611,7 @@ class ResearchEventStore:
             "RetrieverDecisionRecorded": "decision_id",
             "RetrieverActionTemplateFrozen": "action_id",
             "TrainValidDataSnapshotFrozen": "snapshot_id",
+            "EvaluationPolicyRegistered": "registration_id",
             "RetrieverFeatureSourceRecorded": "feature_source_id",
             "RetrieverDecisionV2Recorded": "decision_id",
             "RetrieverDecisionV3Recorded": "decision_id",
@@ -1570,6 +1575,54 @@ class ResearchEventStore:
         if dict(payload) != expected:
             raise EventValidationError(
                 "Decision evidence v3 event differs from its producer artifact"
+            )
+
+    def _validate_external_evaluation_policy(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "EvaluationPolicyRegistered":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.registered-evaluation-policy-v1+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError(
+                "evaluation policy registration requires one producer artifact"
+            )
+        reference = references[0]
+        try:
+            from src.alpha_quality.evaluation_registry_v1 import (
+                EvaluationPolicyArtifactStoreV1,
+                EvaluationPolicyRegistryServiceV1,
+            )
+
+            bundle = EvaluationPolicyArtifactStoreV1(self.artifact_root).read(
+                str(reference["relative_path"]),
+                expected_bundle_hash=str(payload["bundle_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            expected = EvaluationPolicyRegistryServiceV1.event_payload(
+                str(payload["registration_id"]),
+                bundle,
+                reference,
+                (
+                    None
+                    if payload["preregistration_watermark"] is None
+                    else str(payload["preregistration_watermark"])
+                ),
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "evaluation policy artifact cannot be independently rebuilt"
+            ) from exc
+        if dict(payload) != expected:
+            raise EventValidationError(
+                "evaluation policy event differs from its producer artifact"
             )
 
     def _validate_external_quality_decision_evidence(
@@ -3123,6 +3176,32 @@ class ResearchEventStore:
             self._validate_retriever_action_template_transition(
                 conn, draft, payload
             )
+            return
+        if event_type == "EvaluationPolicyRegistered":
+            from src.alpha_quality.evaluation_registry_v1 import (
+                EvaluationPolicyRegistryServiceV1,
+            )
+
+            expected_id = EvaluationPolicyRegistryServiceV1.registration_id(
+                draft.run_id,
+                str(payload["bundle_hash"]),
+            )
+            if draft.entity_id != expected_id:
+                raise EventTransitionError(
+                    "evaluation policy registration identity differs from run"
+                )
+            if self._tail_hash(conn) != payload["preregistration_watermark"]:
+                raise EventTransitionError(
+                    "evaluation policy preregistration watermark is stale"
+                )
+            prior_same_run = conn.execute(
+                "SELECT event_type FROM research_events WHERE run_id = ? LIMIT 1",
+                (draft.run_id,),
+            ).fetchone()
+            if prior_same_run is not None:
+                raise EventTransitionError(
+                    "evaluation policy must be the first event in its run"
+                )
             return
         if event_type == "TrainValidDataSnapshotFrozen":
             prior = conn.execute(
@@ -5247,6 +5326,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_evaluation_policy(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_activation_source_audit(
                     event.event_type,
                     validated_payload,
@@ -5400,11 +5483,15 @@ class ResearchEventStore:
         activation_result_plans: set[str] = set()
         activation_decision_plans: set[str] = set()
         decision_evidence_keys: set[tuple[str, str, str]] = set()
+        evaluation_policy_runs: set[str] = set()
+        seen_run_ids: set[str] = set()
         event_order = {
             event.event_hash: index for index, event in enumerate(events)
         }
         for event in events:
             payload = event.payload
+            run_seen_before = event.run_id in seen_run_ids
+            seen_run_ids.add(event.run_id)
             if event.event_type == "RetrieverDecisionV4Recorded":
                 retriever_v4_events[event.event_hash] = event
             if event.event_type == "FactorDefinitionRecorded":
@@ -5555,6 +5642,24 @@ class ResearchEventStore:
                     return False
                 retriever_action_ids.add(action_id)
                 retriever_action_events[event.event_hash] = event
+            elif event.event_type == "EvaluationPolicyRegistered":
+                from src.alpha_quality.evaluation_registry_v1 import (
+                    EvaluationPolicyRegistryServiceV1,
+                )
+
+                expected_id = EvaluationPolicyRegistryServiceV1.registration_id(
+                    event.run_id,
+                    str(payload["bundle_hash"]),
+                )
+                if (
+                    run_seen_before
+                    or event.run_id in evaluation_policy_runs
+                    or event.entity_id != expected_id
+                    or event.previous_event_hash
+                    != payload["preregistration_watermark"]
+                ):
+                    return False
+                evaluation_policy_runs.add(event.run_id)
             elif event.event_type == "TrainValidDataSnapshotFrozen":
                 snapshot_id = str(payload["snapshot_id"])
                 snapshot_hash = str(payload["snapshot_hash"])

@@ -660,6 +660,20 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "EvaluationPolicyRegistered": PayloadSpec(
+        "evaluation_policy_registered.v1",
+        {
+            "registration_id": _string,
+            "bundle_hash": _hash,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "calendar_hash": _hash,
+            "evaluation_time_policy_hash": _hash,
+            "split_plan_hash": _hash,
+            "preregistration_watermark": _nullable_hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "RetrieverFeatureSourceRecorded": PayloadSpec(
         "retriever_feature_source_recorded.v1",
         {
@@ -2056,6 +2070,11 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError(
                 "Decision evidence requires one content-addressed artifact"
+            )
+    if event_type == "EvaluationPolicyRegistered":
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError(
+                "evaluation policy registration requires one artifact"
             )
     if event_type == "QualityDecisionV2Recorded":
         decision = payload["decision"]

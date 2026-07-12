@@ -37,7 +37,7 @@ Status meanings:
 | P0-04 | M1/M2 PIT snapshot | audit_reported | none |
 | P0-05 | M2 A-share adapter | audit_reported | none |
 | P0-06 | M2 stateful execution | partial | strict actual-holdings/trades kernel exists; A-share fills/T+1/unavailable-holding producer remains open |
-| P0-07 | M1 split registry | partial | content-hashed calendar/policy/plan models pass adversarial tests; producer-scoped registration remains open |
+| P0-07 | M1 split registry | partial | producer-scoped registration now freezes deep-immutable calendar/timing/split content as the first event in a run; evaluator consumption and provider-authenticated trading-calendar provenance remain open |
 | P0-08 | M1/M2 execution policy | partial | closed cost policy and strict missing-return/initial-exit cost kernel pass; production fill authority remains open |
 | P0-09 | M1 immutable output | partial | exact-axis immutable byte content and pre-consumption byte/hash verification pass; formal Parquet/Arrow refs and producer-bound evaluator consumption remain open |
 | P0-10 | M1 scorecard/final boundary | partial | fixture scorecard exposes train/valid only and contains no test/execution artifact; one-shot final producer remains open |
@@ -364,3 +364,41 @@ Accepted branch verification:
   deprecation warnings and the Windows symlink test executed under a capable
   token;
 - four-source mypy, compileall and staged diff check: passed.
+
+## M1 producer-scoped evaluation policy registry v1
+
+Branch `codex/ags-v32-fix-evaluation-policy-registry-v1` was created fresh
+from accepted main `0fc5b048833c79a917a075cfca4915d0ab31c6ca`.
+
+`EvaluationPolicyRegistryServiceV1` accepts only the pre-outcome calendar dates,
+timing parameters and requested train/valid/test bounds. It derives every hash,
+the execution-lag/max-horizon purge and embargo, and the content-addressed
+artifact internally. The entry point has no caller hash, `FrozenSplitPlan`,
+purge or embargo override channel.
+
+The closed `EvaluationPolicyRegistered` event is producer-scoped and must be
+the first event for its run. It records the exact prior global chain watermark,
+so an intervening append fails transactionally. Append, replay and idempotent
+read reopen the artifact and reconstruct the calendar, timing policy and split
+plan. Overlap, reversal, insufficient derived embargo, late registration,
+same-run replacement, artifact or database-payload tampering, duplicate JSON
+keys and feature-off construction fail closed. The in-memory bundle is
+recursively immutable rather than only a frozen outer dataclass.
+
+This is partial P0-07 closure, not market-data authority. The registered date
+content is content-addressed but is not yet authenticated by the P0-04/P0-05
+PIT adapter. A later scorecard/evaluator may cite this event, but it must cap
+the result while calendar/PIT provenance is unverified. No Activation outcome
+was accessed.
+
+Branch verification:
+
+- dedicated registry adversarial tests: `14 passed`;
+- staged payload/capability closure plus dedicated matrix:
+  `93 passed in 12.72s`;
+- full Alpha Quality: `226 passed in 45.44s`;
+- full Alpha Foundry: `273 passed in 84.33s`;
+- Research Ledger: `113 passed in 29.68s`;
+- contracts, security and acceptance: `89 passed in 15.77s`, with 21 existing
+  deprecation warnings;
+- three-source mypy: passed.
