@@ -11,6 +11,7 @@ from src.research_ledger.hash_utils import canonical_json_hash
 
 
 LEGACY_EVIDENCE_CAP = "LEGACY_CALLER_CONSTRUCTABLE_EVIDENCE"
+LEGACY_BOOLEAN_POLICY_CAP = "LEGACY_BOOLEAN_POLICY_AUTHORITY_UNVERIFIED"
 
 
 class QualityDecisionAuthorityGateV1:
@@ -30,7 +31,12 @@ class QualityDecisionAuthorityGateV1:
         legacy = self.legacy_runner.run(refs)
         if legacy.decision == "reject":
             return legacy
-        caps = tuple(sorted(set(legacy.caps) | {LEGACY_EVIDENCE_CAP}))
+        caps = tuple(
+            sorted(
+                set(legacy.caps)
+                | {LEGACY_EVIDENCE_CAP, LEGACY_BOOLEAN_POLICY_CAP}
+            )
+        )
         reasons = tuple(
             reason
             for reason in legacy.reasons
@@ -79,4 +85,8 @@ class QualityDecisionAuthorityGateV1:
         )
 
 
-__all__ = ["LEGACY_EVIDENCE_CAP", "QualityDecisionAuthorityGateV1"]
+__all__ = [
+    "LEGACY_BOOLEAN_POLICY_CAP",
+    "LEGACY_EVIDENCE_CAP",
+    "QualityDecisionAuthorityGateV1",
+]

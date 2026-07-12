@@ -73,6 +73,12 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "EvaluationPolicyRegistered": ("VIBE_TRADING_ALPHA_SCORECARD",),
+    "ResolvedEvaluationContractRegistered": (
+        "VIBE_TRADING_ALPHA_SCORECARD", "VIBE_TRADING_RESEARCH_EVENTS",
+    ),
+    "ApplicabilityAssessmentRecorded": (
+        "VIBE_TRADING_ALPHA_SCORECARD", "VIBE_TRADING_RESEARCH_EVENTS",
+    ),
     "AsharePITAdapterRegistered": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS",
@@ -196,6 +202,8 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
     {
         "DecisionEvidenceV3Recorded",
         "EvaluationPolicyRegistered",
+        "ResolvedEvaluationContractRegistered",
+        "ApplicabilityAssessmentRecorded",
         "ScorecardDecisionEvidenceV3Recorded",
         "SnapshotDecisionEvidenceV3Recorded",
         "AsharePITAdapterRegistered",
@@ -401,6 +409,8 @@ class ResearchEventStore:
         self._validate_external_quality_decision_evidence(draft.event_type, payload)
         self._validate_external_decision_evidence_v3(draft.event_type, payload)
         self._validate_external_evaluation_policy(draft.event_type, payload)
+        self._validate_external_resolved_evaluation_contract(draft.event_type, payload)
+        self._validate_external_applicability_assessment(draft.event_type, payload)
         self._validate_external_scorecard_evidence_v3(draft.event_type, payload)
         self._validate_external_snapshot_evidence_v3(draft.event_type, payload)
         self._validate_external_pit_adapter_registration(draft.event_type, payload)
@@ -633,6 +643,8 @@ class ResearchEventStore:
             "RetrieverActionTemplateFrozen": "action_id",
             "TrainValidDataSnapshotFrozen": "snapshot_id",
             "EvaluationPolicyRegistered": "registration_id",
+            "ResolvedEvaluationContractRegistered": "contract_id",
+            "ApplicabilityAssessmentRecorded": "assessment_id",
             "AsharePITAdapterRegistered": "registration_id",
             "AsharePITSnapshotRecorded": "snapshot_id",
             "RetrieverFeatureSourceRecorded": "feature_source_id",
@@ -1648,6 +1660,92 @@ class ResearchEventStore:
         if dict(payload) != expected:
             raise EventValidationError(
                 "evaluation policy event differs from its producer artifact"
+            )
+
+    def _validate_external_resolved_evaluation_contract(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "ResolvedEvaluationContractRegistered":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.resolved-evaluation-contract-v1+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError("resolved contract requires one producer artifact")
+        reference = references[0]
+        try:
+            from src.alpha_quality.evaluation_contract.contract import (
+                ResolvedEvaluationContractArtifactStoreV1,
+                ResolvedEvaluationContractServiceV1,
+            )
+
+            contract = ResolvedEvaluationContractArtifactStoreV1(
+                self.artifact_root
+            ).read(
+                str(reference["relative_path"]),
+                expected_contract_hash=str(payload["contract_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            expected = ResolvedEvaluationContractServiceV1.event_payload(
+                contract, reference
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "resolved contract artifact cannot be independently rebuilt"
+            ) from exc
+        if dict(payload) != expected:
+            raise EventValidationError(
+                "resolved contract event differs from its producer artifact"
+            )
+
+    def _validate_external_applicability_assessment(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "ApplicabilityAssessmentRecorded":
+            return
+        try:
+            from src.alpha_quality.evaluation_contract.applicability import (
+                _contract_from_event,
+                build_assessment,
+            )
+
+            by_hash = {event.event_hash: event for event in self.query_events()}
+            source_hashes = set(str(item) for item in payload["source_event_hashes"])
+            factor_event = by_hash.get(str(payload["factor_definition_event_hash"]))
+            contract_events = [
+                event for event in by_hash.values()
+                if event.event_type == "ResolvedEvaluationContractRegistered"
+                and event.event_hash in source_hashes
+                and event.payload["contract_hash"] == payload["resolved_contract_hash"]
+            ]
+            if factor_event is None or len(contract_events) != 1:
+                raise ValueError("applicability source events are incomplete")
+            contract_event = contract_events[0]
+            contract = _contract_from_event(self, contract_event)
+            rebuilt = build_assessment(
+                contract_event=contract_event,
+                contract=contract,
+                factor_event=factor_event,
+                claim_type=str(payload["claim_type"]),
+            )
+            identifier = "applicability-" + rebuilt.assessment_hash.removeprefix(
+                "sha256:"
+            )[:24]
+            expected = {"assessment_id": identifier, **rebuilt.to_dict()}
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "applicability assessment cannot be independently rebuilt"
+            ) from exc
+        if dict(payload) != expected:
+            raise EventValidationError(
+                "applicability assessment differs from deterministic source replay"
             )
 
     def _validate_external_scorecard_evidence_v3(
@@ -3479,6 +3577,83 @@ class ResearchEventStore:
                 raise EventTransitionError(
                     "evaluation policy must be the first event in its run"
                 )
+            return
+        if event_type == "ResolvedEvaluationContractRegistered":
+            policy = conn.execute(
+                """
+                SELECT seq, run_id, payload FROM research_events
+                WHERE event_type = 'EvaluationPolicyRegistered' AND event_hash = ?
+                """,
+                (payload["evaluation_policy_event_hash"],),
+            ).fetchone()
+            if policy is None or str(policy["run_id"]) != draft.run_id:
+                raise EventTransitionError("resolved contract lacks exact run policy")
+            policy_payload = json.loads(str(policy["payload"]))
+            if policy_payload["bundle_hash"] != payload["evaluation_policy_bundle_hash"]:
+                raise EventTransitionError("resolved contract policy bundle differs")
+            prior_run = conn.execute(
+                "SELECT event_type, event_hash FROM research_events WHERE run_id = ? ORDER BY seq",
+                (draft.run_id,),
+            ).fetchall()
+            if len(prior_run) != 1 or (
+                str(prior_run[0]["event_type"]) != "EvaluationPolicyRegistered"
+                or str(prior_run[0]["event_hash"]) != payload["evaluation_policy_event_hash"]
+            ):
+                raise EventTransitionError(
+                    "resolved contract must be the second run event before trials"
+                )
+            duplicate = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ResolvedEvaluationContractRegistered'
+                  AND (run_id = ? OR json_extract(payload, '$.contract_hash') = ?)
+                """,
+                (draft.run_id, payload["contract_hash"]),
+            ).fetchone()
+            if duplicate is not None:
+                raise EventTransitionError("resolved contract is already registered")
+            return
+        if event_type == "ApplicabilityAssessmentRecorded":
+            contract = conn.execute(
+                """
+                SELECT event_hash, run_id, payload FROM research_events
+                WHERE event_type = 'ResolvedEvaluationContractRegistered'
+                  AND json_extract(payload, '$.contract_hash') = ?
+                """,
+                (payload["resolved_contract_hash"],),
+            ).fetchone()
+            definition = conn.execute(
+                """
+                SELECT event_hash, run_id, payload FROM research_events
+                WHERE event_type = 'FactorDefinitionRecorded' AND event_hash = ?
+                """,
+                (payload["factor_definition_event_hash"],),
+            ).fetchone()
+            if contract is None or definition is None:
+                raise EventTransitionError("applicability lacks contract or factor source")
+            if str(contract["run_id"]) != draft.run_id or str(definition["run_id"]) != draft.run_id:
+                raise EventTransitionError("applicability cannot mix runs")
+            if str(contract["event_hash"]) not in payload["source_event_hashes"]:
+                raise EventTransitionError("applicability sources omit contract event")
+            definition_payload = json.loads(str(definition["payload"]))
+            if definition_payload["factor_spec_id"] != payload["factor_spec_id"]:
+                raise EventTransitionError("applicability factor identity differs")
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ApplicabilityAssessmentRecorded'
+                  AND run_id = ?
+                  AND json_extract(payload, '$.resolved_contract_hash') = ?
+                  AND json_extract(payload, '$.factor_spec_id') = ?
+                  AND json_extract(payload, '$.claim_type') = ?
+                """,
+                (
+                    draft.run_id, payload["resolved_contract_hash"],
+                    payload["factor_spec_id"], payload["claim_type"],
+                ),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("applicability claim is already assessed")
             return
         if event_type == "AsharePITAdapterRegistered":
             if self._tail_hash(conn) != payload["source_watermark_event_hash"]:
@@ -5799,6 +5974,14 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_resolved_evaluation_contract(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_applicability_assessment(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_scorecard_evidence_v3(
                     event.event_type,
                     validated_payload,
@@ -5971,6 +6154,9 @@ class ResearchEventStore:
         scorecard_evidence_keys: set[tuple[str, str, str]] = set()
         snapshot_evidence_keys: set[tuple[str, str]] = set()
         evaluation_policy_runs: set[str] = set()
+        resolved_contract_runs: set[str] = set()
+        resolved_contract_events: dict[str, ResearchEventEnvelope] = {}
+        applicability_keys: set[tuple[str, str, str]] = set()
         pit_adapter_ids: set[str] = set()
         pit_adapter_registration_hashes: set[str] = set()
         pit_adapter_events: dict[str, ResearchEventEnvelope] = {}
@@ -6152,6 +6338,53 @@ class ResearchEventStore:
                 ):
                     return False
                 evaluation_policy_runs.add(event.run_id)
+            elif event.event_type == "ResolvedEvaluationContractRegistered":
+                policy = events_by_hash.get(
+                    str(payload["evaluation_policy_event_hash"])
+                )
+                prior_run_events = [
+                    prior for prior in events[:event_order[event.event_hash]]
+                    if prior.run_id == event.run_id
+                ]
+                if (
+                    event.run_id in resolved_contract_runs
+                    or policy is None
+                    or policy.event_type != "EvaluationPolicyRegistered"
+                    or policy.run_id != event.run_id
+                    or len(prior_run_events) != 1
+                    or prior_run_events[0].event_hash != policy.event_hash
+                    or policy.payload["bundle_hash"]
+                    != payload["evaluation_policy_bundle_hash"]
+                    or payload["preregistration_watermark"] != policy.event_hash
+                ):
+                    return False
+                resolved_contract_runs.add(event.run_id)
+                resolved_contract_events[str(payload["contract_hash"])] = event
+            elif event.event_type == "ApplicabilityAssessmentRecorded":
+                contract = resolved_contract_events.get(
+                    str(payload["resolved_contract_hash"])
+                )
+                definition = events_by_hash.get(
+                    str(payload["factor_definition_event_hash"])
+                )
+                key = (
+                    str(payload["resolved_contract_hash"]),
+                    str(payload["factor_spec_id"]),
+                    str(payload["claim_type"]),
+                )
+                if (
+                    key in applicability_keys
+                    or contract is None
+                    or definition is None
+                    or definition.event_type != "FactorDefinitionRecorded"
+                    or contract.run_id != event.run_id
+                    or definition.run_id != event.run_id
+                    or contract.event_hash not in payload["source_event_hashes"]
+                    or definition.event_hash not in payload["source_event_hashes"]
+                    or definition.payload["factor_spec_id"] != payload["factor_spec_id"]
+                ):
+                    return False
+                applicability_keys.add(key)
             elif event.event_type == "AsharePITAdapterRegistered":
                 adapter_id = str(payload["adapter_id"])
                 registration_hash = str(payload["registration_hash"])
