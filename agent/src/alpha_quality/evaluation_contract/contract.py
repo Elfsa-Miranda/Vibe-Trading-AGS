@@ -269,15 +269,10 @@ class ResolvedEvaluationContractServiceV1:
             preregistration_watermark=policy_event.event_hash,
             contract_hash=canonical_json_hash(content),
         )
-        existing = [
-            event for event in self.store.query_events(
-                event_type="ResolvedEvaluationContractRegistered"
-            ) if event.run_id == run_id
-        ]
-        if len(existing) > 1:
-            raise EventTransitionError("multiple resolved contracts exist for run")
-        if existing:
-            event = existing[0]
+
+        def replay_existing(
+            event: ResearchEventEnvelope,
+        ) -> RecordedResolvedEvaluationContractV1:
             if event.payload["contract_hash"] != contract.contract_hash:
                 raise EventTransitionError("resolved contract run is already frozen")
             reference = event.payload["artifact_refs"][0]
@@ -290,7 +285,9 @@ class ResolvedEvaluationContractServiceV1:
             if event.entity_id != self.registration_id(run_id, loaded.contract_hash) or (
                 canonical_json(event.to_dict()["payload"]) != canonical_json(expected)
             ):
-                raise EventValidationError("existing resolved contract differs from replay")
+                raise EventValidationError(
+                    "existing resolved contract differs from replay"
+                )
             artifact = ContentAddressedArtifact(
                 semantic_hash=loaded.contract_hash,
                 relative_path=str(reference["relative_path"]),
@@ -298,8 +295,27 @@ class ResolvedEvaluationContractServiceV1:
                 media_type=str(reference["media_type"]),
             )
             return RecordedResolvedEvaluationContractV1(loaded, event, artifact)
+
+        existing = [
+            event for event in self.store.query_events(
+                event_type="ResolvedEvaluationContractRegistered"
+            ) if event.run_id == run_id
+        ]
+        if len(existing) > 1:
+            raise EventTransitionError("multiple resolved contracts exist for run")
+        if existing:
+            return replay_existing(existing[0])
         run_events = [event for event in self.store.query_events() if event.run_id == run_id]
         if len(run_events) != 1 or run_events[0].event_hash != policy_event.event_hash:
+            raced = [
+                event
+                for event in self.store.query_events(
+                    event_type="ResolvedEvaluationContractRegistered"
+                )
+                if event.run_id == run_id
+            ]
+            if len(raced) == 1:
+                return replay_existing(raced[0])
             raise EventTransitionError(
                 "resolved contract must be the second run event before trials or data access"
             )

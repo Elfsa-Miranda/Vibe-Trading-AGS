@@ -103,6 +103,18 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
     ),
+    "ProductionEvaluationNodeRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "TrialTerminalDossierRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "ReportMaterializationFailed": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
     "RetrieverFeatureSourceRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
@@ -228,6 +240,9 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "ObservedPanelPredictiveEvidenceRecorded",
         "PITPredictiveEvidenceRecorded",
         "ScorecardDecisionEvidenceV4Recorded",
+        "ProductionEvaluationNodeRecorded",
+        "TrialTerminalDossierRecorded",
+        "ReportMaterializationFailed",
     }
 )
 
@@ -436,6 +451,7 @@ class ResearchEventStore:
         self._validate_external_pit_adapter_registration(draft.event_type, payload)
         self._validate_external_pit_snapshot(draft.event_type, payload)
         self._validate_external_predictive_v4(draft.event_type, payload)
+        self._validate_external_production_evaluator(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
         self._validate_external_prearm_flat_schedule(draft.event_type, payload)
@@ -672,6 +688,9 @@ class ResearchEventStore:
             "ObservedPanelPredictiveEvidenceRecorded": "evidence_id",
             "PITPredictiveEvidenceRecorded": "evidence_id",
             "ScorecardDecisionEvidenceV4Recorded": "evidence_id",
+            "ProductionEvaluationNodeRecorded": "node_id",
+            "TrialTerminalDossierRecorded": "dossier_id",
+            "ReportMaterializationFailed": "failure_id",
             "RetrieverFeatureSourceRecorded": "feature_source_id",
             "RetrieverDecisionV2Recorded": "decision_id",
             "RetrieverDecisionV3Recorded": "decision_id",
@@ -2200,6 +2219,140 @@ class ResearchEventStore:
         except (KeyError, StopIteration, OSError, TypeError, ValueError, RuntimeError) as exc:
             raise EventValidationError(
                 "predictive v4 artifact or source replay is invalid"
+            ) from exc
+
+    def _validate_external_production_evaluator(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        event_types = {
+            "ProductionEvaluationNodeRecorded",
+            "TrialTerminalDossierRecorded",
+            "ReportMaterializationFailed",
+        }
+        if event_type not in event_types:
+            return
+        try:
+            from src.alpha_quality.production_evaluator_v1 import (
+                DOSSIER_MEDIA_TYPE,
+                PRODUCER_POLICY_HASH,
+                PRODUCER_SCHEMA_VERSION,
+                ProductionCandidateEvaluatorV1,
+                ProductionEvaluationNodeV1,
+                TrialTerminalDossierArtifactStoreV1,
+            )
+
+            if (
+                payload["producer_schema_version"] != PRODUCER_SCHEMA_VERSION
+                or payload["producer_policy_hash"] != PRODUCER_POLICY_HASH
+            ):
+                raise ValueError("production evaluator producer identity differs")
+            if event_type == "ProductionEvaluationNodeRecorded":
+                node = ProductionEvaluationNodeV1(
+                    run_id=str(payload["run_id"]),
+                    trial_id=str(payload["trial_id"]),
+                    factor_spec_id=str(payload["factor_spec_id"]),
+                    resolved_contract_hash=str(payload["resolved_contract_hash"]),
+                    node_name=str(payload["node_name"]),  # type: ignore[arg-type]
+                    status=str(payload["status"]),  # type: ignore[arg-type]
+                    reason_codes=tuple(str(item) for item in payload["reason_codes"]),
+                    source_event_hashes=tuple(
+                        str(item) for item in payload["source_event_hashes"]
+                    ),
+                    producer_schema_version=str(payload["producer_schema_version"]),
+                    producer_policy_hash=str(payload["producer_policy_hash"]),
+                    node_hash=str(payload["node_hash"]),
+                )
+                expected_id = (
+                    f"production-node-{node.trial_id}-{node.node_name}"
+                )
+                if payload["node_id"] != expected_id:
+                    raise ValueError("production node identity differs")
+                return
+            if event_type == "ReportMaterializationFailed":
+                if payload["failure_id"] != f"report-failure-{payload['trial_id']}":
+                    raise ValueError("report failure identity differs")
+                return
+            references = [
+                item
+                for item in payload["artifact_refs"]
+                if item["media_type"] == DOSSIER_MEDIA_TYPE
+            ]
+            if len(references) != 1:
+                raise ValueError("terminal dossier artifact is ambiguous")
+            reference = references[0]
+            dossier = TrialTerminalDossierArtifactStoreV1(
+                self.artifact_root
+            ).read(
+                str(reference["relative_path"]),
+                expected_hash=str(payload["terminal_dossier_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            expected = ProductionCandidateEvaluatorV1.dossier_event_payload(
+                dossier,
+                reference,
+            )
+            by_hash = {event.event_hash: event for event in self.query_events()}
+            evidence = [by_hash[item] for item in dossier.evidence_event_hashes]
+            nodes = [by_hash[item] for item in dossier.node_event_hashes]
+            terminal = by_hash[dossier.terminal_event_hash]
+            evaluation = (
+                None
+                if dossier.evaluation_event_hash is None
+                else by_hash[dossier.evaluation_event_hash]
+            )
+            expected_bundle_hash = canonical_json_hash(
+                {
+                    "schema_version": "production_evidence_bundle.v1",
+                    "evidence_payload_hashes": sorted(
+                        event.payload_hash for event in evidence
+                    ),
+                    "node_hashes": sorted(
+                        str(event.payload["node_hash"]) for event in nodes
+                    ),
+                }
+            )
+            contract_matches = [
+                event
+                for event in by_hash.values()
+                if event.event_type == "ResolvedEvaluationContractRegistered"
+                and event.payload["contract_hash"] == dossier.resolved_contract_hash
+                and event.run_id == dossier.run_id
+            ]
+            snapshot = by_hash[dossier.snapshot_event_hash]
+            watermark = by_hash[dossier.source_watermark_event_hash]
+            if (
+                dict(payload) != expected
+                or expected_bundle_hash != dossier.evidence_bundle_hash
+                or len(contract_matches) != 1
+                or snapshot.event_type != "AsharePITSnapshotRecorded"
+                or snapshot.run_id != dossier.run_id
+                or watermark.event_type != "FactorDefinitionRecorded"
+                or watermark.entity_id != dossier.factor_spec_id
+                or watermark.run_id != dossier.run_id
+                or terminal.event_type != "TrialTerminated"
+                or terminal.run_id != dossier.run_id
+                or terminal.payload["trial_id"] != dossier.trial_id
+                or (
+                    evaluation is not None
+                    and (
+                        evaluation.event_type != "EvaluationRecorded"
+                        or evaluation.run_id != dossier.run_id
+                        or evaluation.payload["trial_id"] != dossier.trial_id
+                        or evaluation.payload["factor_spec_id"]
+                        != dossier.factor_spec_id
+                        or evaluation.payload["metadata"].get(
+                            "evidence_bundle_hash"
+                        )
+                        != dossier.evidence_bundle_hash
+                    )
+                )
+            ):
+                raise ValueError("terminal dossier event differs from artifact")
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "production evaluator artifact or source replay is invalid"
             ) from exc
 
     def _validate_external_quality_decision_evidence(
@@ -4045,6 +4198,115 @@ class ResearchEventStore:
                 )
             ):
                 raise EventTransitionError("scorecard v4 source binding differs")
+            return
+        if event_type == "ProductionEvaluationNodeRecorded":
+            trial = conn.execute(
+                "SELECT run_id FROM research_events WHERE event_type = 'TrialStarted' AND entity_id = ?",
+                (payload["trial_id"],),
+            ).fetchone()
+            terminal = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'TrialTerminated' AND entity_id = ?",
+                (payload["trial_id"],),
+            ).fetchone()
+            factor = conn.execute(
+                "SELECT run_id FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?",
+                (payload["factor_spec_id"],),
+            ).fetchone()
+            contract = conn.execute(
+                """
+                SELECT run_id FROM research_events
+                WHERE event_type = 'ResolvedEvaluationContractRegistered'
+                  AND json_extract(payload, '$.contract_hash') = ?
+                """,
+                (payload["resolved_contract_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ProductionEvaluationNodeRecorded'
+                  AND json_extract(payload, '$.trial_id') = ?
+                  AND json_extract(payload, '$.node_name') = ?
+                """,
+                (payload["trial_id"], payload["node_name"]),
+            ).fetchone()
+            node_source_rows = [
+                conn.execute(
+                    "SELECT 1 FROM research_events WHERE event_hash = ?",
+                    (event_hash,),
+                ).fetchone()
+                for event_hash in payload["source_event_hashes"]
+            ]
+            if (
+                trial is None
+                or terminal is not None
+                or factor is None
+                or contract is None
+                or prior is not None
+                or payload["run_id"] != draft.run_id
+                or str(trial["run_id"]) != draft.run_id
+                or str(factor["run_id"]) != draft.run_id
+                or str(contract["run_id"]) != draft.run_id
+                or any(row is None for row in node_source_rows)
+            ):
+                raise EventTransitionError("production node source identity or order differs")
+            return
+        if event_type == "TrialTerminalDossierRecorded":
+            terminal = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'TrialTerminated' AND event_hash = ?
+                """,
+                (payload["terminal_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'TrialTerminalDossierRecorded'
+                  AND json_extract(payload, '$.trial_id') = ?
+                """,
+                (payload["trial_id"],),
+            ).fetchone()
+            dossier_source_rows = [
+                conn.execute(
+                    "SELECT 1 FROM research_events WHERE event_hash = ?",
+                    (event_hash,),
+                ).fetchone()
+                for event_hash in payload["source_event_hashes"]
+            ]
+            if (
+                terminal is None
+                or prior is not None
+                or str(terminal["run_id"]) != draft.run_id
+                or json.loads(str(terminal["payload"]))["trial_id"]
+                != payload["trial_id"]
+                or any(row is None for row in dossier_source_rows)
+            ):
+                raise EventTransitionError("terminal dossier source identity differs")
+            return
+        if event_type == "ReportMaterializationFailed":
+            terminal = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'TrialTerminated' AND event_hash = ?
+                """,
+                (payload["terminal_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ReportMaterializationFailed'
+                  AND json_extract(payload, '$.trial_id') = ?
+                """,
+                (payload["trial_id"],),
+            ).fetchone()
+            if (
+                terminal is None
+                or prior is not None
+                or str(terminal["run_id"]) != draft.run_id
+                or json.loads(str(terminal["payload"]))["trial_id"]
+                != payload["trial_id"]
+            ):
+                raise EventTransitionError("report materialization failure source differs")
             return
         if event_type == "TrainValidDataSnapshotFrozen":
             prior = conn.execute(
@@ -6325,6 +6587,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_production_evaluator(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_activation_source_audit(
                     event.event_type,
                     validated_payload,
@@ -6494,6 +6760,10 @@ class ResearchEventStore:
         pit_predictive_keys: set[tuple[str, str]] = set()
         predictive_events: dict[str, ResearchEventEnvelope] = {}
         scorecard_v4_keys: set[tuple[str, str]] = set()
+        production_node_keys: set[tuple[str, str]] = set()
+        production_node_events: set[str] = set()
+        terminal_dossier_trials: set[str] = set()
+        report_failure_trials: set[str] = set()
         seen_run_ids: set[str] = set()
         event_order = {
             event.event_hash: index for index, event in enumerate(events)
@@ -6830,6 +7100,72 @@ class ResearchEventStore:
                 ):
                     return False
                 scorecard_v4_keys.add(scorecard_key)
+            elif event.event_type == "ProductionEvaluationNodeRecorded":
+                production_node_key = (
+                    str(payload["trial_id"]),
+                    str(payload["node_name"]),
+                )
+                sources = [
+                    events_by_hash.get(str(item))
+                    for item in payload["source_event_hashes"]
+                ]
+                contract = resolved_contract_events.get(
+                    str(payload["resolved_contract_hash"])
+                )
+                if (
+                    production_node_key in production_node_keys
+                    or str(payload["trial_id"]) not in started
+                    or str(payload["trial_id"]) in terminated
+                    or str(payload["factor_spec_id"]) not in definitions
+                    or contract is None
+                    or contract.run_id != event.run_id
+                    or payload["run_id"] != event.run_id
+                    or any(source is None for source in sources)
+                    or any(
+                        source is not None
+                        and event_order[source.event_hash] >= event_order[event.event_hash]
+                        for source in sources
+                    )
+                ):
+                    return False
+                production_node_keys.add(production_node_key)
+                production_node_events.add(event.event_hash)
+            elif event.event_type == "TrialTerminalDossierRecorded":
+                trial_id = str(payload["trial_id"])
+                terminal = events_by_hash.get(str(payload["terminal_event_hash"]))
+                source_hashes = set(str(item) for item in payload["source_event_hashes"])
+                if (
+                    trial_id in terminal_dossier_trials
+                    or terminal is None
+                    or terminal.event_type != "TrialTerminated"
+                    or terminal.event_hash not in terminal_hashes
+                    or terminal.run_id != event.run_id
+                    or not set(payload["node_event_hashes"]).issubset(
+                        production_node_events
+                    )
+                    or not set(payload["evidence_event_hashes"]).issubset(
+                        events_by_hash
+                    )
+                    or not source_hashes.issubset(events_by_hash)
+                    or any(
+                        event_order[item] >= event_order[event.event_hash]
+                        for item in source_hashes
+                    )
+                ):
+                    return False
+                terminal_dossier_trials.add(trial_id)
+            elif event.event_type == "ReportMaterializationFailed":
+                trial_id = str(payload["trial_id"])
+                terminal = events_by_hash.get(str(payload["terminal_event_hash"]))
+                if (
+                    trial_id in report_failure_trials
+                    or terminal is None
+                    or terminal.event_type != "TrialTerminated"
+                    or terminal.run_id != event.run_id
+                    or terminal.event_hash not in terminal_hashes
+                ):
+                    return False
+                report_failure_trials.add(trial_id)
             elif event.event_type == "TrainValidDataSnapshotFrozen":
                 snapshot_id = str(payload["snapshot_id"])
                 snapshot_hash = str(payload["snapshot_hash"])
