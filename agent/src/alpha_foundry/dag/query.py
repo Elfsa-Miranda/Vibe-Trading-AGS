@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 
-from src.alpha_foundry.dag.model import FactorDAGProjection, SimilarityEvidence
+from src.alpha_foundry.dag.model import (
+    DerivationEdge,
+    FactorDAGProjection,
+    SimilarityEvidence,
+)
 
 
 class FactorDAGQuery:
@@ -43,7 +47,7 @@ class FactorDAGQuery:
         self._require_factor(factor_spec_id)
         return 1.0 / (1.0 + len(self._children.get(factor_spec_id, ())))
 
-    def lineage_edges(self) -> tuple:
+    def lineage_edges(self) -> tuple[DerivationEdge, ...]:
         return self.projection.derivation_edges
 
     @staticmethod
