@@ -87,6 +87,22 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS",
     ),
+    "FactorOutputRecordedV3": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "ObservedPanelPredictiveEvidenceRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "PITPredictiveEvidenceRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "ScorecardDecisionEvidenceV4Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+    ),
     "RetrieverFeatureSourceRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
@@ -208,6 +224,10 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "SnapshotDecisionEvidenceV3Recorded",
         "AsharePITAdapterRegistered",
         "AsharePITSnapshotRecorded",
+        "FactorOutputRecordedV3",
+        "ObservedPanelPredictiveEvidenceRecorded",
+        "PITPredictiveEvidenceRecorded",
+        "ScorecardDecisionEvidenceV4Recorded",
     }
 )
 
@@ -415,6 +435,7 @@ class ResearchEventStore:
         self._validate_external_snapshot_evidence_v3(draft.event_type, payload)
         self._validate_external_pit_adapter_registration(draft.event_type, payload)
         self._validate_external_pit_snapshot(draft.event_type, payload)
+        self._validate_external_predictive_v4(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
         self._validate_external_prearm_flat_schedule(draft.event_type, payload)
@@ -647,6 +668,10 @@ class ResearchEventStore:
             "ApplicabilityAssessmentRecorded": "assessment_id",
             "AsharePITAdapterRegistered": "registration_id",
             "AsharePITSnapshotRecorded": "snapshot_id",
+            "FactorOutputRecordedV3": "factor_output_id",
+            "ObservedPanelPredictiveEvidenceRecorded": "evidence_id",
+            "PITPredictiveEvidenceRecorded": "evidence_id",
+            "ScorecardDecisionEvidenceV4Recorded": "evidence_id",
             "RetrieverFeatureSourceRecorded": "feature_source_id",
             "RetrieverDecisionV2Recorded": "decision_id",
             "RetrieverDecisionV3Recorded": "decision_id",
@@ -1999,6 +2024,183 @@ class ResearchEventStore:
             raise EventValidationError(
                 "PIT snapshot differs from deterministic source replay"
             )
+
+    def _validate_external_predictive_v4(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        event_types = {
+            "FactorOutputRecordedV3",
+            "ObservedPanelPredictiveEvidenceRecorded",
+            "PITPredictiveEvidenceRecorded",
+            "ScorecardDecisionEvidenceV4Recorded",
+        }
+        if event_type not in event_types:
+            return
+        try:
+            from src.alpha_quality.predictive_evidence_v4 import (
+                FACTOR_OUTPUT_MEDIA_TYPE,
+                PREDICTIVE_EVIDENCE_MEDIA_TYPE,
+                SCORECARD_V4_MEDIA_TYPE,
+                FactorOutputArtifactStoreV3,
+                PITPredictiveEvidenceServiceV4,
+                PredictiveEvidenceV1,
+                ScorecardDecisionEvidenceV4,
+                _JsonEvidenceStore,
+                _PREDICTIVE_KEYS,
+                _SCORECARD_KEYS,
+            )
+
+            events = {event.event_hash: event for event in self.query_events()}
+            if event_type == "FactorOutputRecordedV3":
+                ref = next(
+                    reference for reference in payload["artifact_refs"]
+                    if reference["media_type"] == FACTOR_OUTPUT_MEDIA_TYPE
+                )
+                artifact = FactorOutputArtifactStoreV3(self.artifact_root).read_manifest(
+                    str(ref["relative_path"]),
+                    expected_hash=str(payload["factor_output_hash"]),
+                    expected_blob_hash=str(ref["artifact_hash"]),
+                )
+                source_events = [
+                    events[event_hash]
+                    for event_hash in payload["source_event_hashes"]
+                    if event_hash in events
+                ]
+                contract = next(
+                    event for event in source_events
+                    if event.event_type == "ResolvedEvaluationContractRegistered"
+                )
+                definition = next(
+                    event for event in source_events
+                    if event.event_type == "FactorDefinitionRecorded"
+                )
+                snapshot = next(
+                    event for event in source_events
+                    if event.event_type == "AsharePITSnapshotRecorded"
+                )
+                rebuilt, _, _ = PITPredictiveEvidenceServiceV4.rebuild(
+                    self,
+                    run_id=artifact.run_id,
+                    contract_event_hash=contract.event_hash,
+                    factor_definition_event_hash=definition.event_hash,
+                    pit_snapshot_event_hash=snapshot.event_hash,
+                    persist_factor=True,
+                )
+                expected = PITPredictiveEvidenceServiceV4.factor_event_payload(
+                    rebuilt, ref
+                )
+                if rebuilt != artifact or dict(payload) != expected:
+                    raise ValueError("factor output differs from backend replay")
+                return
+
+            if event_type in {
+                "ObservedPanelPredictiveEvidenceRecorded",
+                "PITPredictiveEvidenceRecorded",
+            }:
+                ref = next(
+                    reference for reference in payload["artifact_refs"]
+                    if reference["media_type"] == PREDICTIVE_EVIDENCE_MEDIA_TYPE
+                )
+                raw = _JsonEvidenceStore(
+                    self.artifact_root,
+                    namespace="predictive-evidence-v1",
+                    media_type=PREDICTIVE_EVIDENCE_MEDIA_TYPE,
+                    keys=_PREDICTIVE_KEYS,
+                    semantic_field="evidence_hash",
+                ).read(
+                    str(ref["relative_path"]),
+                    expected_hash=str(payload["evidence_hash"]),
+                    expected_blob_hash=str(ref["artifact_hash"]),
+                )
+                predictive_artifact = PredictiveEvidenceV1.from_dict(raw)
+                factor_event = events[str(payload["factor_output_event_hash"])]
+                factor_ref = factor_event.payload["artifact_refs"][0]
+                factor_artifact = FactorOutputArtifactStoreV3(
+                    self.artifact_root
+                ).read_manifest(
+                    str(factor_ref["relative_path"]),
+                    expected_hash=str(factor_event.payload["factor_output_hash"]),
+                    expected_blob_hash=str(factor_ref["artifact_hash"]),
+                )
+                source_events = [events[item] for item in factor_artifact.source_event_hashes]
+                contract = next(
+                    event for event in source_events
+                    if event.event_type == "ResolvedEvaluationContractRegistered"
+                )
+                definition = next(
+                    event for event in source_events
+                    if event.event_type == "FactorDefinitionRecorded"
+                )
+                snapshot = next(
+                    event for event in source_events
+                    if event.event_type == "AsharePITSnapshotRecorded"
+                )
+                _, observed, pit = PITPredictiveEvidenceServiceV4.rebuild(
+                    self,
+                    run_id=factor_artifact.run_id,
+                    contract_event_hash=contract.event_hash,
+                    factor_definition_event_hash=definition.event_hash,
+                    pit_snapshot_event_hash=snapshot.event_hash,
+                    persist_factor=True,
+                )
+                expected_artifact = PITPredictiveEvidenceServiceV4._with_factor_event(
+                    observed if event_type == "ObservedPanelPredictiveEvidenceRecorded" else pit,
+                    factor_event.event_hash,
+                )
+                expected = PITPredictiveEvidenceServiceV4.predictive_event_payload(
+                    expected_artifact, ref
+                )
+                if expected_artifact != predictive_artifact or dict(payload) != expected:
+                    raise ValueError("predictive evidence differs from source replay")
+                return
+
+            ref = next(
+                reference for reference in payload["artifact_refs"]
+                if reference["media_type"] == SCORECARD_V4_MEDIA_TYPE
+            )
+            raw = _JsonEvidenceStore(
+                self.artifact_root,
+                namespace="scorecard-evidence-v4",
+                media_type=SCORECARD_V4_MEDIA_TYPE,
+                keys=_SCORECARD_KEYS,
+                semantic_field="scorecard_evidence_hash",
+            ).read(
+                str(ref["relative_path"]),
+                expected_hash=str(payload["scorecard_evidence_hash"]),
+                expected_blob_hash=str(ref["artifact_hash"]),
+            )
+            scorecard_artifact = ScorecardDecisionEvidenceV4.from_dict(raw)
+            factor_event = events[str(payload["factor_output_event_hash"])]
+            observed_event = events[str(payload["observed_event_hash"])]
+            pit_event = events[str(payload["pit_event_hash"])]
+            factor_ref = factor_event.payload["artifact_refs"][0]
+            factor_artifact = FactorOutputArtifactStoreV3(
+                self.artifact_root
+            ).read_manifest(
+                str(factor_ref["relative_path"]),
+                expected_hash=str(factor_event.payload["factor_output_hash"]),
+                expected_blob_hash=str(factor_ref["artifact_hash"]),
+            )
+            service = PITPredictiveEvidenceServiceV4(self)
+            observed = service._read_predictive_event(observed_event)
+            pit = service._read_predictive_event(pit_event)
+            rebuilt_scorecard = service._scorecard(
+                factor=factor_artifact,
+                observed=observed,
+                pit=pit,
+                factor_event_hash=factor_event.event_hash,
+                observed_event_hash=observed_event.event_hash,
+                pit_event_hash=pit_event.event_hash,
+            )
+            expected = service.scorecard_event_payload(rebuilt_scorecard, ref)
+            if rebuilt_scorecard != scorecard_artifact or dict(payload) != expected:
+                raise ValueError("scorecard v4 differs from source replay")
+        except (KeyError, StopIteration, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "predictive v4 artifact or source replay is invalid"
+            ) from exc
 
     def _validate_external_quality_decision_evidence(
         self,
@@ -3722,6 +3924,127 @@ class ResearchEventStore:
                 raise EventTransitionError(
                     "PIT snapshot source identity, order or scope differs"
                 )
+            return
+        if event_type == "FactorOutputRecordedV3":
+            contract = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'ResolvedEvaluationContractRegistered'
+                  AND event_hash = ?
+                """,
+                (payload["contract_event_hash"],),
+            ).fetchone()
+            snapshot = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'AsharePITSnapshotRecorded' AND event_hash = ?
+                """,
+                (payload["pit_snapshot_event_hash"],),
+            ).fetchone()
+            definitions = conn.execute(
+                """
+                SELECT run_id, event_hash FROM research_events
+                WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?
+                """,
+                (payload["factor_spec_id"],),
+            ).fetchall()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'FactorOutputRecordedV3'
+                  AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?
+                """,
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if (
+                contract is None
+                or snapshot is None
+                or len(definitions) != 1
+                or prior is not None
+                or str(contract["run_id"]) != draft.run_id
+                or str(snapshot["run_id"]) != draft.run_id
+                or str(definitions[0]["run_id"]) != draft.run_id
+            ):
+                raise EventTransitionError("factor output source identity or order differs")
+            contract_payload = json.loads(str(contract["payload"]))
+            snapshot_payload = json.loads(str(snapshot["payload"]))
+            if (
+                contract_payload["contract_hash"] != payload["resolved_contract_hash"]
+                or snapshot_payload["snapshot_hash"] != payload["pit_snapshot_hash"]
+                or contract_payload["evaluation_policy_event_hash"]
+                != payload["evaluation_policy_event_hash"]
+                or str(definitions[0]["event_hash"])
+                not in payload["source_event_hashes"]
+            ):
+                raise EventTransitionError("factor output source hashes differ")
+            return
+        if event_type in {
+            "ObservedPanelPredictiveEvidenceRecorded",
+            "PITPredictiveEvidenceRecorded",
+        }:
+            factor = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'FactorOutputRecordedV3' AND event_hash = ?
+                """,
+                (payload["factor_output_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = ? AND run_id = ?
+                  AND json_extract(payload, '$.factor_spec_id') = ?
+                """,
+                (event_type, draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if factor is None or prior is not None or str(factor["run_id"]) != draft.run_id:
+                raise EventTransitionError("predictive evidence source identity differs")
+            factor_payload = json.loads(str(factor["payload"]))
+            for name in (
+                "factor_output_hash", "factor_spec_id", "resolved_contract_hash",
+                "contract_event_hash", "pit_snapshot_hash", "pit_snapshot_event_hash",
+            ):
+                if factor_payload[name] != payload[name]:
+                    raise EventTransitionError("predictive evidence factor binding differs")
+            return
+        if event_type == "ScorecardDecisionEvidenceV4Recorded":
+            source_types = {
+                "factor_output_event_hash": "FactorOutputRecordedV3",
+                "observed_event_hash": "ObservedPanelPredictiveEvidenceRecorded",
+                "pit_event_hash": "PITPredictiveEvidenceRecorded",
+            }
+            source_rows: dict[str, Mapping[str, Any]] = {}
+            for name, expected_type in source_types.items():
+                row = conn.execute(
+                    "SELECT run_id, payload FROM research_events WHERE event_type = ? AND event_hash = ?",
+                    (expected_type, payload[name]),
+                ).fetchone()
+                if row is None or str(row["run_id"]) != draft.run_id:
+                    raise EventTransitionError("scorecard v4 source event is missing")
+                source_rows[name] = json.loads(str(row["payload"]))
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ScorecardDecisionEvidenceV4Recorded'
+                  AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?
+                """,
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("scorecard v4 already exists for factor/run")
+            factor_payload = source_rows["factor_output_event_hash"]
+            observed_payload = source_rows["observed_event_hash"]
+            pit_payload = source_rows["pit_event_hash"]
+            if (
+                factor_payload["factor_output_hash"] != payload["factor_output_hash"]
+                or observed_payload["evidence_hash"] != payload["observed_evidence_hash"]
+                or pit_payload["evidence_hash"] != payload["pit_evidence_hash"]
+                or any(
+                    source["factor_spec_id"] != payload["factor_spec_id"]
+                    for source in (factor_payload, observed_payload, pit_payload)
+                )
+            ):
+                raise EventTransitionError("scorecard v4 source binding differs")
             return
         if event_type == "TrainValidDataSnapshotFrozen":
             prior = conn.execute(
@@ -5998,6 +6321,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_predictive_v4(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_activation_source_audit(
                     event.event_type,
                     validated_payload,
@@ -6161,6 +6488,12 @@ class ResearchEventStore:
         pit_adapter_registration_hashes: set[str] = set()
         pit_adapter_events: dict[str, ResearchEventEnvelope] = {}
         pit_snapshot_runs: set[str] = set()
+        factor_output_keys: set[tuple[str, str]] = set()
+        factor_output_events: dict[str, ResearchEventEnvelope] = {}
+        observed_predictive_keys: set[tuple[str, str]] = set()
+        pit_predictive_keys: set[tuple[str, str]] = set()
+        predictive_events: dict[str, ResearchEventEnvelope] = {}
+        scorecard_v4_keys: set[tuple[str, str]] = set()
         seen_run_ids: set[str] = set()
         event_order = {
             event.event_hash: index for index, event in enumerate(events)
@@ -6420,6 +6753,83 @@ class ResearchEventStore:
                 ):
                     return False
                 pit_snapshot_runs.add(event.run_id)
+            elif event.event_type == "FactorOutputRecordedV3":
+                contract = events_by_hash.get(str(payload["contract_event_hash"]))
+                snapshot = events_by_hash.get(str(payload["pit_snapshot_event_hash"]))
+                definitions_for_factor = [
+                    candidate for candidate in events[:event_order[event.event_hash]]
+                    if candidate.event_type == "FactorDefinitionRecorded"
+                    and candidate.entity_id == payload["factor_spec_id"]
+                ]
+                factor_output_key = (event.run_id, str(payload["factor_spec_id"]))
+                if (
+                    factor_output_key in factor_output_keys
+                    or contract is None
+                    or contract.event_type != "ResolvedEvaluationContractRegistered"
+                    or snapshot is None
+                    or snapshot.event_type != "AsharePITSnapshotRecorded"
+                    or len(definitions_for_factor) != 1
+                    or contract.run_id != event.run_id
+                    or snapshot.run_id != event.run_id
+                    or definitions_for_factor[0].run_id != event.run_id
+                    or contract.payload["contract_hash"]
+                    != payload["resolved_contract_hash"]
+                    or snapshot.payload["snapshot_hash"] != payload["pit_snapshot_hash"]
+                    or definitions_for_factor[0].event_hash
+                    not in payload["source_event_hashes"]
+                ):
+                    return False
+                factor_output_keys.add(factor_output_key)
+                factor_output_events[event.event_hash] = event
+            elif event.event_type in {
+                "ObservedPanelPredictiveEvidenceRecorded",
+                "PITPredictiveEvidenceRecorded",
+            }:
+                factor = factor_output_events.get(
+                    str(payload["factor_output_event_hash"])
+                )
+                predictive_key = (event.run_id, str(payload["factor_spec_id"]))
+                keys = (
+                    observed_predictive_keys
+                    if event.event_type == "ObservedPanelPredictiveEvidenceRecorded"
+                    else pit_predictive_keys
+                )
+                if (
+                    factor is None
+                    or predictive_key in keys
+                    or factor.run_id != event.run_id
+                    or factor.payload["factor_output_hash"]
+                    != payload["factor_output_hash"]
+                    or factor.payload["factor_spec_id"] != payload["factor_spec_id"]
+                    or factor.payload["resolved_contract_hash"]
+                    != payload["resolved_contract_hash"]
+                ):
+                    return False
+                keys.add(predictive_key)
+                predictive_events[event.event_hash] = event
+            elif event.event_type == "ScorecardDecisionEvidenceV4Recorded":
+                factor = factor_output_events.get(
+                    str(payload["factor_output_event_hash"])
+                )
+                observed = predictive_events.get(str(payload["observed_event_hash"]))
+                pit = predictive_events.get(str(payload["pit_event_hash"]))
+                scorecard_key = (event.run_id, str(payload["factor_spec_id"]))
+                if (
+                    scorecard_key in scorecard_v4_keys
+                    or factor is None
+                    or observed is None
+                    or pit is None
+                    or observed.event_type != "ObservedPanelPredictiveEvidenceRecorded"
+                    or pit.event_type != "PITPredictiveEvidenceRecorded"
+                    or any(source.run_id != event.run_id for source in (factor, observed, pit))
+                    or factor.payload["factor_output_hash"]
+                    != payload["factor_output_hash"]
+                    or observed.payload["evidence_hash"]
+                    != payload["observed_evidence_hash"]
+                    or pit.payload["evidence_hash"] != payload["pit_evidence_hash"]
+                ):
+                    return False
+                scorecard_v4_keys.add(scorecard_key)
             elif event.event_type == "TrainValidDataSnapshotFrozen":
                 snapshot_id = str(payload["snapshot_id"])
                 snapshot_hash = str(payload["snapshot_hash"])
