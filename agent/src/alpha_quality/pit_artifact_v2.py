@@ -16,7 +16,6 @@ import duckdb
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
 
-from src.alpha_foundry.artifacts import safe_artifact_path
 from src.alpha_quality.pit_adapter_v1 import (
     AsharePITSnapshotRequestV1,
     AsharePITSourceBundleV1,
@@ -28,6 +27,7 @@ from src.research_ledger.events.artifacts import (
     AtomicContentAddressedArtifactWriter,
     ContentAddressedArtifact,
     hash_artifact,
+    safe_artifact_target,
     validate_artifact_references,
 )
 from src.research_ledger.hash_utils import canonical_json, canonical_json_hash
@@ -314,7 +314,7 @@ class AsharePITParquetStoreV1:
         )
         digest = semantic_hash.removeprefix("sha256:")
         relative = f"{self.namespace}/{digest[:2]}/{digest}.parquet"
-        target = safe_artifact_path(self.root, relative)
+        target = safe_artifact_target(self.root, relative)
         target.parent.mkdir(parents=True, exist_ok=True)
         staging = self.root / ".artifact-staging"
         staging.mkdir(parents=True, exist_ok=True)
@@ -435,6 +435,9 @@ class FrozenAsharePITSnapshotV2:
         registration = RegisteredAsharePITAdapterV1(
             descriptor=_descriptor_from_dict(self.registration["descriptor"]),
             implementation_hash=str(self.registration["implementation_hash"]),
+            factory_origin=str(self.registration["factory_origin"]),
+            factory_hash=str(self.registration["factory_hash"]),
+            provider_version=str(self.registration["provider_version"]),
             authority_class=str(self.registration["authority_class"]),  # type: ignore[arg-type]
             registration_hash=str(self.registration["registration_hash"]),
         )

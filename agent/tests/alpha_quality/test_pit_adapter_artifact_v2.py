@@ -152,6 +152,9 @@ def test_registry_derives_implementation_identity_and_denies_self_promotion() ->
         }
     )
     assert registry.registry_hash.startswith("sha256:")
+    assert registration.factory_origin == "unverified_or_injected"
+    assert registration.factory_hash.startswith("sha256:")
+    assert registration.provider_version == "unverified"
 
 
 def test_builtin_type_with_injected_client_is_still_not_production_authority() -> None:
@@ -166,7 +169,7 @@ def test_builtin_type_with_injected_client_is_still_not_production_authority() -
     )
 
 
-def test_environment_factory_mints_private_builtin_authority(
+def test_monkeypatched_environment_factory_cannot_mint_builtin_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import tushare
@@ -181,7 +184,7 @@ def test_environment_factory_mints_private_builtin_authority(
 
     assert (
         registry.registration("tushare-csi300-pit-v1").authority_class
-        == "built_in_production"
+        == "external_unverified"
     )
 
 
@@ -263,7 +266,7 @@ class _CompleteFakeTushareClient:
         return pd.DataFrame(columns=["ts_code", "ann_date", "ex_date", "div_proc"])
 
 
-def test_builtin_adapter_complete_provider_facts_can_be_decision_grade(
+def test_fake_provider_facts_cannot_be_decision_grade(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import tushare
@@ -292,13 +295,13 @@ def test_builtin_adapter_complete_provider_facts_can_be_decision_grade(
         registration=registry.registration("tushare-csi300-pit-v1"),
     )
 
-    assert result.evidence["pit_contract_status"] == "complete"
+    assert result.evidence["pit_contract_status"] == "unavailable"
     assert result.evidence["survivorship_status"] == (
         "controlled_by_daily_membership"
     )
-    assert result.evidence["decision_grade"] is True
+    assert result.evidence["decision_grade"] is False
     assert result.evidence["hard_failures"] == ()
-    assert result.evidence["caps"] == ()
+    assert result.evidence["caps"] == ("ADAPTER_AUTHORITY_UNVERIFIED",)
 
 
 def test_request_has_no_pit_survivorship_or_decision_truth_channel() -> None:
@@ -459,4 +462,66 @@ def test_missing_daily_membership_date_fails_closed_with_false_masks() -> None:
 
     assert "DAILY_MEMBERSHIP_AXES_MISMATCH" in result.evidence["hard_failures"]
     assert all(frame.eq(False).all().all() for frame in result.derived_masks.values())
+    assert result.evidence["decision_grade"] is False
+
+
+def test_partial_field_is_typed_unavailable_not_false_or_complete() -> None:
+    request = _request()
+    bundle = _bundle(request)
+    market = dict(bundle.market_fields)
+    availability = dict(bundle.field_available_at)
+    del market["amount"]
+    del availability["amount"]
+    modified = replace(
+        bundle,
+        market_fields=dict(sorted(market.items())),
+        field_available_at=dict(sorted(availability.items())),
+    )
+    registration = AsharePITAdapterRegistryV1(
+        {"fixture-pit-v1": FixturePITAdapterV1()}
+    ).registration("fixture-pit-v1")
+
+    result = validate_ashare_pit_source_v2(
+        bundle=modified,
+        request=request,
+        registration=registration,
+    )
+
+    assert result.evidence["pit_contract_status"] == "unavailable"
+    assert "REQUIRED_MARKET_FIELDS_UNAVAILABLE" in result.evidence["caps"]
+    assert result.evidence["decision_grade"] is False
+    assert all(frame.eq(False).all().all() for frame in result.derived_masks.values())
+
+
+def test_unknown_boolean_state_cannot_be_coerced_to_false() -> None:
+    request = _request()
+    bundle = _bundle(request)
+    states = dict(bundle.trade_state_fields)
+    states["is_suspended"] = states["is_suspended"].astype(object)
+    states["is_suspended"].iloc[0, 0] = None
+
+    with pytest.raises(ValueError, match="strict bool"):
+        replace(bundle, trade_state_fields=dict(sorted(states.items())))
+
+
+def test_corporate_action_announcement_after_effective_time_is_contamination() -> None:
+    request = _request()
+    bundle = _bundle(request)
+    actions = bundle.corporate_actions.copy()
+    actions.loc["action-1", "announced_at"] = "2025-01-02T16:00:00+08:00"
+    modified = replace(bundle, corporate_actions=actions)
+    registration = AsharePITAdapterRegistryV1(
+        {"fixture-pit-v1": FixturePITAdapterV1()}
+    ).registration("fixture-pit-v1")
+
+    result = validate_ashare_pit_source_v2(
+        bundle=modified,
+        request=request,
+        registration=registration,
+    )
+
+    assert result.evidence["pit_contract_status"] == "contaminated"
+    assert "POST_EFFECTIVE_CORPORATE_ACTION_ANNOUNCEMENT" in result.evidence[
+        "hard_failures"
+    ]
     assert result.evidence["decision_grade"] is False

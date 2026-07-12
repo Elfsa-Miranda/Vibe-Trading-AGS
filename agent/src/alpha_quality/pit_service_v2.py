@@ -183,6 +183,9 @@ def _registration_from_dict(raw: Mapping[str, Any]) -> RegisteredAsharePITAdapte
     return RegisteredAsharePITAdapterV1(
         descriptor=_descriptor_from_dict(raw["descriptor"]),
         implementation_hash=str(raw["implementation_hash"]),
+        factory_origin=str(raw["factory_origin"]),
+        factory_hash=str(raw["factory_hash"]),
+        provider_version=str(raw["provider_version"]),
         authority_class=str(raw["authority_class"]),  # type: ignore[arg-type]
         registration_hash=str(raw["registration_hash"]),
         schema_version=str(raw["schema_version"]),  # type: ignore[arg-type]
@@ -366,6 +369,9 @@ class AsharePITAdapterRegistrationServiceV1:
             "registry_hash": record.registry_hash,
             "registration_hash": registration.registration_hash,
             "implementation_hash": registration.implementation_hash,
+            "factory_origin": registration.factory_origin,
+            "factory_hash": registration.factory_hash,
+            "provider_version": registration.provider_version,
             "descriptor_hash": registration.descriptor.descriptor_hash,
             "producer_schema_version": record.producer_schema_version,
             "producer_policy_hash": record.producer_policy_hash,

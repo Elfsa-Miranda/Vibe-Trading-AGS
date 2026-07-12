@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import importlib.metadata
+import inspect
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any, Callable, Mapping, cast
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -28,9 +32,74 @@ class AsharePITSourceUnavailable(RuntimeError):
 
 def is_production_bound_adapter(adapter: object) -> bool:
     return (
-        isinstance(adapter, TushareCSI300PITAdapterV1)
+        type(adapter) is TushareCSI300PITAdapterV1
         and adapter._authority_capability is _PRODUCTION_AUTHORITY_CAPABILITY
+        and adapter._factory_attestation is not None
     )
+
+
+def production_factory_attestation(adapter: object) -> Mapping[str, Any] | None:
+    """Return attestation only for the exact controlled factory product."""
+    if not is_production_bound_adapter(adapter):
+        return None
+    assert isinstance(adapter, TushareCSI300PITAdapterV1)
+    try:
+        import tushare as ts  # type: ignore[import-untyped]
+    except ImportError:
+        return None
+    current = _installed_factory_attestation(ts, adapter._client)
+    if current is None or dict(adapter._factory_attestation or {}) != current:
+        return None
+    return MappingProxyType(current)
+
+
+def _installed_factory_attestation(ts: Any, client: Any) -> dict[str, Any] | None:
+    """Reject monkeypatched factories and clients even when names are imitated."""
+    factory_raw = getattr(ts, "pro_api", None)
+    if not callable(factory_raw):
+        return None
+    factory = cast(Callable[..., Any], factory_raw)
+    client_type = type(client)
+    if (
+        getattr(factory, "__module__", None) != "tushare.pro.data_pro"
+        or getattr(factory, "__qualname__", None) != "pro_api"
+        or client_type.__module__ != "tushare.pro.client"
+        or client_type.__qualname__ != "DataApi"
+    ):
+        return None
+    try:
+        distribution = importlib.metadata.distribution("tushare")
+        package_root = (
+            Path(str(distribution.locate_file(""))) / "tushare"
+        ).resolve(strict=True)
+        factory_path = Path(inspect.getsourcefile(factory) or "").resolve(strict=True)
+        client_path = Path(inspect.getsourcefile(client_type) or "").resolve(strict=True)
+        if not factory_path.is_relative_to(package_root) or not client_path.is_relative_to(
+            package_root
+        ):
+            return None
+        provider_version = distribution.version
+        if str(getattr(ts, "__version__", "")) != provider_version:
+            return None
+        content = {
+            "schema_version": "tushare_factory_attestation.v1",
+            "factory_origin": "installed_tushare_distribution",
+            "provider": "tushare",
+            "provider_version": provider_version,
+            "factory_module": factory.__module__,
+            "factory_qualname": factory.__qualname__,
+            "factory_source_hash": canonical_json_hash(
+                {"source": inspect.getsource(factory).replace("\r\n", "\n")}
+            ),
+            "client_type_module": client_type.__module__,
+            "client_type_qualname": client_type.__qualname__,
+            "client_source_hash": canonical_json_hash(
+                {"source": inspect.getsource(client_type).replace("\r\n", "\n")}
+            ),
+        }
+    except (ImportError, OSError, TypeError, ValueError):
+        return None
+    return {**content, "factory_hash": canonical_json_hash(content)}
 
 
 def _frame_hash(frame: pd.DataFrame, name: str) -> str:
@@ -76,6 +145,7 @@ class TushareCSI300PITAdapterV1:
         dataset_vintage: str,
         source_as_of: str,
         _authority_capability: object | None = None,
+        _factory_attestation: Mapping[str, Any] | None = None,
     ) -> None:
         if client is None:
             raise ValueError("Tushare PIT adapter requires a provider client")
@@ -86,6 +156,11 @@ class TushareCSI300PITAdapterV1:
         self._dataset_vintage = str(dataset_vintage)
         self._source_as_of = timestamp.isoformat()
         self._authority_capability = _authority_capability
+        self._factory_attestation = (
+            None
+            if _factory_attestation is None
+            else MappingProxyType(dict(_factory_attestation))
+        )
 
     @classmethod
     def from_environment(cls) -> "TushareCSI300PITAdapterV1":
@@ -97,11 +172,16 @@ class TushareCSI300PITAdapterV1:
         except ImportError as exc:
             raise AsharePITSourceUnavailable("tushare package is unavailable") from exc
         now = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Shanghai"))
+        client = ts.pro_api(token)
+        attestation = _installed_factory_attestation(ts, client)
         return cls(
-            ts.pro_api(token),
+            client,
             dataset_vintage=f"tushare-{getattr(ts, '__version__', 'unknown')}-{now.date().isoformat()}",
             source_as_of=now.isoformat(),
-            _authority_capability=_PRODUCTION_AUTHORITY_CAPABILITY,
+            _authority_capability=(
+                _PRODUCTION_AUTHORITY_CAPABILITY if attestation is not None else None
+            ),
+            _factory_attestation=attestation,
         )
 
     @classmethod
@@ -487,4 +567,5 @@ __all__ = [
     "AsharePITSourceUnavailable",
     "TushareCSI300PITAdapterV1",
     "is_production_bound_adapter",
+    "production_factory_attestation",
 ]

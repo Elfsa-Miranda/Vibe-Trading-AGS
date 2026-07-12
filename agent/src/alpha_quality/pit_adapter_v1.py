@@ -343,6 +343,9 @@ class AsharePITDataAdapterV1(Protocol):
 class RegisteredAsharePITAdapterV1:
     descriptor: AsharePITAdapterDescriptorV1
     implementation_hash: str
+    factory_origin: str
+    factory_hash: str
+    provider_version: str
     authority_class: Literal["built_in_production", "external_unverified"]
     registration_hash: str
     schema_version: Literal["registered_ashare_pit_adapter.v1"] = (
@@ -353,6 +356,9 @@ class RegisteredAsharePITAdapterV1:
         if self.schema_version != "registered_ashare_pit_adapter.v1":
             raise ValueError("unsupported registered A-share PIT adapter")
         _require_hash(self.implementation_hash, "implementation_hash")
+        _require_identifier(self.factory_origin, "factory_origin")
+        _require_hash(self.factory_hash, "factory_hash")
+        _require_identifier(self.provider_version, "provider_version")
         _require_hash(self.registration_hash, "registration_hash")
         if self.authority_class not in {
             "built_in_production",
@@ -368,6 +374,9 @@ class RegisteredAsharePITAdapterV1:
             "descriptor": self.descriptor.to_dict(),
             "descriptor_hash": self.descriptor.descriptor_hash,
             "implementation_hash": self.implementation_hash,
+            "factory_origin": self.factory_origin,
+            "factory_hash": self.factory_hash,
+            "provider_version": self.provider_version,
             "authority_class": self.authority_class,
         }
 
@@ -401,24 +410,62 @@ class AsharePITAdapterRegistryV1:
             }
             implementation_hash = canonical_json_hash(implementation)
             builtin_type = (adapter_type.__module__, adapter_type.__qualname__)
-            attested = False
+            attestation: Mapping[str, Any] | None = None
             if builtin_type in _BUILT_IN_PRODUCTION_ADAPTER_TYPES:
                 module = importlib.import_module(adapter_type.__module__)
-                checker = getattr(module, "is_production_bound_adapter", None)
-                attested = bool(checker is not None and checker(adapter))
+                attestor = getattr(module, "production_factory_attestation", None)
+                if attestor is not None:
+                    attestation = attestor(adapter)
+                if attestation is not None:
+                    implementation_hash = canonical_json_hash(
+                        {
+                            "module": adapter_type.__module__,
+                            "qualname": adapter_type.__qualname__,
+                            "source_scope": "module",
+                            "source": inspect.getsource(module).replace("\r\n", "\n"),
+                        }
+                    )
             authority: Literal["built_in_production", "external_unverified"] = (
-                "built_in_production" if attested else "external_unverified"
+                "built_in_production" if attestation is not None else "external_unverified"
+            )
+            factory_origin = (
+                str(attestation["factory_origin"])
+                if attestation is not None
+                else "unverified_or_injected"
+            )
+            factory_hash = (
+                str(attestation["factory_hash"])
+                if attestation is not None
+                else canonical_json_hash(
+                    {
+                        "schema_version": "unverified_adapter_factory.v1",
+                        "factory_origin": factory_origin,
+                        "adapter_module": adapter_type.__module__,
+                        "adapter_qualname": adapter_type.__qualname__,
+                    }
+                )
+            )
+            provider_version = (
+                str(attestation["provider_version"])
+                if attestation is not None
+                else "unverified"
             )
             content = {
                 "schema_version": "registered_ashare_pit_adapter.v1",
                 "descriptor": descriptor.to_dict(),
                 "descriptor_hash": descriptor.descriptor_hash,
                 "implementation_hash": implementation_hash,
+                "factory_origin": factory_origin,
+                "factory_hash": factory_hash,
+                "provider_version": provider_version,
                 "authority_class": authority,
             }
             registered[adapter_id] = RegisteredAsharePITAdapterV1(
                 descriptor=descriptor,
                 implementation_hash=implementation_hash,
+                factory_origin=factory_origin,
+                factory_hash=factory_hash,
+                provider_version=provider_version,
                 authority_class=authority,
                 registration_hash=canonical_json_hash(content),
             )
@@ -446,8 +493,28 @@ class AsharePITAdapterRegistryV1:
             raise KeyError("A-share PIT adapter is not registered") from exc
 
     def adapter(self, adapter_id: str) -> AsharePITDataAdapterV1:
-        self.registration(adapter_id)
-        return self._instances[adapter_id]
+        registration = self.registration(adapter_id)
+        adapter = self._instances[adapter_id]
+        if registration.authority_class == "built_in_production":
+            module = importlib.import_module(type(adapter).__module__)
+            attestor = getattr(module, "production_factory_attestation", None)
+            attestation = None if attestor is None else attestor(adapter)
+            implementation_hash = canonical_json_hash(
+                {
+                    "module": type(adapter).__module__,
+                    "qualname": type(adapter).__qualname__,
+                    "source_scope": "module",
+                    "source": inspect.getsource(module).replace("\r\n", "\n"),
+                }
+            )
+            if (
+                attestation is None
+                or str(attestation["factory_hash"]) != registration.factory_hash
+                or str(attestation["provider_version"]) != registration.provider_version
+                or implementation_hash != registration.implementation_hash
+            ):
+                raise ValueError("runtime production adapter attestation differs")
+        return adapter
 
     def to_dict(self) -> dict[str, Any]:
         return {

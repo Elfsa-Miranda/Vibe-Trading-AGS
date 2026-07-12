@@ -149,6 +149,13 @@ class ServiceFixturePITAdapterV1:
         )
 
 
+class ChangedServiceFixturePITAdapterV1(ServiceFixturePITAdapterV1):
+    """Same descriptor with a deliberately different implementation identity."""
+
+    def load(self, request: AsharePITSnapshotRequestV1) -> AsharePITSourceBundleV1:
+        return super().load(request).sealed_copy()
+
+
 def _setup(tmp_path: Path):
     flags = _flags()
     store = ResearchEventStore(
@@ -273,6 +280,36 @@ def test_partition_tampering_breaks_chain_replay(tmp_path: Path) -> None:
     assert store.verify_chain() is False
     with pytest.raises(ResearchEventAppendError):
         store.replay()
+    with pytest.raises((EventValidationError, ValueError)):
+        AsharePITSnapshotServiceV2(
+            store,
+            flags=flags,
+            registry=registry,
+        ).record(
+            adapter_registration_event_hash=registration.event.event_hash,
+            evaluation_policy_event_hash=policy.event.event_hash,
+            run_id="pit-evaluation-run",
+        )
+
+
+def test_runtime_adapter_implementation_must_match_registered_source(
+    tmp_path: Path,
+) -> None:
+    flags, store, _, registration, policy = _setup(tmp_path)
+    changed_registry = AsharePITAdapterRegistryV1(
+        {"service-fixture-pit-v1": ChangedServiceFixturePITAdapterV1()}
+    )
+
+    with pytest.raises(EventValidationError, match="runtime PIT registry differs"):
+        AsharePITSnapshotServiceV2(
+            store,
+            flags=flags,
+            registry=changed_registry,
+        ).record(
+            adapter_registration_event_hash=registration.event.event_hash,
+            evaluation_policy_event_hash=policy.event.event_hash,
+            run_id="pit-evaluation-run",
+        )
 
 
 def test_feature_off_refuses_before_writes(tmp_path: Path) -> None:
@@ -296,4 +333,3 @@ def test_feature_off_refuses_before_writes(tmp_path: Path) -> None:
         AsharePITSnapshotServiceV2(store, flags=flags, registry=registry)
     assert {path for path in tmp_path.rglob("*") if path.is_file()} == before
     assert store.query_events() == []
-
