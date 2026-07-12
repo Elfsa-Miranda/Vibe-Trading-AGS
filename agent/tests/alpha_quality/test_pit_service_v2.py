@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,7 @@ from src.alpha_quality.pit_adapter_v1 import (
     AsharePITSourceManifestV1,
 )
 from src.alpha_quality.pit_service_v2 import (
+    AsharePITAdapterRegistrationArtifactV1,
     AsharePITAdapterRegistrationServiceV1,
     AsharePITSnapshotServiceV2,
     PIT_ADAPTER_REGISTRATION_EVENT_TYPE,
@@ -260,6 +262,18 @@ def test_generic_append_cannot_forge_pit_registration_or_snapshot(
             )
 
 
+def test_registration_artifact_rejects_unknown_nested_fields(tmp_path: Path) -> None:
+    _, _, _, registration, _ = _setup(tmp_path)
+    raw = registration.artifact_record.to_dict()
+    raw["registration"] = {
+        **raw["registration"],
+        "absolute_source_path": "C:/private/provider.json",
+    }
+
+    with pytest.raises(ValueError, match="registration is not closed"):
+        AsharePITAdapterRegistrationArtifactV1.from_dict(raw)
+
+
 def test_partition_tampering_breaks_chain_replay(tmp_path: Path) -> None:
     flags, store, registry, registration, policy = _setup(tmp_path)
     recorded = AsharePITSnapshotServiceV2(
@@ -310,6 +324,63 @@ def test_runtime_adapter_implementation_must_match_registered_source(
             evaluation_policy_event_hash=policy.event.event_hash,
             run_id="pit-evaluation-run",
         )
+
+
+def test_event_append_failure_leaves_no_orphan_snapshot_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flags, store, registry, registration, policy = _setup(tmp_path)
+    service = AsharePITSnapshotServiceV2(store, flags=flags, registry=registry)
+    original_append = store._append_producer_event
+
+    def fail_append(draft):  # noqa: ANN001
+        raise RuntimeError("simulated event append failure")
+
+    monkeypatch.setattr(store, "_append_producer_event", fail_append)
+    with pytest.raises(RuntimeError, match="simulated event append failure"):
+        service.record(
+            adapter_registration_event_hash=registration.event.event_hash,
+            evaluation_policy_event_hash=policy.event.event_hash,
+            run_id="pit-evaluation-run",
+        )
+    assert store.query_events(event_type=PIT_SNAPSHOT_EVENT_TYPE) == []
+    assert any((tmp_path / "artifacts").rglob("*.parquet"))
+
+    monkeypatch.setattr(store, "_append_producer_event", original_append)
+    recorded = service.record(
+        adapter_registration_event_hash=registration.event.event_hash,
+        evaluation_policy_event_hash=policy.event.event_hash,
+        run_id="pit-evaluation-run",
+    )
+    assert recorded.event.event_type == PIT_SNAPSHOT_EVENT_TYPE
+    assert len(store.query_events(event_type=PIT_SNAPSHOT_EVENT_TYPE)) == 1
+    assert store.verify_chain()
+
+
+def test_concurrent_snapshot_attempts_mint_at_most_one_authority_event(
+    tmp_path: Path,
+) -> None:
+    flags, store, registry, registration, policy = _setup(tmp_path)
+    service = AsharePITSnapshotServiceV2(store, flags=flags, registry=registry)
+
+    def attempt() -> str:
+        try:
+            return service.record(
+                adapter_registration_event_hash=registration.event.event_hash,
+                evaluation_policy_event_hash=policy.event.event_hash,
+                run_id="pit-evaluation-run",
+            ).event.event_hash
+        except Exception as exc:  # concurrency losers must fail closed
+            return type(exc).__name__
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = tuple(executor.map(lambda _: attempt(), range(4)))
+
+    events = store.query_events(event_type=PIT_SNAPSHOT_EVENT_TYPE)
+    assert len(events) == 1
+    assert events[0].event_hash in results
+    assert store.verify_chain()
 
 
 def test_feature_off_refuses_before_writes(tmp_path: Path) -> None:

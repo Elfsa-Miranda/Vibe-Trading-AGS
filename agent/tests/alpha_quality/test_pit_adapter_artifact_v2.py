@@ -14,11 +14,14 @@ from src.alpha_quality.pit_adapter_v1 import (
     AsharePITSnapshotRequestV1,
     AsharePITSourceBundleV1,
     AsharePITSourceManifestV1,
+    RegisteredAsharePITAdapterV1,
 )
 from src.alpha_quality.adapters.tushare_csi300_pit_v1 import (
+    AsharePITSourceUnavailable,
     TushareCSI300PITAdapterV1,
 )
 from src.alpha_quality.pit_artifact_v2 import (
+    AsharePITTableReferenceV1,
     FrozenAsharePITSnapshotArtifactStoreV2,
     FrozenAsharePITSnapshotV2,
 )
@@ -162,12 +165,43 @@ def test_builtin_type_with_injected_client_is_still_not_production_authority() -
     registry = AsharePITAdapterRegistryV1(
         {"tushare-csi300-pit-v1": adapter}
     )
-
     assert (
         registry.registration("tushare-csi300-pit-v1").authority_class
         == "external_unverified"
     )
 
+
+def test_direct_registration_construction_cannot_claim_production_authority() -> None:
+    registration = AsharePITAdapterRegistryV1(
+        {"fixture-pit-v1": FixturePITAdapterV1()}
+    ).registration("fixture-pit-v1")
+    forged_content = {
+        **registration._content_dict(),
+        "authority_class": "built_in_production",
+        "factory_origin": "installed_tushare_distribution",
+        "provider_version": "1.4.29",
+    }
+    forged_hash = canonical_json_hash(forged_content)
+
+    with pytest.raises(ValueError, match="not registry-minted"):
+        RegisteredAsharePITAdapterV1(
+            descriptor=registration.descriptor,
+            implementation_hash=registration.implementation_hash,
+            factory_origin="installed_tushare_distribution",
+            factory_hash=registration.factory_hash,
+            provider_version="1.4.29",
+            authority_class="built_in_production",
+            registration_hash=forged_hash,
+        )
+
+    with pytest.raises(ValueError, match="not registry-minted"):
+        replace(
+            registration,
+            authority_class="built_in_production",
+            factory_origin="installed_tushare_distribution",
+            provider_version="1.4.29",
+            registration_hash=forged_hash,
+        )
 
 def test_monkeypatched_environment_factory_cannot_mint_builtin_authority(
     monkeypatch: pytest.MonkeyPatch,
@@ -181,11 +215,14 @@ def test_monkeypatched_environment_factory_cannot_mint_builtin_authority(
     registry = AsharePITAdapterRegistryV1(
         {"tushare-csi300-pit-v1": adapter}
     )
+    serialized = str(registry.to_dict())
 
     assert (
         registry.registration("tushare-csi300-pit-v1").authority_class
         == "external_unverified"
     )
+    assert "fixture-nonsecret-token" not in serialized
+    assert str(Path.cwd()) not in serialized
 
 
 class _CompleteFakeTushareClient:
@@ -266,6 +303,88 @@ class _CompleteFakeTushareClient:
         return pd.DataFrame(columns=["ts_code", "ann_date", "ex_date", "div_proc"])
 
 
+class _DynamicMembershipFakeTushareClient(_CompleteFakeTushareClient):
+    symbols = ("000001.SZ", "600000.SH", "000002.SZ")
+
+    def index_weight(self, **kwargs):
+        return pd.DataFrame(
+            {
+                "index_code": ["399300.SZ"] * 4,
+                "con_code": [
+                    "000001.SZ",
+                    "600000.SH",
+                    "600000.SH",
+                    "000002.SZ",
+                ],
+                "trade_date": ["20250101", "20250101", "20250103", "20250103"],
+                "weight": [50.0, 50.0, 50.0, 50.0],
+            }
+        )
+
+    def stock_basic(self, **kwargs):
+        if kwargs["list_status"] != "L":
+            return pd.DataFrame(
+                columns=["ts_code", "name", "list_date", "delist_date", "list_status"]
+            )
+        return pd.DataFrame(
+            {
+                "ts_code": list(self.symbols),
+                "name": ["A", "B", "C"],
+                "list_date": ["19910403", "19991110", "20000101"],
+                "delist_date": [None, None, None],
+                "list_status": ["L", "L", "L"],
+            }
+        )
+
+
+class _LateSTAnnouncementFakeTushareClient(_CompleteFakeTushareClient):
+    def namechange(self, **kwargs):
+        if kwargs["ts_code"] != self.symbols[0]:
+            return super().namechange(**kwargs)
+        return pd.DataFrame(
+            {
+                "ts_code": [self.symbols[0]],
+                "name": ["ST A"],
+                "start_date": ["20250102"],
+                "end_date": [None],
+                "ann_date": ["20250103"],
+                "change_reason": ["fixture"],
+            }
+        )
+
+
+def _tushare_request() -> AsharePITSnapshotRequestV1:
+    return AsharePITSnapshotRequestV1(
+        adapter_id="tushare-csi300-pit-v1",
+        calendar_dates=("2025-01-02", "2025-01-03"),
+        required_fields=("amount", "close", "high", "low", "open", "volume"),
+        valid_cutoff="2025-01-03",
+        evaluation_policy_event_hash=_HASH,
+    )
+
+
+def test_tushare_membership_is_asof_dynamic_and_availability_is_not_fabricated() -> None:
+    adapter = TushareCSI300PITAdapterV1.for_test(
+        _DynamicMembershipFakeTushareClient()
+    )
+    bundle = adapter.load(_tushare_request())
+
+    assert bool(bundle.daily_membership.loc["2025-01-02", "000001.SZ"])
+    assert not bool(bundle.daily_membership.loc["2025-01-03", "000001.SZ"])
+    assert not bool(bundle.daily_membership.loc["2025-01-02", "000002.SZ"])
+    assert bool(bundle.daily_membership.loc["2025-01-03", "000002.SZ"])
+    assert all(frame.isna().all().all() for frame in bundle.field_available_at.values())
+
+
+def test_tushare_st_announcement_must_precede_effective_date() -> None:
+    adapter = TushareCSI300PITAdapterV1.for_test(
+        _LateSTAnnouncementFakeTushareClient()
+    )
+
+    with pytest.raises(AsharePITSourceUnavailable, match="ST announcement is not available"):
+        adapter.load(_tushare_request())
+
+
 def test_fake_provider_facts_cannot_be_decision_grade(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -301,7 +420,10 @@ def test_fake_provider_facts_cannot_be_decision_grade(
     )
     assert result.evidence["decision_grade"] is False
     assert result.evidence["hard_failures"] == ()
-    assert result.evidence["caps"] == ("ADAPTER_AUTHORITY_UNVERIFIED",)
+    assert result.evidence["caps"] == (
+        "ADAPTER_AUTHORITY_UNVERIFIED",
+        "FIELD_AVAILABILITY_EVIDENCE_INCOMPLETE",
+    )
 
 
 def test_request_has_no_pit_survivorship_or_decision_truth_channel() -> None:
@@ -504,6 +626,42 @@ def test_unknown_boolean_state_cannot_be_coerced_to_false() -> None:
         replace(bundle, trade_state_fields=dict(sorted(states.items())))
 
 
+def test_boolean_numeric_values_and_bool_row_count_are_rejected(tmp_path: Path) -> None:
+    request = _request()
+    bundle = _bundle(request)
+    market = dict(bundle.market_fields)
+    market["amount"] = market["amount"].astype(bool)
+    with pytest.raises(ValueError, match="must be numeric"):
+        replace(bundle, market_fields=dict(sorted(market.items())))
+
+    actions = bundle.corporate_actions.astype({"factor": object}).copy()
+    actions.loc["action-1", "factor"] = True
+    bool_action_bundle = replace(bundle, corporate_actions=actions)
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    with pytest.raises(ValueError, match="factor cannot be boolean"):
+        FrozenAsharePITSnapshotArtifactStoreV2(root).write_bundle_tables(
+            bool_action_bundle
+        )
+
+    with pytest.raises(ValueError, match="strict integer"):
+        AsharePITTableReferenceV1.from_dict(
+            {
+                "table_name": "market:close",
+                "table_role": "numeric_frame",
+                "semantic_hash": _HASH,
+                "row_count": True,
+                "column_names": ["000001.SZ"],
+                "index_name": "date",
+                "artifact_ref": {
+                    "relative_path": "ashare-pit-tables-v1/aa/file.parquet",
+                    "artifact_hash": _HASH,
+                    "media_type": "application/vnd.apache.parquet",
+                },
+            }
+        )
+
+
 def test_corporate_action_announcement_after_effective_time_is_contamination() -> None:
     request = _request()
     bundle = _bundle(request)
@@ -524,4 +682,26 @@ def test_corporate_action_announcement_after_effective_time_is_contamination() -
     assert "POST_EFFECTIVE_CORPORATE_ACTION_ANNOUNCEMENT" in result.evidence[
         "hard_failures"
     ]
+    assert result.evidence["decision_grade"] is False
+
+
+def test_source_dates_beyond_registered_valid_cutoff_are_contamination() -> None:
+    request = _request()
+    bundle = _bundle(request)
+    modified = replace(
+        bundle,
+        calendar_dates=(*bundle.calendar_dates, "2025-01-04"),
+    )
+    registration = AsharePITAdapterRegistryV1(
+        {"fixture-pit-v1": FixturePITAdapterV1()}
+    ).registration("fixture-pit-v1")
+
+    result = validate_ashare_pit_source_v2(
+        bundle=modified,
+        request=request,
+        registration=registration,
+    )
+
+    assert result.evidence["cutoff_status"] == "contaminated"
+    assert "SNAPSHOT_SCOPE_CUTOFF_VIOLATION" in result.evidence["hard_failures"]
     assert result.evidence["decision_grade"] is False

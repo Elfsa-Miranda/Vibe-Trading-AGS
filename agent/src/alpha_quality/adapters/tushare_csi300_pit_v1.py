@@ -472,19 +472,11 @@ class TushareCSI300PITAdapterV1:
                     series.index = pd.DatetimeIndex(series.index)
                     target.loc[series.index, symbol] = series
 
+        # Tushare daily does not expose a per-row provider release timestamp.
+        # Effective market time is not interchangeable with provider availability,
+        # so this adapter fails closed until an ingestion receipt supplies it.
         availability = {
-            field: pd.DataFrame(
-                [
-                    [
-                        None if pd.isna(fields[field].loc[pd.Timestamp(day), symbol])
-                        else day + "T15:00:00+08:00"
-                        for symbol in symbols
-                    ]
-                    for day in dates
-                ],
-                index=index,
-                columns=symbols,
-            )
+            field: pd.DataFrame(None, index=index, columns=symbols, dtype=object)
             for field in fields
         }
         is_suspended = pd.DataFrame(
@@ -518,6 +510,16 @@ class TushareCSI300PITAdapterV1:
                 if "ST" not in name.upper():
                     continue
                 start_date = _date(row["start_date"])
+                announced_raw = row.get("ann_date")
+                if pd.isna(announced_raw) or not str(announced_raw):
+                    raise AsharePITSourceUnavailable(
+                        f"ST state lacks announcement evidence for {symbol}"
+                    )
+                announced_date = _date(announced_raw)
+                if announced_date >= start_date:
+                    raise AsharePITSourceUnavailable(
+                        f"ST announcement is not available before effective date for {symbol}"
+                    )
                 end_raw = row.get("end_date")
                 end_date = end if pd.isna(end_raw) or not str(end_raw) else _date(end_raw)
                 for day in dates:

@@ -16,6 +16,7 @@ from src.alpha_quality.pit_adapter_v1 import (
     AsharePITAdapterRegistryV1,
     AsharePITSnapshotRequestV1,
     RegisteredAsharePITAdapterV1,
+    _production_registration_proof,
 )
 from src.alpha_quality.pit_artifact_v2 import (
     AsharePITTableReferenceV1,
@@ -180,16 +181,39 @@ class AsharePITAdapterRegistrationArtifactV1:
 def _registration_from_dict(raw: Mapping[str, Any]) -> RegisteredAsharePITAdapterV1:
     from src.alpha_quality.pit_artifact_v2 import _descriptor_from_dict
 
-    return RegisteredAsharePITAdapterV1(
+    expected = {
+        "schema_version",
+        "descriptor",
+        "descriptor_hash",
+        "implementation_hash",
+        "factory_origin",
+        "factory_hash",
+        "provider_version",
+        "authority_class",
+        "registration_hash",
+    }
+    if set(raw) != expected or not isinstance(raw["descriptor"], Mapping):
+        raise ValueError("PIT adapter registration is not closed")
+    authority_class = str(raw["authority_class"])
+    registration_hash = str(raw["registration_hash"])
+    registration = RegisteredAsharePITAdapterV1(
         descriptor=_descriptor_from_dict(raw["descriptor"]),
         implementation_hash=str(raw["implementation_hash"]),
         factory_origin=str(raw["factory_origin"]),
         factory_hash=str(raw["factory_hash"]),
         provider_version=str(raw["provider_version"]),
-        authority_class=str(raw["authority_class"]),  # type: ignore[arg-type]
-        registration_hash=str(raw["registration_hash"]),
+        authority_class=authority_class,  # type: ignore[arg-type]
+        registration_hash=registration_hash,
         schema_version=str(raw["schema_version"]),  # type: ignore[arg-type]
+        _authority_proof=(
+            _production_registration_proof(registration_hash)
+            if authority_class == "built_in_production"
+            else None
+        ),
     )
+    if registration.to_dict() != _plain(raw):
+        raise ValueError("PIT adapter registration values are not canonical")
+    return registration
 
 
 class AsharePITAdapterRegistrationArtifactStoreV1:

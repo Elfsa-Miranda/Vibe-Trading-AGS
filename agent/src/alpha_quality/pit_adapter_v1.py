@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import inspect
 import importlib
+import inspect
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal, Mapping, Protocol, runtime_checkable
 
@@ -25,6 +25,26 @@ _BUILT_IN_PRODUCTION_ADAPTER_TYPES = frozenset(
         ),
     }
 )
+_PRODUCTION_REGISTRATION_AUTHORITY = object()
+
+
+@dataclass(frozen=True)
+class _ProductionRegistrationProof:
+    registration_hash: str
+    _authority: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._authority is not _PRODUCTION_REGISTRATION_AUTHORITY:
+            raise ValueError("production registration proof is not mint-authorized")
+
+
+def _production_registration_proof(
+    registration_hash: str,
+) -> _ProductionRegistrationProof:
+    return _ProductionRegistrationProof(
+        registration_hash=registration_hash,
+        _authority=_PRODUCTION_REGISTRATION_AUTHORITY,
+    )
 
 
 def _require_identifier(value: str, name: str) -> None:
@@ -260,7 +280,11 @@ class AsharePITSourceBundleV1:
         if list(fields) != sorted(fields) or list(availability) != sorted(availability):
             raise ValueError("PIT bundle field mappings must be sorted")
         for name, frame in fields.items():
-            if any(not pd.api.types.is_numeric_dtype(dtype) for dtype in frame.dtypes):
+            if any(
+                not pd.api.types.is_numeric_dtype(dtype)
+                or pd.api.types.is_bool_dtype(dtype)
+                for dtype in frame.dtypes
+            ):
                 raise ValueError(f"market field {name} must be numeric")
             if np.isinf(frame.to_numpy(dtype=float, copy=False)).any():
                 raise ValueError(f"market field {name} contains Infinity")
@@ -283,6 +307,7 @@ class AsharePITSourceBundleV1:
             elif name == "listing_age_days":
                 if any(
                     not pd.api.types.is_numeric_dtype(dtype)
+                    or pd.api.types.is_bool_dtype(dtype)
                     for dtype in frame.dtypes
                 ):
                     raise ValueError("listing_age_days must be numeric")
@@ -351,6 +376,11 @@ class RegisteredAsharePITAdapterV1:
     schema_version: Literal["registered_ashare_pit_adapter.v1"] = (
         "registered_ashare_pit_adapter.v1"
     )
+    _authority_proof: _ProductionRegistrationProof | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.schema_version != "registered_ashare_pit_adapter.v1":
@@ -365,6 +395,14 @@ class RegisteredAsharePITAdapterV1:
             "external_unverified",
         }:
             raise ValueError("unknown A-share PIT adapter authority class")
+        if self.authority_class == "built_in_production":
+            if (
+                self._authority_proof is None
+                or self._authority_proof.registration_hash != self.registration_hash
+            ):
+                raise ValueError("production adapter authority was not registry-minted")
+        elif self._authority_proof is not None:
+            raise ValueError("unverified adapter cannot carry production authority")
         if self.registration_hash != canonical_json_hash(self._content_dict()):
             raise ValueError("registered A-share PIT adapter hash differs")
 
@@ -460,6 +498,7 @@ class AsharePITAdapterRegistryV1:
                 "provider_version": provider_version,
                 "authority_class": authority,
             }
+            registration_hash = canonical_json_hash(content)
             registered[adapter_id] = RegisteredAsharePITAdapterV1(
                 descriptor=descriptor,
                 implementation_hash=implementation_hash,
@@ -467,7 +506,12 @@ class AsharePITAdapterRegistryV1:
                 factory_hash=factory_hash,
                 provider_version=provider_version,
                 authority_class=authority,
-                registration_hash=canonical_json_hash(content),
+                registration_hash=registration_hash,
+                _authority_proof=(
+                    _production_registration_proof(registration_hash)
+                    if authority == "built_in_production"
+                    else None
+                ),
             )
             instances[adapter_id] = adapter
         self._registered = MappingProxyType(registered)

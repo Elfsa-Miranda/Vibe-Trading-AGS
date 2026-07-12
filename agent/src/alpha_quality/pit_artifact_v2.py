@@ -21,6 +21,7 @@ from src.alpha_quality.pit_adapter_v1 import (
     AsharePITSourceBundleV1,
     AsharePITSourceManifestV1,
     RegisteredAsharePITAdapterV1,
+    _production_registration_proof,
 )
 from src.research_ledger.events.artifacts import (
     ArtifactConflictError,
@@ -180,7 +181,11 @@ def _normalize_table(
         result.index = pd.Index([str(item) for item in result.index], name=index_name)
         result = result.sort_index()
     if table_role == "numeric_frame":
-        if any(not pd.api.types.is_numeric_dtype(dtype) for dtype in result.dtypes):
+        if any(
+            not pd.api.types.is_numeric_dtype(dtype)
+            or pd.api.types.is_bool_dtype(dtype)
+            for dtype in result.dtypes
+        ):
             raise ValueError("PIT numeric table contains a non-numeric column")
         result = result.astype(float)
         if np.isinf(result.to_numpy()).any():
@@ -212,6 +217,8 @@ def _normalize_table(
             result[name] = result[name].map(
                 lambda value: None if value is None or pd.isna(value) else str(value)
             )
+        if result["factor"].map(lambda value: isinstance(value, (bool, np.bool_))).any():
+            raise ValueError("PIT corporate action factor cannot be boolean")
         result["factor"] = pd.to_numeric(result["factor"], errors="raise").astype(
             float
         )
@@ -262,11 +269,16 @@ class AsharePITTableReferenceV1:
     def from_dict(cls, raw: Mapping[str, Any]) -> "AsharePITTableReferenceV1":
         if set(raw) != _TABLE_REF_KEYS or not isinstance(raw["artifact_ref"], Mapping):
             raise ValueError("PIT table reference is not closed")
+        row_count = raw["row_count"]
+        if isinstance(row_count, bool) or not isinstance(row_count, int):
+            raise ValueError("PIT table row_count must be a strict integer")
+        if not isinstance(raw["column_names"], (list, tuple)):
+            raise ValueError("PIT table column_names must be a list")
         return cls(
             table_name=str(raw["table_name"]),
             table_role=str(raw["table_role"]),  # type: ignore[arg-type]
             semantic_hash=str(raw["semantic_hash"]),
-            row_count=int(raw["row_count"]),
+            row_count=row_count,
             column_names=tuple(str(item) for item in raw["column_names"]),
             index_name=str(raw["index_name"]),
             artifact_ref=dict(raw["artifact_ref"]),
@@ -432,14 +444,21 @@ class FrozenAsharePITSnapshotV2:
             "snapshot_hash",
         ):
             _require_hash(str(getattr(self, name)), name)
+        authority_class = str(self.registration["authority_class"])
+        registration_hash = str(self.registration["registration_hash"])
         registration = RegisteredAsharePITAdapterV1(
             descriptor=_descriptor_from_dict(self.registration["descriptor"]),
             implementation_hash=str(self.registration["implementation_hash"]),
             factory_origin=str(self.registration["factory_origin"]),
             factory_hash=str(self.registration["factory_hash"]),
             provider_version=str(self.registration["provider_version"]),
-            authority_class=str(self.registration["authority_class"]),  # type: ignore[arg-type]
-            registration_hash=str(self.registration["registration_hash"]),
+            authority_class=authority_class,  # type: ignore[arg-type]
+            registration_hash=registration_hash,
+            _authority_proof=(
+                _production_registration_proof(registration_hash)
+                if authority_class == "built_in_production"
+                else None
+            ),
         )
         if registration.to_dict() != _plain(self.registration):
             raise ValueError("PIT snapshot registration differs")
@@ -544,6 +563,8 @@ class FrozenAsharePITSnapshotV2:
                 raise ValueError(f"PIT snapshot {name} must be an object")
         if not isinstance(raw["table_refs"], (list, tuple)):
             raise ValueError("PIT snapshot table_refs must be a list")
+        if any(not isinstance(item, Mapping) for item in raw["table_refs"]):
+            raise ValueError("PIT snapshot table references must be objects")
         return cls(
             registration=dict(raw["registration"]),
             registry_hash=str(raw["registry_hash"]),
@@ -562,7 +583,25 @@ class FrozenAsharePITSnapshotV2:
 def _descriptor_from_dict(raw: Mapping[str, Any]):
     from src.alpha_quality.pit_adapter_v1 import AsharePITAdapterDescriptorV1
 
-    return AsharePITAdapterDescriptorV1(
+    expected = {
+        "schema_version",
+        "adapter_id",
+        "provider",
+        "adapter_version",
+        "market",
+        "calendar_id",
+        "timezone",
+        "membership_dataset",
+        "security_master_dataset",
+        "corporate_action_dataset",
+        "trade_state_dataset",
+        "price_dataset",
+        "availability_semantics",
+        "adjustment_semantics",
+    }
+    if set(raw) != expected:
+        raise ValueError("PIT adapter descriptor is not closed")
+    descriptor = AsharePITAdapterDescriptorV1(
         adapter_id=str(raw["adapter_id"]),
         provider=str(raw["provider"]),
         adapter_version=str(raw["adapter_version"]),
@@ -578,10 +617,25 @@ def _descriptor_from_dict(raw: Mapping[str, Any]):
         adjustment_semantics=str(raw["adjustment_semantics"]),  # type: ignore[arg-type]
         schema_version=str(raw["schema_version"]),  # type: ignore[arg-type]
     )
+    if descriptor.to_dict() != _plain(raw):
+        raise ValueError("PIT adapter descriptor values are not canonical")
+    return descriptor
 
 
 def _request_from_dict(raw: Mapping[str, Any]) -> AsharePITSnapshotRequestV1:
-    return AsharePITSnapshotRequestV1(
+    expected = {
+        "schema_version",
+        "adapter_id",
+        "calendar_dates",
+        "required_fields",
+        "valid_cutoff",
+        "evaluation_policy_event_hash",
+    }
+    if set(raw) != expected or not isinstance(raw["calendar_dates"], (list, tuple)):
+        raise ValueError("PIT snapshot request is not closed")
+    if not isinstance(raw["required_fields"], (list, tuple)):
+        raise ValueError("PIT snapshot required_fields must be a list")
+    request = AsharePITSnapshotRequestV1(
         adapter_id=str(raw["adapter_id"]),
         calendar_dates=tuple(str(item) for item in raw["calendar_dates"]),
         required_fields=tuple(str(item) for item in raw["required_fields"]),
@@ -589,10 +643,28 @@ def _request_from_dict(raw: Mapping[str, Any]) -> AsharePITSnapshotRequestV1:
         evaluation_policy_event_hash=str(raw["evaluation_policy_event_hash"]),
         schema_version=str(raw["schema_version"]),  # type: ignore[arg-type]
     )
+    if request.to_dict() != _plain(raw):
+        raise ValueError("PIT snapshot request values are not canonical")
+    return request
 
 
 def _source_manifest_from_dict(raw: Mapping[str, Any]) -> AsharePITSourceManifestV1:
-    return AsharePITSourceManifestV1(
+    expected = {
+        "schema_version",
+        "adapter_id",
+        "request_hash",
+        "dataset_vintage",
+        "source_as_of",
+        "query_receipt_hashes",
+        "source_partition_hashes",
+    }
+    if set(raw) != expected:
+        raise ValueError("PIT source manifest is not closed")
+    if not isinstance(raw["query_receipt_hashes"], (list, tuple)) or not isinstance(
+        raw["source_partition_hashes"], (list, tuple)
+    ):
+        raise ValueError("PIT source manifest hashes must be lists")
+    manifest = AsharePITSourceManifestV1(
         adapter_id=str(raw["adapter_id"]),
         request_hash=str(raw["request_hash"]),
         dataset_vintage=str(raw["dataset_vintage"]),
@@ -603,6 +675,9 @@ def _source_manifest_from_dict(raw: Mapping[str, Any]) -> AsharePITSourceManifes
         ),
         schema_version=str(raw["schema_version"]),  # type: ignore[arg-type]
     )
+    if manifest.to_dict() != _plain(raw):
+        raise ValueError("PIT source manifest values are not canonical")
+    return manifest
 
 
 class FrozenAsharePITSnapshotArtifactStoreV2:
