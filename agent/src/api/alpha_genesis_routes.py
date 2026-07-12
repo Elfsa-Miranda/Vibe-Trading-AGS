@@ -15,6 +15,11 @@ from src.alpha_quality.reporting import (
     ReportArtifactValidationError,
     ReportPathError,
 )
+from src.alpha_quality.research_dossier_v1 import (
+    AUDIENCES,
+    CanonicalDossierResolverV1,
+)
+from src.research_ledger.events import EventValidationError
 
 
 AuthDep = Callable[..., Awaitable[Any] | Any]
@@ -77,6 +82,7 @@ def register_alpha_genesis_routes(
     *,
     report_reader: ReportArtifactReader | None = None,
     report_root: str | Path | None = None,
+    dossier_resolver: CanonicalDossierResolverV1 | None = None,
 ) -> None:
     if require_auth is None:
         import sys as _sys
@@ -106,3 +112,46 @@ def register_alpha_genesis_routes(
     async def get_alpha_genesis_quality_decision(candidate_id: str, response: Response) -> dict[str, Any]:
         _set_read_only_headers(response)
         return _read_artifact(reader, candidate_id, ReportArtifactKind.DECISION)
+
+    if dossier_resolver is not None:
+        @app.get(
+            "/api/alpha-genesis/dossiers/{factor_spec_id}",
+            dependencies=[Depends(require_auth)],
+        )
+        async def get_canonical_research_dossier(
+            factor_spec_id: str, response: Response
+        ) -> dict[str, Any]:
+            _set_read_only_headers(response)
+            try:
+                return dict(dossier_resolver.candidate(factor_spec_id))
+            except LookupError:
+                raise HTTPException(
+                    status_code=404, detail="canonical research dossier not found"
+                ) from None
+            except (EventValidationError, ValueError):
+                raise HTTPException(
+                    status_code=422, detail="canonical research dossier is invalid"
+                ) from None
+
+        @app.get(
+            "/api/alpha-genesis/dossiers/{factor_spec_id}/views/{audience}",
+            dependencies=[Depends(require_auth)],
+        )
+        async def get_canonical_research_view(
+            factor_spec_id: str, audience: str, response: Response
+        ) -> dict[str, Any]:
+            _set_read_only_headers(response)
+            if audience not in AUDIENCES:
+                raise HTTPException(status_code=400, detail="unknown dossier audience")
+            try:
+                return dict(
+                    dossier_resolver.view(factor_spec_id, audience)  # type: ignore[arg-type]
+                )
+            except LookupError:
+                raise HTTPException(
+                    status_code=404, detail="canonical research dossier not found"
+                ) from None
+            except (EventValidationError, ValueError):
+                raise HTTPException(
+                    status_code=422, detail="canonical research dossier is invalid"
+                ) from None

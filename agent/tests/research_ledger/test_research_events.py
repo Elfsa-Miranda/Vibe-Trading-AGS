@@ -195,6 +195,10 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
             "SelectionAssessmentRecorded",
             "ClaimMatrixRecorded",
             "QualityDecisionV4Recorded",
+            "ResearchDossierRecorded",
+            "ExperimentRunReportRecorded",
+            "ResearchReleaseManifestRecorded",
+            "ResearchDossierMaterializationFailed",
         "ProductionEvaluationNodeRecorded",
         "TrialTerminalDossierRecorded",
         "ReportMaterializationFailed",
@@ -1777,6 +1781,85 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
         }
 
     add_claim_decision_samples()
+
+    def add_research_dossier_samples() -> None:
+        view_hashes = [canonical_json_hash({"view": index}) for index in range(5)]
+        candidate_hash = canonical_json_hash({"candidate": "dossier"})
+        samples["ResearchDossierRecorded"] = {
+            "dossier_id": "research-dossier-" + candidate_hash.removeprefix("sha256:")[:24],
+            "factor_spec_id": "factor-1",
+            "dossier_hash": candidate_hash,
+            "terminal_dossier_event_hash": digest,
+            "quality_decision_event_hash": digest,
+            "view_hashes": sorted(view_hashes),
+            "source_event_hashes": [digest],
+            "promotion_effect": "none",
+            "producer_schema_version": "research_dossier_service.v1",
+            "producer_policy_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": f"dossier/{index}.json",
+                    "artifact_hash": canonical_json_hash({"artifact": index}),
+                    "media_type": (
+                        "application/vnd.vibe.candidate-research-dossier-v1+json"
+                        if index == 0
+                        else "application/vnd.vibe.research-audience-view-v1+json"
+                    ),
+                }
+                for index in range(6)
+            ],
+        }
+        run_hash = canonical_json_hash({"run": "report"})
+        samples["ExperimentRunReportRecorded"] = {
+            "report_id": "run-report-" + run_hash.removeprefix("sha256:")[:24],
+            "run_report_hash": run_hash,
+            "trial_count": 1,
+            "candidate_dossier_hashes": [candidate_hash],
+            "source_event_hashes": [digest],
+            "promotion_effect": "none",
+            "producer_schema_version": "research_dossier_service.v1",
+            "producer_policy_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": "run/report.json",
+                    "artifact_hash": digest,
+                    "media_type": "application/vnd.vibe.experiment-run-report-v1+json",
+                }
+            ],
+        }
+        manifest_hash = canonical_json_hash({"release": "manifest"})
+        samples["ResearchReleaseManifestRecorded"] = {
+            "manifest_id": "research-release-" + manifest_hash.removeprefix("sha256:")[:24],
+            "manifest_hash": manifest_hash,
+            "engineering_status": "implemented_and_event_bound",
+            "empirical_status": "train_valid_only",
+            "source_event_hashes": [digest],
+            "promotion_effect": "none",
+            "producer_schema_version": "research_dossier_service.v1",
+            "producer_policy_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": "release/manifest.json",
+                    "artifact_hash": digest,
+                    "media_type": "application/vnd.vibe.research-release-manifest-v1+json",
+                }
+            ],
+        }
+        samples["ResearchDossierMaterializationFailed"] = {
+            "failure_id": "research-dossier-failure-trial-1",
+            "trial_id": "trial-1",
+            "factor_spec_id": "factor-1",
+            "terminal_dossier_event_hash": digest,
+            "quality_decision_event_hash": digest,
+            "failure_code": "RESEARCH_DOSSIER_MATERIALIZATION_FAILED",
+            "failure_class": "OSError",
+            "decision_effect": "none",
+            "source_event_hashes": [digest],
+            "producer_schema_version": "research_dossier_service.v1",
+            "producer_policy_hash": digest,
+        }
+
+    add_research_dossier_samples()
     frozen = samples["FinalCandidateFrozen"]
     frozen["candidate_hash"] = canonical_json_hash(
         {
