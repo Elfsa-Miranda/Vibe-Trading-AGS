@@ -876,6 +876,77 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ProductionEvaluationNodeRecorded": PayloadSpec(
+        "production_evaluation_node_recorded.v1",
+        {
+            "node_id": _string,
+            "run_id": _string,
+            "trial_id": _string,
+            "factor_spec_id": _string,
+            "resolved_contract_hash": _hash,
+            "node_name": _enum(
+                "source_resolution",
+                "backend_capability",
+                "snapshot_authority",
+                "factor_output",
+                "observed_predictive",
+                "pit_predictive",
+                "duplicate_identity",
+                "execution",
+                "complement_mechanism",
+                "claim_assessments",
+                "narrow_decision",
+            ),
+            "status": _enum(
+                "completed", "blocked", "not_run", "unavailable", "invalid"
+            ),
+            "reason_codes": _reason_codes,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "node_hash": _hash,
+        },
+    ),
+    "TrialTerminalDossierRecorded": PayloadSpec(
+        "trial_terminal_dossier_recorded.v1",
+        {
+            "dossier_id": _string,
+            "terminal_dossier_hash": _hash,
+            "trial_id": _string,
+            "factor_spec_id": _string,
+            "completion_status": _enum(
+                "completed",
+                "partially_completed",
+                "invalid",
+                "unavailable",
+                "timeout",
+                "infrastructure_failure",
+            ),
+            "terminal_event_hash": _hash,
+            "evaluation_event_hash": _nullable_hash,
+            "evidence_bundle_hash": _hash,
+            "evidence_event_hashes": _unique_hash_list,
+            "node_event_hashes": _unique_hash_list,
+            "quality_decision_event_hash": _nullable_hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ReportMaterializationFailed": PayloadSpec(
+        "report_materialization_failed.v1",
+        {
+            "failure_id": _string,
+            "trial_id": _string,
+            "terminal_event_hash": _hash,
+            "intended_dossier_hash": _hash,
+            "failure_code": _enum("TERMINAL_DOSSIER_MATERIALIZATION_FAILED"),
+            "failure_class": _string,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+        },
+    ),
     "RetrieverFeatureSourceRecorded": PayloadSpec(
         "retriever_feature_source_recorded.v1",
         {
@@ -2464,6 +2535,31 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("scorecard v4 diagnostics must be canonical")
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("scorecard v4 requires one artifact")
+    if event_type == "ProductionEvaluationNodeRecorded":
+        if payload["run_id"] == "" or payload["trial_id"] == "":
+            raise EventValidationError("production node identity is required")
+        if payload["reason_codes"] != sorted(set(payload["reason_codes"])):
+            raise EventValidationError("production node reasons must be canonical")
+        if payload["source_event_hashes"] != sorted(
+            set(payload["source_event_hashes"])
+        ):
+            raise EventValidationError("production node sources must be canonical")
+        if payload["status"] == "completed" and payload["reason_codes"]:
+            raise EventValidationError("completed production node cannot carry blockers")
+        if payload["status"] != "completed" and not payload["reason_codes"]:
+            raise EventValidationError("incomplete production node requires a reason")
+    if event_type == "TrialTerminalDossierRecorded":
+        cited = {
+            payload["terminal_event_hash"],
+            *payload["evidence_event_hashes"],
+            *payload["node_event_hashes"],
+        }
+        if payload["evaluation_event_hash"] is not None:
+            cited.add(payload["evaluation_event_hash"])
+        if not cited.issubset(set(payload["source_event_hashes"])):
+            raise EventValidationError("terminal dossier sources omit cited events")
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("terminal dossier requires one artifact")
     if event_type == "QualityDecisionV2Recorded":
         decision = payload["decision"]
         expected_tier = {
