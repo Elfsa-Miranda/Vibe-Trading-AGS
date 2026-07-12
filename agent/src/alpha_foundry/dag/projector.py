@@ -12,6 +12,7 @@ from src.alpha_foundry.dag.model import (
     FactorDAGProjection,
     FactorNode,
     RegistryRootNode,
+    _build_factor_dag_projection,
 )
 from src.alpha_foundry.dsl.identity import validate_factor_definition_payload
 from src.alpha_quality.flags import ResolvedAGSFlags
@@ -32,6 +33,20 @@ class FactorDAGProjector:
             raise RuntimeError("factor DAG capability is disabled")
         self.flags = flags
 
+    @property
+    def policy_hash(self) -> str:
+        return canonical_json_hash(
+            {
+                "schema_version": "factor_dag_projector_policy.v1",
+                "accepted_definition_schema": "factor_spec.v1",
+                "accepted_registry_schemas": [
+                    "registry_bootstrap.v1",
+                    "registry_bootstrap.v2",
+                ],
+                "accepted_derivation_scopes": ["train_valid", "valid"],
+            }
+        )
+
     def project(
         self,
         events: Iterable[ResearchEventEnvelope] | VerifiedEventSubsequence,
@@ -45,6 +60,16 @@ class FactorDAGProjector:
         else:
             verified_subsequence = False
         ordered = list(events)
+        source_subsequence_hash = (
+            events.subsequence_hash
+            if isinstance(events, VerifiedEventSubsequence)
+            else canonical_json_hash(
+                {
+                    "schema_version": "unverified_event_sequence.v1",
+                    "event_hashes": [event.event_hash for event in ordered],
+                }
+            )
+        )
         if not verified_subsequence:
             _validate_envelope_chain(ordered)
         nodes: dict[str, FactorNode] = {}
@@ -65,7 +90,14 @@ class FactorDAGProjector:
                 self._apply_derivation(
                     nodes, edges, terminal_events, evaluation_events, event
                 )
-        return self._finalize(ordered, nodes, roots, edges)
+        return self._finalize(
+            ordered,
+            nodes,
+            roots,
+            edges,
+            source_subsequence_hash=source_subsequence_hash,
+            projector_policy_hash=self.policy_hash,
+        )
 
     def resume(
         self,
@@ -226,12 +258,17 @@ class FactorDAGProjector:
         nodes: Mapping[str, FactorNode],
         roots: Mapping[str, RegistryRootNode],
         edges: list[DerivationEdge],
+        *,
+        source_subsequence_hash: str,
+        projector_policy_hash: str,
     ) -> FactorDAGProjection:
         depth = _depths(nodes, edges)
         state = {
             "schema_version": "factor_dag_projection.v1",
             "source_event_count": len(events),
             "source_watermark_event_hash": events[-1].event_hash if events else None,
+            "source_subsequence_hash": source_subsequence_hash,
+            "projector_policy_hash": projector_policy_hash,
             "factor_nodes": [
                 {
                     "factor_spec_id": node.factor_spec_id,
@@ -273,10 +310,12 @@ class FactorDAGProjector:
             "depth_by_factor_spec_id": dict(sorted(depth.items())),
             "source_event_hashes": [event.event_hash for event in events],
         }
-        return FactorDAGProjection(
+        return _build_factor_dag_projection(
             schema_version="factor_dag_projection.v1",
             source_event_count=len(events),
             source_watermark_event_hash=events[-1].event_hash if events else None,
+            source_subsequence_hash=source_subsequence_hash,
+            projector_policy_hash=projector_policy_hash,
             factor_nodes=nodes,
             registry_roots=roots,
             derivation_edges=tuple(edges),

@@ -179,7 +179,12 @@ class DiscoveryEvidenceProjector:
             raise ValueError("discovery projector and event store flag snapshots differ")
         full = store.query_events()
         eligible = self.eligible_events(full)
-        return store._verified_subsequence(eligible)
+        if not eligible:
+            return store._verified_subsequence(eligible)
+        return store._verified_subsequence_at_watermark(
+            eligible,
+            watermark_event_hash=eligible[-1].event_hash,
+        )
 
     def verified_events_at_watermark(
         self,
@@ -203,7 +208,7 @@ class DiscoveryEvidenceProjector:
     def factual_view(self, store: ResearchEventStore) -> FactualMemoryView:
         verified = self.verified_events(store)
         dag = FactorDAGProjector(flags=self.flags).project(verified)
-        return FactualMemoryView.from_terminal_discovery_events(dag, verified.events)
+        return FactualMemoryView.from_terminal_discovery_events(dag, verified)
 
     def project(
         self,
@@ -215,15 +220,16 @@ class DiscoveryEvidenceProjector:
         if not verified.events:
             raise ValueError("no terminal train/valid discovery evidence is available")
         dag = FactorDAGProjector(flags=self.flags).project(verified)
-        episodic = EpisodicProjector().project(verified.events)
+        episodic = EpisodicProjector().project(verified)
         factual = FactualMemoryView.from_terminal_discovery_events(
-            dag, verified.events
+            dag, verified
         )
-        return DiscoveryEvidenceView.from_verified_subsequence(
+        return DiscoveryEvidenceView._from_verified_subsequence(
             factual=factual,
             episodic=episodic,
             data_snapshot_hash=data_snapshot_hash,
             verified_subsequence=verified,
+            flags=self.flags,
         )
 
     def project_at_watermark(
@@ -238,15 +244,16 @@ class DiscoveryEvidenceProjector:
             watermark_event_hash=watermark_event_hash,
         )
         dag = FactorDAGProjector(flags=self.flags).project(verified)
-        episodic = EpisodicProjector().project(verified.events)
+        episodic = EpisodicProjector().project(verified)
         factual = FactualMemoryView.from_terminal_discovery_events(
-            dag, verified.events
+            dag, verified
         )
-        return DiscoveryEvidenceView.from_verified_subsequence(
+        return DiscoveryEvidenceView._from_verified_subsequence(
             factual=factual,
             episodic=episodic,
             data_snapshot_hash=data_snapshot_hash,
             verified_subsequence=verified,
+            flags=self.flags,
         )
 
 

@@ -185,7 +185,7 @@ def test_rehashed_v7_component_fabrication_fails_rebuild(tmp_path: Path) -> None
         )
 
 
-def test_v7_append_rebuilds_upstream_scorecards(tmp_path: Path) -> None:
+def test_retriever_decision_replays_projection_before_append(tmp_path: Path) -> None:
     store, _, _, source, schedule, _ = _record(tmp_path)
     evaluation = next(
         event for event in store.query_events(event_type="EvaluationRecorded")

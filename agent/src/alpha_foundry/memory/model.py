@@ -46,21 +46,42 @@ class ProcessPosterior:
     hard_veto: bool
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class EpisodicProjection:
     schema_version: Literal["episodic_process_projection.v2"]
     source_watermark_event_hash: str | None
+    source_subsequence_hash: str
+    projector_policy_hash: str
     observations: tuple[ProcessMemoryObservation, ...]
     posteriors: tuple[ProcessPosterior, ...]
     projection_hash: str
-    _authority: object = field(repr=False, compare=False)
+    _authority: object = field(init=False, repr=False, compare=False)
 
-    def __post_init__(self) -> None:
-        if self._authority is not _EPISODIC_PROJECTION_AUTHORITY:
+    def __init__(
+        self,
+        *,
+        schema_version: Literal["episodic_process_projection.v2"],
+        source_watermark_event_hash: str | None,
+        source_subsequence_hash: str,
+        projector_policy_hash: str,
+        observations: tuple[ProcessMemoryObservation, ...],
+        posteriors: tuple[ProcessPosterior, ...],
+        projection_hash: str,
+        _authority: object,
+    ) -> None:
+        if _authority is not _EPISODIC_PROJECTION_AUTHORITY:
             raise TypeError("episodic projection must be built by EpisodicProjector")
+        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "source_watermark_event_hash", source_watermark_event_hash)
+        object.__setattr__(self, "source_subsequence_hash", source_subsequence_hash)
+        object.__setattr__(self, "projector_policy_hash", projector_policy_hash)
+        object.__setattr__(self, "observations", tuple(observations))
+        object.__setattr__(self, "posteriors", tuple(posteriors))
+        object.__setattr__(self, "projection_hash", projection_hash)
+        object.__setattr__(self, "_authority", _authority)
 
 
-def authorized_episodic_projection(**values: object) -> EpisodicProjection:
+def _build_episodic_projection(**values: object) -> EpisodicProjection:
     return EpisodicProjection(**values, _authority=_EPISODIC_PROJECTION_AUTHORITY)  # type: ignore[arg-type]
 
 
@@ -70,5 +91,5 @@ def is_authorized_episodic_projection(value: EpisodicProjection) -> bool:
 
 __all__ = [
     "EpisodicProjection", "ProcessMemoryObservation", "ProcessPosterior",
-    "authorized_episodic_projection", "is_authorized_episodic_projection",
+    "is_authorized_episodic_projection",
 ]

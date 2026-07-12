@@ -207,36 +207,103 @@ def test_reference_pools_must_align_and_reference_ast_is_authoritative(
         )
 
 
-def test_only_matching_negative_memory_vetoes_and_positive_is_bounded(tmp_path) -> None:
+def test_dataclasses_replace_cannot_preserve_projection_authority(tmp_path) -> None:
     _, query, evidence = _views(tmp_path)
     candidate = _candidate(query, evidence)
     matching = ProcessPosterior(
         candidate.parent_context_hash, candidate.motif, 4, 4, -0.5, 0.0,
         1.0, 0.0, True,
     )
-    unrelated = replace(matching, parent_context_hash=canonical_json_hash({"other": True}))
     no_escape = RetrieverPolicy(veto_exploration_probability=0.0)
     retriever = ShadowRetriever(flags=_flags(), policy=no_escape)
 
-    unrelated_evidence = evidence.with_episodic_projection(
-        replace(evidence.episodic, posteriors=(unrelated,)),
-    )
-    allowed = retriever.decide(
-        official_candidate_ids=(), evidence=unrelated_evidence, query=query,
-        candidates=(candidate,), seed=1, candidate_budget=1,
-    )
-    assert allowed.selected_factor_spec_ids == (candidate.factor_spec_id,)
-    assert allowed.components[0].memory_adjustment == 0.0
+    with pytest.raises(TypeError):
+        replace(evidence.episodic, posteriors=(matching,))
 
-    matching_evidence = evidence.with_episodic_projection(
-        replace(evidence.episodic, posteriors=(matching,)),
+    adjustment, confidence, veto, warnings = retriever._memory_terms(
+        matching,
+        candidate=candidate,
+        seed=1,
     )
-    vetoed = retriever.decide(
-        official_candidate_ids=(), evidence=matching_evidence, query=query,
-        candidates=(candidate,), seed=1, candidate_budget=1,
+    assert adjustment < 0.0 and confidence == 1.0
+    assert veto == "HIGH_CONFIDENCE_NEGATIVE_MEMORY"
+    assert warnings == ()
+
+
+def test_forged_posterior_breaks_exact_projection_replay(tmp_path) -> None:
+    _, query, evidence = _views(tmp_path)
+    candidate = _candidate(query, evidence)
+    forged = ProcessPosterior(
+        candidate.parent_context_hash,
+        candidate.motif,
+        4,
+        4,
+        -0.5,
+        0.0,
+        1.0,
+        0.0,
+        True,
     )
-    assert vetoed.selected_factor_spec_ids == ()
-    assert vetoed.components[0].veto_reason == "HIGH_CONFIDENCE_NEGATIVE_MEMORY"
+    object.__setattr__(evidence.episodic, "posteriors", (forged,))
+
+    with pytest.raises(ValueError, match="exact replay"):
+        ShadowRetriever(flags=_flags()).decide(
+            official_candidate_ids=(),
+            evidence=evidence,
+            query=query,
+            candidates=(candidate,),
+            seed=1,
+            candidate_budget=1,
+        )
+
+
+def test_forged_dag_breaks_projection_hash_and_replay(tmp_path) -> None:
+    _, query, evidence = _views(tmp_path)
+    candidate = _candidate(query, evidence)
+    object.__setattr__(
+        evidence.factual.dag,
+        "projection_hash",
+        canonical_json_hash({"forged": "dag"}),
+    )
+
+    with pytest.raises(ValueError, match="exact replay"):
+        ShadowRetriever(flags=_flags()).decide(
+            official_candidate_ids=(),
+            evidence=evidence,
+            query=query,
+            candidates=(candidate,),
+            seed=1,
+            candidate_budget=1,
+        )
+
+
+def test_discovery_view_components_derive_from_one_exact_verified_subsequence(
+    tmp_path,
+) -> None:
+    _, _, evidence = _views(tmp_path)
+    evidence.verify_integrity()
+
+    assert evidence.source_watermark == evidence._verified_subsequence.events[-1].event_hash
+    assert evidence.eligible_subsequence_hash == evidence._verified_subsequence.subsequence_hash
+    assert evidence.factual.dag.source_watermark_event_hash == evidence.source_watermark
+    assert evidence.episodic.source_watermark_event_hash == evidence.source_watermark
+    assert (
+        evidence.factual.dag.source_subsequence_hash
+        == evidence.factual.source_subsequence_hash
+        == evidence.episodic.source_subsequence_hash
+        == evidence.eligible_subsequence_hash
+    )
+    assert evidence.factual.dag.projector_policy_hash == evidence.dag_projector_policy_hash
+    assert evidence.factual.projector_policy_hash == evidence.factual_projector_policy_hash
+    assert evidence.episodic.projector_policy_hash == evidence.episodic_projector_policy_hash
+    assert evidence.projection_bundle_hash.startswith("sha256:")
+    assert len(
+        {
+            evidence.dag_projector_policy_hash,
+            evidence.factual_projector_policy_hash,
+            evidence.episodic_projector_policy_hash,
+        }
+    ) == 3
 
 
 def test_shadow_does_not_change_official_rng_cache_budget_or_outputs(tmp_path) -> None:
@@ -283,14 +350,13 @@ def test_final_generic_or_mismatched_views_and_flag_off_are_rejected(tmp_path) -
             factual=evidence.factual, episodic=evidence.episodic,
             data_snapshot_hash=evidence.data_snapshot_hash,
             verified_subsequence=evidence._verified_subsequence,
+            flags=_flags(),
             _token=object(),
         )
-    with pytest.raises(ValueError, match="watermark"):
-        evidence.with_episodic_projection(
-            replace(
-                evidence.episodic,
-                source_watermark_event_hash="sha256:" + "a" * 64,
-            ),
+    with pytest.raises(TypeError):
+        replace(
+            evidence.episodic,
+            source_watermark_event_hash="sha256:" + "a" * 64,
         )
     with pytest.raises(RuntimeError, match="disabled"):
         ShadowRetriever(

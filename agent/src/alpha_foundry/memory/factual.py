@@ -4,13 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Mapping
+from typing import Mapping
 
 from src.alpha_foundry.dag.model import FactorDAGProjection
-from src.research_ledger.events import ResearchEventEnvelope
+from src.research_ledger.events.model import VerifiedEventSubsequence
+from src.research_ledger.hash_utils import canonical_json_hash
 
 
 _FACTUAL_VIEW_AUTHORITY = object()
+FACTUAL_PROJECTOR_POLICY_HASH = canonical_json_hash(
+    {
+        "schema_version": "factual_memory_projector_policy.v1",
+        "allowed_terminal_statuses": ["reject", "success"],
+        "allowed_data_scopes": ["train_valid", "valid"],
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -23,28 +31,44 @@ class DiscoveryFactorEvidence:
     data_scope: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class FactualMemoryView:
     dag: FactorDAGProjection
     evidence_by_factor_spec_id: Mapping[str, DiscoveryFactorEvidence]
-    _authority: object = field(repr=False, compare=False)
+    source_subsequence_hash: str
+    projector_policy_hash: str
+    _authority: object = field(init=False, repr=False, compare=False)
 
-    def __post_init__(self) -> None:
-        if self._authority is not _FACTUAL_VIEW_AUTHORITY:
+    def __init__(
+        self,
+        *,
+        dag: FactorDAGProjection,
+        evidence_by_factor_spec_id: Mapping[str, DiscoveryFactorEvidence],
+        source_subsequence_hash: str,
+        projector_policy_hash: str,
+        _authority: object,
+    ) -> None:
+        if _authority is not _FACTUAL_VIEW_AUTHORITY:
             raise TypeError("factual memory must be built from terminal discovery events")
+        object.__setattr__(self, "dag", dag)
+        object.__setattr__(self, "source_subsequence_hash", source_subsequence_hash)
+        object.__setattr__(self, "projector_policy_hash", projector_policy_hash)
         object.__setattr__(
             self,
             "evidence_by_factor_spec_id",
-            MappingProxyType(dict(self.evidence_by_factor_spec_id)),
+            MappingProxyType(dict(evidence_by_factor_spec_id)),
         )
+        object.__setattr__(self, "_authority", _authority)
 
     @classmethod
     def from_terminal_discovery_events(
         cls,
         dag: FactorDAGProjection,
-        events: Iterable[ResearchEventEnvelope],
+        events: VerifiedEventSubsequence,
     ) -> "FactualMemoryView":
-        ordered = list(events)
+        if not isinstance(events, VerifiedEventSubsequence) or not events.is_authorized():
+            raise TypeError("factual memory requires a store-verified event subsequence")
+        ordered = list(events.events)
         evaluations = {
             event.event_hash: event
             for event in ordered
@@ -85,6 +109,8 @@ class FactualMemoryView:
         return cls(
             dag=dag,
             evidence_by_factor_spec_id=eligible,
+            source_subsequence_hash=events.subsequence_hash,
+            projector_policy_hash=FACTUAL_PROJECTOR_POLICY_HASH,
             _authority=_FACTUAL_VIEW_AUTHORITY,
         )
 
@@ -97,5 +123,31 @@ class FactualMemoryView:
     def definition_event_hash(self, factor_spec_id: str) -> str:
         return self.evidence_by_factor_spec_id[factor_spec_id].definition_event_hash
 
+    @property
+    def content_hash(self) -> str:
+        return canonical_json_hash(
+            {
+                "schema_version": "factual_memory_view.v2",
+                "source_subsequence_hash": self.source_subsequence_hash,
+                "projector_policy_hash": self.projector_policy_hash,
+                "dag_projection_hash": self.dag.projection_hash,
+                "evidence": [
+                    {
+                        "factor_spec_id": item.factor_spec_id,
+                        "definition_event_hash": item.definition_event_hash,
+                        "evaluation_event_hash": item.evaluation_event_hash,
+                        "terminal_event_hash": item.terminal_event_hash,
+                        "scorecard_hash": item.scorecard_hash,
+                        "data_scope": item.data_scope,
+                    }
+                    for _, item in sorted(self.evidence_by_factor_spec_id.items())
+                ],
+            }
+        )
 
-__all__ = ["DiscoveryFactorEvidence", "FactualMemoryView"]
+
+__all__ = [
+    "DiscoveryFactorEvidence",
+    "FACTUAL_PROJECTOR_POLICY_HASH",
+    "FactualMemoryView",
+]

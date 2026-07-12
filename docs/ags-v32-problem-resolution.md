@@ -46,7 +46,7 @@ Status meanings:
 | P0-13 | M1 falsification v2 | audit_reported | none |
 | P0-14 | M1 weighting policy | partial | permutation-invariant tie-neutral v2 weighting passes; legacy scorecard migration remains open |
 | P0-15 | M1 Decision invariants | audit_reported | none |
-| P0-16 | M1 exact projection bundle | audit_reported | none |
+| P0-16 | M1 exact projection bundle | verified | DAG/factual/episodic bind one store-verified historical subsequence and three frozen projector policies; replace/forgery and pre-append replay matrix passes |
 | P0-17 | M1 atomic artifact writer | partial | canonical create-if-absent writer passes collision/concurrency tests; legacy writers and event transitions remain unmigrated |
 | P0-18 | M1 forward authority/vintage | audit_reported | none |
 | P1-01 | M1 production timing binding | audit_reported | none |
@@ -249,3 +249,43 @@ now warms the exact third-party rank/delta primitives before the guard and
 restores the runtime immediately after the complete DSL evaluation. The same
 test passes with a fresh isolated bytecode prefix, so the guard measures DSL
 execution rather than pandas/pytest lazy imports.
+
+## M1 exact discovery-projection authority evidence
+
+Branch `codex/ags-v32-m1-exact-projection-bundle` was created fresh from
+accepted main `ce464f804eb0010d95d3264dab383ab28c7bd707`.
+
+The production `DiscoveryEvidenceProjector` now issues discovery evidence from
+one store-authorized `VerifiedEventSubsequence` at the last eligible discovery
+watermark. Later final/forward monitoring events are outside both the event set
+and the historical prefix provenance, so monitoring append operations cannot
+change the discovery bundle.
+
+Factor DAG, factual memory and episodic memory each carry the same
+`source_subsequence_hash`, their own frozen `projector_policy_hash`, and a
+canonical content/projection hash. Their authorized constructors are
+`init=False`; `dataclasses.replace` cannot carry authority into modified
+content. `DiscoveryEvidenceView` is the non-replaceable exact bundle and
+rebuilds all three components from its original verified subsequence before
+every Retriever score. Mutating a posterior, DAG or stored projection hash,
+including via `object.__setattr__`, fails exact replay before selection.
+
+The production `with_episodic_projection` mutation surface was removed. Pure
+scoring tests that need synthetic observations now use a tests-only fixture
+whose object deliberately has no runtime projection authority. Retriever v7
+event append continues to rebuild the current historical projection and its
+upstream scorecards before the event can enter the ledger.
+
+Acceptance evidence:
+
+- exact projection, DAG and process-memory focused matrix: `33 passed`;
+- full Alpha Foundry: `273 passed in 50.90s`;
+- full Alpha Quality: `201 passed in 23.78s`;
+- Research Ledger: `111 passed in 18.01s`;
+- contracts, security and acceptance: `89 passed in 10.20s`, with 21 existing
+  deprecation warnings;
+- eight-source cold mypy: passed.
+
+This closes P0-16's projection-authority defect only. It does not establish
+producer-bound Decision evidence, PIT data authority, Retriever efficacy or an
+Activation outcome; those gates remain closed.
