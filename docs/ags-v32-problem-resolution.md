@@ -31,8 +31,8 @@ Status meanings:
 
 | Item | Planned milestone | Status | Current authoritative evidence |
 |---|---|---|---|
-| P0-01 | M1 split/timing | partial | fixture-only train/valid capability enforces outcome-contained split dates and rejects test/gap/intraday axes; production evaluator migration remains open |
-| P0-02 | M1 evidence/Decision | partial | source-bound Decision v3 caps caller-constructable v2 evidence at research_only; the first producer-scoped v3 ledger mint now reopens exact event/artifact sources, while scorecard/execution/snapshot/complement mints and the narrow Decision consumer remain open |
+| P0-01 | M1 split/timing | partial | source-computed scorecard evidence proves train invariance to valid/test prices, valid invariance to test prices, outcome-contained boundary purge, and a backend view ending at valid; PIT snapshot authority and production evaluator migration remain open |
+| P0-02 | M1 evidence/Decision | partial | legacy v2 remains capped; producer-scoped ledger and source-computed scorecard v3 mints reopen exact event/artifact sources, while snapshot/execution/complement mints and the narrow Decision consumer remain open |
 | P0-03 | M1 production evaluator | audit_reported | none |
 | P0-04 | M1/M2 PIT snapshot | audit_reported | none |
 | P0-05 | M2 A-share adapter | audit_reported | none |
@@ -40,8 +40,8 @@ Status meanings:
 | P0-07 | M1 split registry | partial | producer-scoped registration now freezes deep-immutable calendar/timing/split content as the first event in a run; evaluator consumption and provider-authenticated trading-calendar provenance remain open |
 | P0-08 | M1/M2 execution policy | partial | closed cost policy and strict missing-return/initial-exit cost kernel pass; production fill authority remains open |
 | P0-09 | M1 immutable output | partial | exact-axis immutable byte content and pre-consumption byte/hash verification pass; formal Parquet/Arrow refs and producer-bound evaluator consumption remain open |
-| P0-10 | M1 scorecard/final boundary | partial | fixture scorecard exposes train/valid only and contains no test/execution artifact; one-shot final producer remains open |
-| P0-11 | M1 split-safe scorecard | partial | predictive and daily PIT-universe coverage artifacts are explicitly train/valid scoped; execution is absent and requires a separate producer; producer event lineage remains open |
+| P0-10 | M1 scorecard/final boundary | partial | producer-scoped scorecard evidence gives the DSL backend only dates through valid end and persists train/valid metrics without execution/final content; one-shot final producer remains open |
+| P0-11 | M1 split-safe scorecard | partial | scorecard v3 deterministically rebuilds factor output/predictive/coverage content from registered policy, snapshot and canonical definition events; PIT/mask provenance is explicitly capped and separate execution remains required |
 | P0-12 | M1 final eligibility/provider | audit_reported | none |
 | P0-13 | M1 falsification v2 | audit_reported | none |
 | P0-14 | M1 weighting policy | partial | permutation-invariant tie-neutral v2 weighting passes; legacy scorecard migration remains open |
@@ -52,7 +52,7 @@ Status meanings:
 | P1-01 | M1 production timing binding | audit_reported | none |
 | P1-02 | M1 executable grammar | partial | runtime grammar/backend intersection and typed pre-compute skip pass; production lifecycle integration remains open |
 | P1-03 | M2 partitioned artifacts | audit_reported | none |
-| P1-04 | M1 scorecard v2 | partial | additive v2 fixture object binds predictive/coverage input hashes and is explicitly non-decision-grade; exclusive ProductionCandidateEvaluator mint remains open |
+| P1-04 | M1 scorecard v2 | partial | a producer-scoped v3 evidence mint now exclusively recomputes and wraps v2 predictive/coverage content, while the unified ProductionCandidateEvaluator and decision-grade PIT/mask sources remain open |
 | P1-05 | M1 production search factory | audit_reported | none |
 | P1-06 | M1 worker/resource evidence | audit_reported | none |
 | P1-07 | M0 release baseline, then M1 report binding | partial | deterministic manifest and adversarial tests; event-bound GET/CLI refs remain open |
@@ -400,5 +400,58 @@ Branch verification:
 - full Alpha Foundry: `273 passed in 84.33s`;
 - Research Ledger: `113 passed in 29.68s`;
 - contracts, security and acceptance: `89 passed in 15.77s`, with 21 existing
+  deprecation warnings;
+- three-source mypy: passed.
+
+## M1 producer-scoped scorecard Decision evidence v3
+
+Branch `codex/ags-v32-fix-scorecard-evidence-v3` was fast-forwarded while
+clean to accepted main `6cf6d3887a9e939a40a1e5470cdeab1e3c44a584` before
+implementation.
+
+`DecisionScorecardEvidenceServiceV3` accepts only factor/trial/run identity and
+the registered evaluation-policy and frozen snapshot event hashes. It reopens
+both source artifacts and the canonical `FactorDefinitionRecorded` event,
+checks trial/run/grammar/timing/transform/mask-policy identity, executes the
+core DSL backend, and recomputes immutable factor-output and scorecard v2
+content. Its public entry has no panel, factor, return, IC, scorecard, failure,
+cap or decision channel.
+
+The backend receives only snapshot frames sliced through the registered valid
+end. Factor output and metrics then use the exact concatenated train/valid axes;
+test dates never reach formula execution. Tests prove train metrics are
+invariant to valid and test price changes, valid metrics are invariant to test
+changes, and horizon-boundary rows stop at the derived eligible signal dates.
+Only a fixed empty transform policy and fixed snapshot universe/tradability
+mask policies are supported; a different factor-spec semantic hash is rejected
+rather than scored as another factor.
+
+The additive scorecard kind of `DecisionEvidenceRecord.v3` is recursively
+immutable and cross-checks its nested scorecard and factor-output content
+against both outer hashes and factor/snapshot/split/timing identity. The
+protected `ScorecardDecisionEvidenceV3Recorded` event is appended only after
+full deterministic replay at the exact source watermark. Append, whole-chain
+replay and idempotent read reopen policy, snapshot and evidence artifacts and
+rerun the computation. Generic append, source/artifact tampering, inner/outer
+rehash forgery, post-terminal minting and watermark races fail closed.
+
+This is still not decision-grade evidence. Existing snapshot/PIT/calendar and
+mask provenance are not provider-authenticated, factor-output partition
+storage is not production authority, and execution/complement producers do not
+yet exist. The record therefore hard-codes `decision_grade=false`, retains the
+underlying fixture-only statuses, and emits non-compensatory authority caps.
+No current Decision path consumes this bare artifact; the future narrow view
+must resolve its protected event and replay it. No Activation outcome was
+accessed.
+
+Branch verification:
+
+- dedicated scorecard producer adversarial tests: `16 passed in 8.81s`;
+- focused scorecard/ledger/capability/payload matrix:
+  `106 passed in 13.28s`;
+- full Alpha Quality: `240 passed in 43.38s`;
+- full Alpha Foundry: `273 passed in 84.33s`;
+- Research Ledger: `114 passed in 23.62s`;
+- contracts, security and acceptance: `89 passed in 12.50s`, with 21 existing
   deprecation warnings;
 - three-source mypy: passed.
