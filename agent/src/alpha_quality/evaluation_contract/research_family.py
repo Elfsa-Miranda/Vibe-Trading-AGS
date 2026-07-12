@@ -22,4 +22,3 @@ def build_research_family_id(
             "policy_references": policy_references.to_dict(),
         }
     )
-
