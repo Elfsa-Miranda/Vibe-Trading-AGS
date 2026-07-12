@@ -22,6 +22,8 @@ _SPECIALIZED_EVENT_TYPES = {
     "RetrieverActionTemplateFrozen",
     "TrainValidDataSnapshotFrozen",
     "EvaluationPolicyRegistered",
+    "AsharePITAdapterRegistered",
+    "AsharePITSnapshotRecorded",
     "RetrieverFeatureSourceRecorded",
     "RetrieverDecisionV2Recorded",
     "RetrieverDecisionV3Recorded",

@@ -674,6 +674,67 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "AsharePITAdapterRegistered": PayloadSpec(
+        "ashare_pit_adapter_registered.v1",
+        {
+            "registration_id": _string,
+            "adapter_id": _string,
+            "provider": _string,
+            "adapter_version": _string,
+            "authority_class": _enum(
+                "built_in_production",
+                "external_unverified",
+            ),
+            "registry_hash": _hash,
+            "registration_hash": _hash,
+            "implementation_hash": _hash,
+            "descriptor_hash": _hash,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "registration_artifact_hash": _hash,
+            "source_watermark_event_hash": _nullable_hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "AsharePITSnapshotRecorded": PayloadSpec(
+        "ashare_pit_snapshot_recorded.v2",
+        {
+            "snapshot_id": _string,
+            "snapshot_hash": _hash,
+            "adapter_id": _string,
+            "adapter_registration_event_hash": _hash,
+            "evaluation_policy_event_hash": _hash,
+            "source_watermark_event_hash": _hash,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "validation_policy_hash": _hash,
+            "request_hash": _hash,
+            "source_manifest_hash": _hash,
+            "registry_hash": _hash,
+            "registration_hash": _hash,
+            "calendar_hash": _hash,
+            "evaluation_time_policy_hash": _hash,
+            "split_plan_hash": _hash,
+            "pit_contract_status": _enum(
+                "complete",
+                "unavailable",
+                "contaminated",
+            ),
+            "survivorship_status": _enum(
+                "controlled_by_daily_membership",
+                "unknown",
+            ),
+            "cutoff_status": _enum(
+                "within_registered_valid_end",
+                "contaminated",
+            ),
+            "decision_grade": _boolean,
+            "hard_failures": _string_list,
+            "caps": _string_list,
+            "warnings": _string_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "RetrieverFeatureSourceRecorded": PayloadSpec(
         "retriever_feature_source_recorded.v1",
         {
@@ -1984,6 +2045,42 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError(
                 "train/valid snapshot frame inventory is inconsistent"
             )
+    if event_type == "AsharePITAdapterRegistered":
+        expected_identifier = (
+            "ashare-pit-adapter-v1-"
+            + str(payload["registration_hash"]).removeprefix("sha256:")[:24]
+        )
+        if payload["registration_id"] != expected_identifier:
+            raise EventValidationError(
+                "PIT adapter registration identity must derive from its hash"
+            )
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("PIT adapter registration requires one artifact")
+    if event_type == "AsharePITSnapshotRecorded":
+        expected_identifier = (
+            "ashare-pit-snapshot-v2-"
+            + str(payload["snapshot_hash"]).removeprefix("sha256:")[:24]
+        )
+        if payload["snapshot_id"] != expected_identifier:
+            raise EventValidationError(
+                "PIT snapshot identity must derive from its hash"
+            )
+        for name in ("hard_failures", "caps", "warnings"):
+            if payload[name] != sorted(set(payload[name])):
+                raise EventValidationError(f"PIT snapshot {name} must be canonical")
+        if payload["decision_grade"] and (
+            payload["pit_contract_status"] != "complete"
+            or payload["survivorship_status"]
+            != "controlled_by_daily_membership"
+            or payload["cutoff_status"] != "within_registered_valid_end"
+            or payload["hard_failures"]
+            or payload["caps"]
+        ):
+            raise EventValidationError(
+                "decision-grade PIT snapshot has unresolved evidence defects"
+            )
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("PIT snapshot requires one manifest artifact")
     if event_type == "RetrieverFeatureSourceRecorded":
         expected_identifier = (
             "retriever-feature-source-v1-"
