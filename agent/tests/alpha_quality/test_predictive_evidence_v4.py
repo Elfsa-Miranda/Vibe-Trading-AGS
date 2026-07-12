@@ -47,7 +47,7 @@ def _hash(label: str) -> str:
     return canonical_json_hash({"label": label})
 
 
-def _flags() -> ResolvedAGSFlags:
+def _flags(*, enable_decision: bool = False) -> ResolvedAGSFlags:
     return ResolvedAGSFlags.from_settings(
         {
             "VIBE_TRADING_AGS_ENABLED": "1",
@@ -56,6 +56,7 @@ def _flags() -> ResolvedAGSFlags:
             "VIBE_TRADING_RESEARCH_EVENTS": "1",
             "VIBE_TRADING_FACTOR_DAG": "1",
             "VIBE_TRADING_PROCESS_MEMORY": "1",
+            "VIBE_TRADING_DECISION_V2": "1" if enable_decision else "0",
         }
     )
 
@@ -156,8 +157,13 @@ class PredictiveFixturePITAdapterV1:
         )
 
 
-def _setup(tmp_path: Path, policy_references=PIT_SCORECARD_POLICY_REFERENCES):
-    flags = _flags()
+def _setup(
+    tmp_path: Path,
+    policy_references=PIT_SCORECARD_POLICY_REFERENCES,
+    *,
+    enable_decision: bool = False,
+):
+    flags = _flags(enable_decision=enable_decision)
     store = ResearchEventStore(
         tmp_path / "events.sqlite",
         artifact_root=tmp_path / "artifacts",

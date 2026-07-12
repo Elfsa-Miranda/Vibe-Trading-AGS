@@ -240,6 +240,65 @@ def _comparison_pool_members(value: Any, path: str) -> None:
         raise EventValidationError(f"{path} must be canonical")
 
 
+def _claim_assessment_list(value: Any, path: str) -> None:
+    if not isinstance(value, (list, tuple)) or not value:
+        raise EventValidationError(f"{path} must be a non-empty list")
+    expected = {
+        "schema_version", "claim_type", "factor_spec_id", "availability",
+        "verdict", "evidence_grade", "scope", "estimate", "uncertainty",
+        "bias_codes", "selection_codes", "blocker_codes",
+        "root_cause_event_hashes", "promotion_effect", "source_event_hashes",
+        "claim_hash",
+    }
+    claim_types: list[str] = []
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(item, Mapping) or set(item) != expected:
+            raise EventValidationError(f"{item_path} schema differs")
+        _enum("claim_assessment.v1")(item["schema_version"], f"{item_path}.schema_version")
+        _string(item["claim_type"], f"{item_path}.claim_type")
+        _string(item["factor_spec_id"], f"{item_path}.factor_spec_id")
+        _enum("available", "blocked", "unavailable", "not_applicable")(
+            item["availability"], f"{item_path}.availability"
+        )
+        _enum("supported", "rejected", "inconclusive", "blocked", "not_applicable")(
+            item["verdict"], f"{item_path}.verdict"
+        )
+        _enum("descriptive", "exploratory", "decision_grade", "none")(
+            item["evidence_grade"], f"{item_path}.evidence_grade"
+        )
+        _string(item["scope"], f"{item_path}.scope")
+        _mapping(item["estimate"], f"{item_path}.estimate")
+        _mapping(item["uncertainty"], f"{item_path}.uncertainty")
+        for name in ("bias_codes", "selection_codes", "blocker_codes"):
+            _string_list(item[name], f"{item_path}.{name}")
+        _hash_list(item["root_cause_event_hashes"], f"{item_path}.root_causes", allow_empty=True)
+        _enum("none", "reject", "cap_research_only")(
+            item["promotion_effect"], f"{item_path}.promotion_effect"
+        )
+        _hash_list(item["source_event_hashes"], f"{item_path}.sources", allow_empty=True)
+        _hash(item["claim_hash"], f"{item_path}.claim_hash")
+        if item["availability"] == "blocked" and (
+            not item["blocker_codes"] or not item["root_cause_event_hashes"]
+        ):
+            raise EventValidationError(f"{item_path} blocked claim lacks root cause")
+        claim_types.append(str(item["claim_type"]))
+    if claim_types != sorted(set(claim_types)):
+        raise EventValidationError(f"{path} must be sorted by unique claim type")
+
+
+def _selection_terminal_counts(value: Any, path: str) -> None:
+    _mapping(value, path)
+    expected = {
+        "success", "reject", "skip", "invalid", "duplicate", "timeout",
+        "error", "infrastructure_failure",
+    }
+    if set(value) != expected:
+        raise EventValidationError(f"{path} terminal inventory differs")
+    for key in expected:
+        _nonnegative_integer(value[key], f"{path}.{key}")
+
+
 def _activation_terminal_counts(value: Any, path: str) -> None:
     _mapping(value, path)
     expected = {
@@ -966,6 +1025,76 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "secondary_evidence_bundle_hash": _hash,
             "promotion_effect": _enum("none"),
             "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "SelectionAssessmentRecorded": PayloadSpec(
+        "selection_assessment_recorded.v1",
+        {
+            "assessment_id": _string,
+            "schema_version": _enum("selection_assessment.v1"),
+            "research_family_id": _hash,
+            "run_id": _string,
+            "trial_count": _nonnegative_integer,
+            "candidate_count": _nonnegative_integer,
+            "terminal_counts": _selection_terminal_counts,
+            "unpublished_or_open_trial_count": _nonnegative_integer,
+            "selection_policy_hash": _hash,
+            "multiplicity_policy_hash": _hash,
+            "effective_independent_run_groups": _positive_integer,
+            "final_access_count": _nonnegative_integer,
+            "confirmatory_grade_eligible": _boolean,
+            "source_event_hashes": _nonempty_hash_list,
+            "assessment_hash": _hash,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+        },
+    ),
+    "ClaimMatrixRecorded": PayloadSpec(
+        "claim_matrix_recorded.v1",
+        {
+            "matrix_id": _string,
+            "factor_spec_id": _string,
+            "claim_matrix_hash": _hash,
+            "selection_event_hash": _hash,
+            "selection_assessment_hash": _hash,
+            "claims": _claim_assessment_list,
+            "claim_hashes": _nonempty_hash_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "promotion_effect": _enum("none"),
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "QualityDecisionV4Recorded": PayloadSpec(
+        "quality_decision_recorded.v4",
+        {
+            "decision_id": _string,
+            "schema_version": _enum("narrow_quality_decision.v4"),
+            "factor_spec_id": _string,
+            "decision": _enum("reject", "research_only", "candidate_zoo"),
+            "tier": _nonnegative_integer,
+            "reasons": _reason_codes,
+            "warnings": _string_list,
+            "caps": _string_list,
+            "limitations": _string_list,
+            "claim_matrix_hash": _hash,
+            "selection_assessment_hash": _hash,
+            "evidence_event_hashes": _nonempty_hash_list,
+            "profile_template_hash": _hash,
+            "profile_authority_class": _string,
+            "profile_maximum_promotion": _enum(
+                "reject", "research_only", "candidate_zoo", "paper_candidate", "forward_track"
+            ),
+            "policy_hash": _hash,
+            "tier_invariant_manifest_hash": _hash,
+            "decision_hash": _hash,
+            "claim_matrix_event_hash": _hash,
+            "selection_event_hash": _hash,
+            "promotion_effect": _enum("authoritative_train_valid_tier"),
             "producer_schema_version": _string,
             "producer_policy_hash": _hash,
             "artifact_refs": _artifact_list,
@@ -2693,6 +2822,59 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("secondary duplicate status differs")
         if payload["artifact_refs"]:
             raise EventValidationError("secondary evidence event embeds no external artifact")
+    if event_type == "SelectionAssessmentRecorded":
+        content = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"assessment_id", "assessment_hash", "producer_schema_version", "producer_policy_hash"}
+        }
+        if canonical_json_hash(content) != payload["assessment_hash"]:
+            raise EventValidationError("selection assessment hash differs")
+        if payload["candidate_count"] > payload["trial_count"]:
+            raise EventValidationError("selection candidates exceed trials")
+        if payload["confirmatory_grade_eligible"] and (
+            payload["unpublished_or_open_trial_count"] or payload["final_access_count"]
+        ):
+            raise EventValidationError("selection confirmatory grade ignores adverse history")
+    if event_type == "ClaimMatrixRecorded":
+        for claim in payload["claims"]:
+            content = {key: value for key, value in claim.items() if key != "claim_hash"}
+            if canonical_json_hash(content) != claim["claim_hash"]:
+                raise EventValidationError("claim assessment hash differs")
+            if claim["factor_spec_id"] != payload["factor_spec_id"]:
+                raise EventValidationError("claim factor identity differs")
+        matrix = {
+            "schema_version": "claim_matrix.v1",
+            "factor_spec_id": payload["factor_spec_id"],
+            "claims": payload["claims"],
+            "selection_assessment_hash": payload["selection_assessment_hash"],
+        }
+        if canonical_json_hash(matrix) != payload["claim_matrix_hash"]:
+            raise EventValidationError("claim matrix hash differs")
+        if payload["claim_hashes"] != sorted(
+            claim["claim_hash"] for claim in payload["claims"]
+        ):
+            raise EventValidationError("claim matrix hash inventory differs")
+        if payload["artifact_refs"]:
+            raise EventValidationError("claim matrix event embeds no external artifact")
+    if event_type == "QualityDecisionV4Recorded":
+        if payload["tier"] not in {0, 1, 2}:
+            raise EventValidationError("narrow decision tier differs")
+        if {"reject": 0, "research_only": 1, "candidate_zoo": 2}[payload["decision"]] != payload["tier"]:
+            raise EventValidationError("narrow decision label and tier differ")
+        content = {
+            key: value
+            for key, value in payload.items()
+            if key not in {
+                "decision_id", "decision_hash", "claim_matrix_event_hash",
+                "selection_event_hash", "promotion_effect",
+                "producer_schema_version", "producer_policy_hash", "artifact_refs",
+            }
+        }
+        if canonical_json_hash(content) != payload["decision_hash"]:
+            raise EventValidationError("narrow decision hash differs")
+        if payload["artifact_refs"]:
+            raise EventValidationError("narrow decision event embeds no external artifact")
     if event_type == "ProductionEvaluationNodeRecorded":
         if payload["run_id"] == "" or payload["trial_id"] == "":
             raise EventValidationError("production node identity is required")
