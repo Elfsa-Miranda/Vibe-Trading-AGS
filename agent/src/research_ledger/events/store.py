@@ -73,6 +73,14 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "EvaluationPolicyRegistered": ("VIBE_TRADING_ALPHA_SCORECARD",),
+    "AsharePITAdapterRegistered": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+    ),
+    "AsharePITSnapshotRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+    ),
     "RetrieverFeatureSourceRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
@@ -190,6 +198,8 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "EvaluationPolicyRegistered",
         "ScorecardDecisionEvidenceV3Recorded",
         "SnapshotDecisionEvidenceV3Recorded",
+        "AsharePITAdapterRegistered",
+        "AsharePITSnapshotRecorded",
     }
 )
 
@@ -393,6 +403,8 @@ class ResearchEventStore:
         self._validate_external_evaluation_policy(draft.event_type, payload)
         self._validate_external_scorecard_evidence_v3(draft.event_type, payload)
         self._validate_external_snapshot_evidence_v3(draft.event_type, payload)
+        self._validate_external_pit_adapter_registration(draft.event_type, payload)
+        self._validate_external_pit_snapshot(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
         self._validate_external_prearm_flat_schedule(draft.event_type, payload)
@@ -621,6 +633,8 @@ class ResearchEventStore:
             "RetrieverActionTemplateFrozen": "action_id",
             "TrainValidDataSnapshotFrozen": "snapshot_id",
             "EvaluationPolicyRegistered": "registration_id",
+            "AsharePITAdapterRegistered": "registration_id",
+            "AsharePITSnapshotRecorded": "snapshot_id",
             "RetrieverFeatureSourceRecorded": "feature_source_id",
             "RetrieverDecisionV2Recorded": "decision_id",
             "RetrieverDecisionV3Recorded": "decision_id",
@@ -1766,6 +1780,126 @@ class ResearchEventStore:
         if dict(payload) != expected:
             raise EventValidationError(
                 "snapshot evidence event differs from producer artifact"
+            )
+
+    def _validate_external_pit_adapter_registration(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "AsharePITAdapterRegistered":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.registered-ashare-pit-adapter-v1+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError(
+                "PIT adapter registration requires one producer artifact"
+            )
+        reference = references[0]
+        try:
+            from src.alpha_quality.pit_service_v2 import (
+                AsharePITAdapterRegistrationArtifactStoreV1,
+                AsharePITAdapterRegistrationServiceV1,
+            )
+
+            record = AsharePITAdapterRegistrationArtifactStoreV1(
+                self.artifact_root
+            ).read(
+                str(reference["relative_path"]),
+                expected_artifact_hash=str(
+                    payload["registration_artifact_hash"]
+                ),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            expected = AsharePITAdapterRegistrationServiceV1.event_payload(
+                AsharePITAdapterRegistrationServiceV1.registration_id(
+                    str(payload["registration_hash"])
+                ),
+                record,
+                (
+                    None
+                    if payload["source_watermark_event_hash"] is None
+                    else str(payload["source_watermark_event_hash"])
+                ),
+                reference,
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "PIT adapter registration cannot be rebuilt"
+            ) from exc
+        if dict(payload) != expected:
+            raise EventValidationError(
+                "PIT adapter registration differs from producer artifact"
+            )
+
+    def _validate_external_pit_snapshot(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "AsharePITSnapshotRecorded":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.ashare-pit-snapshot-v2+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError("PIT snapshot requires one producer manifest")
+        reference = references[0]
+        try:
+            from src.alpha_quality.pit_artifact_v2 import (
+                FrozenAsharePITSnapshotArtifactStoreV2,
+            )
+            from src.alpha_quality.pit_service_v2 import AsharePITSnapshotServiceV2
+
+            snapshot = FrozenAsharePITSnapshotArtifactStoreV2(
+                self.artifact_root
+            ).read_manifest(
+                str(reference["relative_path"]),
+                expected_snapshot_hash=str(payload["snapshot_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            # The event run is the registered policy run; derive it from the source.
+            policy_events = [
+                event
+                for event in self.query_events(event_type="EvaluationPolicyRegistered")
+                if event.event_hash == payload["evaluation_policy_event_hash"]
+            ]
+            if len(policy_events) != 1:
+                raise ValueError("PIT snapshot policy event is missing")
+            rebuilt = AsharePITSnapshotServiceV2.rebuild_snapshot(
+                self,
+                snapshot=snapshot,
+                adapter_registration_event_hash=str(
+                    payload["adapter_registration_event_hash"]
+                ),
+                evaluation_policy_event_hash=str(
+                    payload["evaluation_policy_event_hash"]
+                ),
+                run_id=policy_events[0].run_id,
+            )
+            expected = AsharePITSnapshotServiceV2.event_payload(
+                AsharePITSnapshotServiceV2.snapshot_id(snapshot.snapshot_hash),
+                rebuilt,
+                str(payload["source_watermark_event_hash"]),
+                reference,
+                adapter_registration_event_hash=str(
+                    payload["adapter_registration_event_hash"]
+                ),
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "PIT snapshot manifest or source replay is invalid"
+            ) from exc
+        if rebuilt != snapshot or dict(payload) != expected:
+            raise EventValidationError(
+                "PIT snapshot differs from deterministic source replay"
             )
 
     def _validate_external_quality_decision_evidence(
@@ -3344,6 +3478,74 @@ class ResearchEventStore:
             if prior_same_run is not None:
                 raise EventTransitionError(
                     "evaluation policy must be the first event in its run"
+                )
+            return
+        if event_type == "AsharePITAdapterRegistered":
+            if self._tail_hash(conn) != payload["source_watermark_event_hash"]:
+                raise EventTransitionError("PIT adapter registration watermark is stale")
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'AsharePITAdapterRegistered'
+                  AND (
+                    json_extract(payload, '$.adapter_id') = ?
+                    OR json_extract(payload, '$.registration_hash') = ?
+                  )
+                """,
+                (payload["adapter_id"], payload["registration_hash"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("PIT adapter is already registered")
+            return
+        if event_type == "AsharePITSnapshotRecorded":
+            if self._tail_hash(conn) != payload["source_watermark_event_hash"]:
+                raise EventTransitionError("PIT snapshot watermark is stale")
+            registration = conn.execute(
+                """
+                SELECT payload FROM research_events
+                WHERE event_type = 'AsharePITAdapterRegistered' AND event_hash = ?
+                """,
+                (payload["adapter_registration_event_hash"],),
+            ).fetchone()
+            policy = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'EvaluationPolicyRegistered' AND event_hash = ?
+                """,
+                (payload["evaluation_policy_event_hash"],),
+            ).fetchone()
+            started = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'TrialStarted' AND run_id = ?
+                """,
+                (draft.run_id,),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'AsharePITSnapshotRecorded' AND run_id = ?
+                """,
+                (draft.run_id,),
+            ).fetchone()
+            if registration is None or policy is None:
+                raise EventTransitionError("PIT snapshot source event is missing")
+            registration_payload = json.loads(str(registration["payload"]))
+            policy_payload = json.loads(str(policy["payload"]))
+            if (
+                started is not None
+                or prior is not None
+                or str(policy["run_id"]) != draft.run_id
+                or registration_payload["adapter_id"] != payload["adapter_id"]
+                or registration_payload["registration_hash"]
+                != payload["registration_hash"]
+                or policy_payload["calendar_hash"] != payload["calendar_hash"]
+                or policy_payload["evaluation_time_policy_hash"]
+                != payload["evaluation_time_policy_hash"]
+                or policy_payload["split_plan_hash"] != payload["split_plan_hash"]
+            ):
+                raise EventTransitionError(
+                    "PIT snapshot source identity, order or scope differs"
                 )
             return
         if event_type == "TrainValidDataSnapshotFrozen":
@@ -5605,6 +5807,14 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_pit_adapter_registration(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_pit_snapshot(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_activation_source_audit(
                     event.event_type,
                     validated_payload,
@@ -5761,6 +5971,10 @@ class ResearchEventStore:
         scorecard_evidence_keys: set[tuple[str, str, str]] = set()
         snapshot_evidence_keys: set[tuple[str, str]] = set()
         evaluation_policy_runs: set[str] = set()
+        pit_adapter_ids: set[str] = set()
+        pit_adapter_registration_hashes: set[str] = set()
+        pit_adapter_events: dict[str, ResearchEventEnvelope] = {}
+        pit_snapshot_runs: set[str] = set()
         seen_run_ids: set[str] = set()
         event_order = {
             event.event_hash: index for index, event in enumerate(events)
@@ -5938,6 +6152,41 @@ class ResearchEventStore:
                 ):
                     return False
                 evaluation_policy_runs.add(event.run_id)
+            elif event.event_type == "AsharePITAdapterRegistered":
+                adapter_id = str(payload["adapter_id"])
+                registration_hash = str(payload["registration_hash"])
+                if (
+                    adapter_id in pit_adapter_ids
+                    or registration_hash in pit_adapter_registration_hashes
+                    or event.previous_event_hash
+                    != payload["source_watermark_event_hash"]
+                ):
+                    return False
+                pit_adapter_ids.add(adapter_id)
+                pit_adapter_registration_hashes.add(registration_hash)
+                pit_adapter_events[event.event_hash] = event
+            elif event.event_type == "AsharePITSnapshotRecorded":
+                registration = pit_adapter_events.get(
+                    str(payload["adapter_registration_event_hash"])
+                )
+                policy = events_by_hash.get(
+                    str(payload["evaluation_policy_event_hash"])
+                )
+                if (
+                    event.run_id in pit_snapshot_runs
+                    or registration is None
+                    or policy is None
+                    or policy.event_type != "EvaluationPolicyRegistered"
+                    or policy.run_id != event.run_id
+                    or event.previous_event_hash
+                    != payload["source_watermark_event_hash"]
+                    or registration.payload["adapter_id"] != payload["adapter_id"]
+                    or registration.payload["registration_hash"]
+                    != payload["registration_hash"]
+                    or any(run == event.run_id for run in started.values())
+                ):
+                    return False
+                pit_snapshot_runs.add(event.run_id)
             elif event.event_type == "TrainValidDataSnapshotFrozen":
                 snapshot_id = str(payload["snapshot_id"])
                 snapshot_hash = str(payload["snapshot_hash"])

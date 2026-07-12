@@ -287,6 +287,29 @@ def _safe_relative_path(raw: str) -> PurePosixPath:
     return relative
 
 
+def safe_artifact_target(artifact_root: str | Path, relative_path: str) -> Path:
+    """Resolve a not-yet-created artifact target without importing feature layers."""
+    root = Path(artifact_root).resolve(strict=True)
+    if not root.is_dir():
+        raise ArtifactReferenceError("artifact root must be a directory")
+    relative = _safe_relative_path(relative_path)
+    target = root.joinpath(*relative.parts)
+    if not _is_within(target, root):
+        raise ArtifactReferenceError("artifact target escapes its root")
+    ancestor = target.parent
+    while not ancestor.exists() and ancestor != root:
+        ancestor = ancestor.parent
+    try:
+        resolved_ancestor = ancestor.resolve(strict=True)
+    except (FileNotFoundError, OSError) as exc:
+        raise ArtifactReferenceError("artifact parent is unavailable") from exc
+    if not _is_within(resolved_ancestor, root):
+        raise ArtifactReferenceError("artifact parent escapes its root")
+    if target.exists() and target.is_symlink():
+        raise ArtifactReferenceError("artifact target cannot be a symlink")
+    return target
+
+
 def validate_artifact_references(
     artifact_root: str | Path,
     references: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
