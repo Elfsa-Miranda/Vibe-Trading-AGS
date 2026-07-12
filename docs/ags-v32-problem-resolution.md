@@ -32,7 +32,7 @@ Status meanings:
 | Item | Planned milestone | Status | Current authoritative evidence |
 |---|---|---|---|
 | P0-01 | M1 split/timing | partial | fixture-only train/valid capability enforces outcome-contained split dates and rejects test/gap/intraday axes; production evaluator migration remains open |
-| P0-02 | M1 evidence/Decision | partial | source-bound Decision v3 now caps every caller-constructable v2 evidence bundle at research_only; producer-scoped v3 evidence mints remain open |
+| P0-02 | M1 evidence/Decision | partial | source-bound Decision v3 caps caller-constructable v2 evidence at research_only; the first producer-scoped v3 ledger mint now reopens exact event/artifact sources, while scorecard/execution/snapshot/complement mints and the narrow Decision consumer remain open |
 | P0-03 | M1 production evaluator | audit_reported | none |
 | P0-04 | M1/M2 PIT snapshot | audit_reported | none |
 | P0-05 | M2 A-share adapter | audit_reported | none |
@@ -321,3 +321,46 @@ Current verification:
 - Research Ledger: `111 passed in 22.92s`;
 - contracts, security and acceptance: `89 passed in 11.08s`, with 21 existing
   deprecation warnings.
+
+## M1 producer-scoped ledger Decision evidence v3
+
+Branch `codex/ags-v32-fix-producer-scoped-evidence-v3` was created fresh from
+accepted main `943aa52f1136fb9c70b6b13d4c115195bf56ccad`.
+
+The first additive `DecisionEvidenceRecord.v3` kind is now minted only by
+`DecisionLedgerEvidenceServiceV3`. Its public entry point accepts a factor and
+run identity, not caller-authored evidence payloads or selected terminal event
+hashes. Within a frozen ledger watermark, the producer requires exactly one
+eligible train/valid terminal for that factor/run and rejects ambiguous runs;
+this prevents a caller from cherry-picking one of multiple terminal outcomes.
+
+The resulting closed record binds the producer schema and policy, exact source
+event hashes, source artifact blob hashes, run completeness, durability and
+infrastructure-failure evidence. A protected `DecisionEvidenceV3Recorded`
+event cannot be appended through the generic event API. Its producer append,
+chain replay and idempotent read path reopen the evidence artifact, rebuild the
+record from the historical event prefix, and verify source artifact paths and
+bytes. An intervening write invalidates a pre-append watermark; later source
+events in the same run make an existing evidence record stale rather than
+silently returning it.
+
+Feature-off construction fails before the evidence artifact store is created,
+and the v2 audit path remains capped at `research_only`.
+
+This remains partial P0-02 progress. Ledger evidence alone cannot authorize a
+higher tier. Producer-scoped scorecard, execution, snapshot and complement
+mints, followed by a Decision service that accepts only their narrow verified
+view, are still required. It is not Activation evidence and does not unlock a
+formal retriever experiment.
+
+Accepted branch verification:
+
+- focused evidence, payload-registry and capability-closure matrix:
+  `88 passed in 9.15s`;
+- full Alpha Quality: `212 passed in 43.33s`;
+- full Alpha Foundry: `273 passed in 64.04s`;
+- Research Ledger: `112 passed in 16.41s`;
+- contracts, security and acceptance: `89 passed in 10.95s`, with 21 existing
+  deprecation warnings and the Windows symlink test executed under a capable
+  token;
+- four-source mypy, compileall and staged diff check: passed.

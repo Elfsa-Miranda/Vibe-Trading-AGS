@@ -168,6 +168,7 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "MechanismEvidenceIndexRecorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
     "ComplementEvidenceRecorded": ("VIBE_TRADING_COMPLEMENT_V2",),
     "QualityDecisionRecorded": ("VIBE_TRADING_ADMISSION_GATE",),
+    "DecisionEvidenceV3Recorded": ("VIBE_TRADING_DECISION_V2",),
     "QualityDecisionV2Recorded": ("VIBE_TRADING_DECISION_V2",),
     "QualityDecisionV3Recorded": ("VIBE_TRADING_DECISION_V2",),
     "FinalCandidateFrozen": ("VIBE_TRADING_DECISION_V2",),
@@ -179,6 +180,8 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "ForwardPlanRecorded": ("VIBE_TRADING_FORWARD_TRACKING",),
     "ForwardObservationRecorded": ("VIBE_TRADING_FORWARD_TRACKING",),
 }
+
+_PRODUCER_SCOPED_EVENT_TYPES = frozenset({"DecisionEvidenceV3Recorded"})
 
 
 class ResearchEventStore:
@@ -341,6 +344,19 @@ class ResearchEventStore:
 
     def append_event(self, draft: EventDraft) -> ResearchEventEnvelope:
         self._validate_event_capability(draft.event_type)
+        if draft.event_type in _PRODUCER_SCOPED_EVENT_TYPES:
+            raise EventValidationError(
+                f"{draft.event_type} can only be minted by its deterministic producer"
+            )
+        return self._append_event(draft)
+
+    def _append_producer_event(self, draft: EventDraft) -> ResearchEventEnvelope:
+        if draft.event_type not in _PRODUCER_SCOPED_EVENT_TYPES:
+            raise EventValidationError("event type is not producer scoped")
+        return self._append_event(draft)
+
+    def _append_event(self, draft: EventDraft) -> ResearchEventEnvelope:
+        self._validate_event_capability(draft.event_type)
         self._validate_draft_identity(draft)
         payload = validate_and_redact_payload(
             draft.event_type,
@@ -363,6 +379,7 @@ class ResearchEventStore:
         self._validate_external_retriever_v6_evidence(draft.event_type, payload)
         self._validate_external_retriever_v7_evidence(draft.event_type, payload)
         self._validate_external_quality_decision_evidence(draft.event_type, payload)
+        self._validate_external_decision_evidence_v3(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
         self._validate_external_prearm_flat_schedule(draft.event_type, payload)
@@ -620,6 +637,7 @@ class ResearchEventStore:
             "MechanismEvidenceIndexRecorded": "mei_id",
             "ComplementEvidenceRecorded": "complement_id",
             "QualityDecisionRecorded": "decision_id",
+            "DecisionEvidenceV3Recorded": "evidence_id",
             "QualityDecisionV2Recorded": "decision_id",
             "QualityDecisionV3Recorded": "decision_id",
             "FinalCandidateFrozen": "freeze_id",
@@ -1491,6 +1509,68 @@ class ResearchEventStore:
             payload[name] != value for name, value in expected.items()
         ):
             raise EventValidationError("retriever v7 differs from deterministic rebuild")
+
+    def _validate_external_decision_evidence_v3(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "DecisionEvidenceV3Recorded":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"]
+            == "application/vnd.vibe.decision-evidence-v3+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError(
+                "Decision evidence v3 requires one producer artifact"
+            )
+        reference = references[0]
+        try:
+            from src.alpha_quality.decision_v2.evidence_v3 import (
+                DecisionEvidenceArtifactStoreV3,
+                DecisionLedgerEvidenceServiceV3,
+            )
+
+            record = DecisionEvidenceArtifactStoreV3(self.artifact_root).read(
+                str(reference["relative_path"]),
+                expected_evidence_hash=str(payload["evidence_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            rebuilt = DecisionLedgerEvidenceServiceV3.rebuild_record(
+                self,
+                factor_spec_id=record.factor_spec_id,
+                expected_evaluation_event_hash=str(
+                    record.evidence_payload["evaluation_event_hash"]
+                ),
+                expected_terminal_event_hash=str(
+                    record.evidence_payload["terminal_event_hash"]
+                ),
+                run_id=record.evidence_run_id,
+                ledger_watermark_event_hash=str(
+                    record.evidence_payload["ledger_watermark_event_hash"]
+                ),
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError(
+                "Decision evidence v3 artifact or source replay is invalid"
+            ) from exc
+        if rebuilt != record:
+            raise EventValidationError(
+                "Decision evidence v3 differs from deterministic source replay"
+            )
+        digest = record.evidence_hash.removeprefix("sha256:")
+        expected = DecisionLedgerEvidenceServiceV3.event_payload(
+            "decision-evidence-v3-" + digest[:24],
+            record,
+            reference,
+        )
+        if dict(payload) != expected:
+            raise EventValidationError(
+                "Decision evidence v3 event differs from its producer artifact"
+            )
 
     def _validate_external_quality_decision_evidence(
         self,
@@ -3932,6 +4012,44 @@ class ResearchEventStore:
         if event_type == "ComplementEvidenceRecorded":
             self._validate_complement_evidence_transition(conn, payload)
             return
+        if event_type == "DecisionEvidenceV3Recorded":
+            if draft.run_id != payload["evidence_run_id"]:
+                raise EventTransitionError(
+                    "Decision evidence event run differs from producer run"
+                )
+            if self._tail_hash(conn) != payload["ledger_watermark_event_hash"]:
+                raise EventTransitionError(
+                    "Decision evidence watermark is stale or widened"
+                )
+            definition = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?
+                """,
+                (payload["factor_spec_id"],),
+            ).fetchone()
+            if definition is None:
+                raise EventTransitionError(
+                    "Decision evidence has no prior factor definition"
+                )
+            prior_rows = conn.execute(
+                """
+                SELECT payload FROM research_events
+                WHERE event_type = 'DecisionEvidenceV3Recorded'
+                  AND run_id = ?
+                """,
+                (draft.run_id,),
+            ).fetchall()
+            if any(
+                (prior := json.loads(row["payload"]))["factor_spec_id"]
+                == payload["factor_spec_id"]
+                and prior["evidence_kind"] == payload["evidence_kind"]
+                for row in prior_rows
+            ):
+                raise EventTransitionError(
+                    "Decision evidence kind already exists for factor and run"
+                )
+            return
         if event_type in {"QualityDecisionV2Recorded", "QualityDecisionV3Recorded"}:
             definition = conn.execute(
                 """
@@ -5125,6 +5243,10 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_decision_evidence_v3(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_activation_source_audit(
                     event.event_type,
                     validated_payload,
@@ -5277,6 +5399,7 @@ class ResearchEventStore:
         activation_results: dict[str, Mapping[str, Any]] = {}
         activation_result_plans: set[str] = set()
         activation_decision_plans: set[str] = set()
+        decision_evidence_keys: set[tuple[str, str, str]] = set()
         event_order = {
             event.event_hash: index for index, event in enumerate(events)
         }
@@ -6076,6 +6199,27 @@ class ResearchEventStore:
                 ):
                     return False
                 activation_decision_plans.add(plan_hash)
+            elif event.event_type == "DecisionEvidenceV3Recorded":
+                factor_spec_id = str(payload["factor_spec_id"])
+                key = (
+                    event.run_id,
+                    factor_spec_id,
+                    str(payload["evidence_kind"]),
+                )
+                if (
+                    factor_spec_id not in definitions
+                    or event.run_id != payload["evidence_run_id"]
+                    or key in decision_evidence_keys
+                    or event.previous_event_hash
+                    != payload["ledger_watermark_event_hash"]
+                    or any(
+                        event_order.get(str(source_hash), len(events))
+                        >= event_order[event.event_hash]
+                        for source_hash in payload["source_event_hashes"]
+                    )
+                ):
+                    return False
+                decision_evidence_keys.add(key)
             elif event.event_type in {"QualityDecisionV2Recorded", "QualityDecisionV3Recorded"}:
                 if str(payload["factor_spec_id"]) not in definitions:
                     return False

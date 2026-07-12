@@ -210,6 +210,7 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "MechanismEvidenceIndexRecorded",
         "ComplementEvidenceRecorded",
         "QualityDecisionRecorded",
+        "DecisionEvidenceV3Recorded",
         "QualityDecisionV2Recorded",
         "QualityDecisionV3Recorded",
         "FinalCandidateFrozen",
@@ -1039,6 +1040,29 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "warnings": ["LIMITED_SAMPLE"],
             "caps": ["MISSING_EXECUTION"],
             "limitations": ["research evidence only"],
+        },
+        "DecisionEvidenceV3Recorded": {
+            "evidence_id": "decision-evidence-v3-fixture",
+            "evidence_hash": digest,
+            "evidence_kind": "ledger",
+            "factor_spec_id": "factor-1",
+            "evidence_run_id": "run-1",
+            "producer_schema_version": "decision_ledger_evidence_service.v3",
+            "producer_policy_hash": digest,
+            "source_event_hashes": [digest],
+            "source_artifact_hashes": [digest],
+            "evidence_payload_hash": digest,
+            "factor_definition_event_hash": digest,
+            "evaluation_event_hash": digest,
+            "terminal_event_hash": digest,
+            "ledger_watermark_event_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": "decision-evidence-v3/fixture.json",
+                    "artifact_hash": digest,
+                    "media_type": "application/vnd.vibe.decision-evidence-v3+json",
+                }
+            ],
         },
         "QualityDecisionV2Recorded": {
             "decision_id": "quality-v2-1",

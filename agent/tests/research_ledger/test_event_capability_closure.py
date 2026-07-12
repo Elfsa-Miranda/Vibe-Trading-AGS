@@ -51,6 +51,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "MechanismEvidenceIndexRecorded",
     "ComplementEvidenceRecorded",
     "QualityDecisionRecorded",
+    "DecisionEvidenceV3Recorded",
     "QualityDecisionV2Recorded",
     "QualityDecisionV3Recorded",
     "FinalCandidateFrozen",
