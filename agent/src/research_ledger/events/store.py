@@ -1510,6 +1510,9 @@ class ResearchEventStore:
         reference = references[0]
         try:
             from src.alpha_quality.decision_v2.runner import QualityDecisionV2Runner
+            from src.alpha_quality.decision_v2.authority_gate_v1 import (
+                QualityDecisionAuthorityGateV1,
+            )
             from src.alpha_quality.decision_v2.source_v3 import (
                 FrozenDecisionEvidenceRepository,
                 QualityDecisionInputArtifactStoreV3,
@@ -1522,10 +1525,12 @@ class ResearchEventStore:
                 expected_bundle_hash=str(payload["input_bundle_hash"]),
             )
             policy = decision_v2_policy_from_mapping(bundle.policy_config)
-            decision = QualityDecisionV2Runner(
-                flags=self.flags,
-                policy=policy,
-                repository=FrozenDecisionEvidenceRepository(bundle.evidence_records),
+            decision = QualityDecisionAuthorityGateV1(
+                QualityDecisionV2Runner(
+                    flags=self.flags,
+                    policy=policy,
+                    repository=FrozenDecisionEvidenceRepository(bundle.evidence_records),
+                )
             ).run(bundle.evidence_refs)
             content = source_bound_quality_decision_content(
                 decision,
