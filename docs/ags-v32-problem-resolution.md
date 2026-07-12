@@ -455,3 +455,56 @@ Branch verification:
 - contracts, security and acceptance: `89 passed in 12.50s`, with 21 existing
   deprecation warnings;
 - three-source mypy: passed.
+
+## M1 producer-scoped snapshot Decision evidence v3
+
+Branch `codex/ags-v32-fix-snapshot-evidence-v3` was created fresh from accepted
+main `7dbcf168d20230345eff53fb9fe12f7acb70eaac`.
+
+`DecisionSnapshotEvidenceServiceV3` accepts only factor/run identity plus the
+registered evaluation-policy and frozen snapshot event hashes. It reopens the
+content-addressed policy and snapshot artifacts, derives the exact frame/date/
+symbol inventory, compares the observed extent with the registered valid end,
+and emits an immutable snapshot kind of `DecisionEvidenceRecord.v3`. Its public
+entry has no panel, period, source configuration, metadata, PIT,
+survivorship, cutoff, cap or decision channel.
+
+The legacy `TrainValidDataSnapshotFrozen.v1` producer is deliberately not
+reinterpreted as PIT authority. Its caller-authored `pit_contract_present` and
+`survivorship_bias` booleans do not enter the derived truth fields. Snapshot
+Decision evidence always reports `unverified_legacy_caller_snapshot` and
+`survivorship_status=unknown`; field presence can report only an unverified
+caller membership/tradability frame. Availability-time and corporate-action
+evidence remain explicitly unavailable. A frame date after the registered
+valid end produces `contains_dates_after_registered_valid_end` plus
+`SNAPSHOT_SCOPE_CUTOFF_VIOLATION`; missing membership or tradability frames
+produce typed unavailability caps. None of these records can be decision
+grade.
+
+The protected `SnapshotDecisionEvidenceV3Recorded` event is appended only at
+the exact replay watermark. Append, replay and idempotent read reopen both
+source artifacts and reconstruct the evidence. Generic append, source
+tampering, rehashed inner/outer inventory inconsistency, caller truth-label
+changes, feature-off construction and watermark races fail closed. Event,
+artifact and nested record identities are checked independently.
+
+This is a partial P0-04/P0-02 repair, not the required
+`AsharePITSnapshotService`. The underlying legacy producer still accepts a
+caller panel and may contain dates beyond valid; no registered market-data
+adapter yet proves daily historical membership, field availability time,
+security master, adjustment policy or corporate actions. This evidence makes
+those deficiencies non-promotable and machine-readable but does not cure
+them. The future narrow Decision view must resolve this protected event, not a
+bare artifact. No Activation outcome was accessed.
+
+Branch verification:
+
+- dedicated snapshot producer adversarial tests: `12 passed in 5.56s`;
+- focused Decision evidence/policy/payload/ledger matrix:
+  `133 passed in 16.63s`;
+- full Alpha Quality: `254 passed in 35.94s`;
+- full Alpha Foundry: `273 passed in 65.37s`;
+- Research Ledger: `115 passed in 18.34s`;
+- contracts, security and acceptance: `89 passed in 5.87s`, with 21 existing
+  deprecation warnings;
+- four-source mypy, compileall and diff check: passed.

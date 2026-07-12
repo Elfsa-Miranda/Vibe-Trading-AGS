@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, Mapping, cast
@@ -34,6 +35,9 @@ LEDGER_PRODUCER_SCHEMA: Literal[
 SCORECARD_PRODUCER_SCHEMA: Literal[
     "decision_scorecard_evidence_service.v3"
 ] = "decision_scorecard_evidence_service.v3"
+SNAPSHOT_PRODUCER_SCHEMA: Literal[
+    "decision_snapshot_evidence_service.v3"
+] = "decision_snapshot_evidence_service.v3"
 SCORECARD_IDENTITY_TRANSFORM_PIPELINE_HASH = canonical_json_hash(
     {"schema_version": "transform_pipeline.v1", "steps": []}
 )
@@ -98,6 +102,20 @@ SCORECARD_PRODUCER_POLICY_HASH = canonical_json_hash(
         "authority": "computed_but_pit_and_mask_provenance_unverified.v1",
     }
 )
+SNAPSHOT_PRODUCER_POLICY_HASH = canonical_json_hash(
+    {
+        "schema_version": "decision_snapshot_evidence_policy.v1",
+        "snapshot_source": "frozen_train_valid_snapshot_event.v1",
+        "split_source": "registered_evaluation_policy_event.v1",
+        "inventory_source": "content_addressed_snapshot_artifact.v1",
+        "cutoff_rule": "all_frame_dates_must_not_exceed_registered_valid_end.v1",
+        "legacy_pit_claims": "ignored_not_authoritative.v1",
+        "legacy_survivorship_claims": "ignored_status_unknown.v1",
+        "daily_membership": "field_presence_is_not_authority.v1",
+        "availability_and_corporate_actions": "explicit_unavailable.v1",
+        "authority": "legacy_caller_snapshot_not_decision_grade.v1",
+    }
+)
 
 _RECORD_KEYS = frozenset(
     {
@@ -142,6 +160,32 @@ _SCORECARD_PAYLOAD_KEYS = frozenset(
         "caps",
     }
 )
+_SNAPSHOT_PAYLOAD_KEYS = frozenset(
+    {
+        "factor_definition_event_hash",
+        "evaluation_policy_event_hash",
+        "snapshot_event_hash",
+        "source_watermark_event_hash",
+        "data_scope",
+        "snapshot_hash",
+        "panel_content_hash",
+        "frame_content_hashes",
+        "frame_inventory",
+        "registered_valid_end",
+        "observed_date_start",
+        "observed_date_end",
+        "cutoff_status",
+        "pit_authority_status",
+        "survivorship_status",
+        "daily_membership_status",
+        "tradability_status",
+        "availability_time_status",
+        "corporate_action_status",
+        "calendar_authority_status",
+        "decision_grade",
+        "caps",
+    }
+)
 
 
 def _require_hash(value: str, name: str) -> None:
@@ -175,12 +219,13 @@ def _freeze(value: Any) -> Any:
 @dataclass(frozen=True, init=False)
 class DecisionEvidenceRecordV3:
     schema_version: Literal["decision_evidence_record.v3"]
-    evidence_kind: Literal["ledger", "scorecard"]
+    evidence_kind: Literal["ledger", "scorecard", "snapshot"]
     factor_spec_id: str
     evidence_run_id: str
     producer_schema_version: Literal[
         "decision_ledger_evidence_service.v3",
         "decision_scorecard_evidence_service.v3",
+        "decision_snapshot_evidence_service.v3",
     ]
     producer_policy_hash: str
     source_event_hashes: tuple[str, ...]
@@ -192,12 +237,13 @@ class DecisionEvidenceRecordV3:
         self,
         *,
         schema_version: Literal["decision_evidence_record.v3"],
-        evidence_kind: Literal["ledger", "scorecard"],
+        evidence_kind: Literal["ledger", "scorecard", "snapshot"],
         factor_spec_id: str,
         evidence_run_id: str,
         producer_schema_version: Literal[
             "decision_ledger_evidence_service.v3",
             "decision_scorecard_evidence_service.v3",
+            "decision_snapshot_evidence_service.v3",
         ],
         producer_policy_hash: str,
         source_event_hashes: tuple[str, ...],
@@ -229,7 +275,7 @@ class DecisionEvidenceRecordV3:
     def _validate(self) -> None:
         if self.schema_version != "decision_evidence_record.v3":
             raise ValueError("unsupported Decision evidence v3 schema")
-        if self.evidence_kind not in {"ledger", "scorecard"}:
+        if self.evidence_kind not in {"ledger", "scorecard", "snapshot"}:
             raise ValueError("unsupported producer-bound evidence kind")
         if not self.factor_spec_id or not self.evidence_run_id:
             raise ValueError("Decision evidence factor and run are required")
@@ -238,6 +284,10 @@ class DecisionEvidenceRecordV3:
             "scorecard": (
                 SCORECARD_PRODUCER_SCHEMA,
                 SCORECARD_PRODUCER_POLICY_HASH,
+            ),
+            "snapshot": (
+                SNAPSHOT_PRODUCER_SCHEMA,
+                SNAPSHOT_PRODUCER_POLICY_HASH,
             ),
         }[self.evidence_kind]
         if self.producer_schema_version != expected_producer[0]:
@@ -251,15 +301,22 @@ class DecisionEvidenceRecordV3:
             allow_empty=True,
         )
         payload = dict(self.evidence_payload)
-        expected_payload_keys = (
-            _LEDGER_PAYLOAD_KEYS
-            if self.evidence_kind == "ledger"
-            else _SCORECARD_PAYLOAD_KEYS
-        )
+        expected_payload_keys = {
+            "ledger": _LEDGER_PAYLOAD_KEYS,
+            "scorecard": _SCORECARD_PAYLOAD_KEYS,
+            "snapshot": _SNAPSHOT_PAYLOAD_KEYS,
+        }[self.evidence_kind]
         if set(payload) != expected_payload_keys:
             raise ValueError("Decision evidence payload is not closed")
         if self.evidence_kind == "scorecard":
             self._validate_scorecard_payload(payload)
+            object.__setattr__(self, "evidence_payload", _freeze(payload))
+            _require_hash(self.evidence_hash, "evidence_hash")
+            if self.evidence_hash != canonical_json_hash(self._content_dict()):
+                raise ValueError("Decision evidence v3 hash does not match content")
+            return
+        if self.evidence_kind == "snapshot":
+            self._validate_snapshot_payload(payload)
             object.__setattr__(self, "evidence_payload", _freeze(payload))
             _require_hash(self.evidence_hash, "evidence_hash")
             if self.evidence_hash != canonical_json_hash(self._content_dict()):
@@ -358,6 +415,178 @@ class DecisionEvidenceRecordV3:
             raise ValueError("Decision scorecard caps must be sorted and non-empty")
         payload["caps"] = caps
 
+    def _validate_snapshot_payload(self, payload: dict[str, Any]) -> None:
+        for name in (
+            "factor_definition_event_hash",
+            "evaluation_policy_event_hash",
+            "snapshot_event_hash",
+            "source_watermark_event_hash",
+            "snapshot_hash",
+            "panel_content_hash",
+        ):
+            _require_hash(str(payload[name]), name)
+        if payload["data_scope"] != "train_valid":
+            raise ValueError("Decision snapshot evidence must be train/valid only")
+        if payload["decision_grade"] is not False:
+            raise ValueError("legacy snapshot evidence cannot be decision grade")
+        expected_statuses = {
+            "pit_authority_status": "unverified_legacy_caller_snapshot",
+            "survivorship_status": "unknown",
+            "availability_time_status": "unavailable",
+            "corporate_action_status": "unavailable",
+            "calendar_authority_status": "unverified_registered_date_content",
+        }
+        if any(payload[name] != value for name, value in expected_statuses.items()):
+            raise ValueError("Decision snapshot authority status is invalid")
+        if payload["cutoff_status"] not in {
+            "within_registered_valid_end",
+            "contains_dates_after_registered_valid_end",
+        }:
+            raise ValueError("Decision snapshot cutoff status is invalid")
+        if payload["daily_membership_status"] not in {
+            "unavailable",
+            "present_but_unverified_caller_frame",
+        } or payload["tradability_status"] not in {
+            "unavailable",
+            "present_but_unverified_caller_frame",
+        }:
+            raise ValueError("Decision snapshot mask status is invalid")
+        for name in ("registered_valid_end", "observed_date_start", "observed_date_end"):
+            if not isinstance(payload[name], str) or not payload[name]:
+                raise ValueError(f"Decision snapshot {name} is required")
+            try:
+                if date.fromisoformat(payload[name]).isoformat() != payload[name]:
+                    raise ValueError
+            except ValueError as exc:
+                raise ValueError(
+                    f"Decision snapshot {name} must be an ISO date"
+                ) from exc
+        frame_hashes = payload["frame_content_hashes"]
+        inventory = payload["frame_inventory"]
+        if not isinstance(frame_hashes, Mapping) or not isinstance(inventory, Mapping):
+            raise ValueError("Decision snapshot inventory must be objects")
+        if set(frame_hashes) != set(inventory) or not frame_hashes:
+            raise ValueError("Decision snapshot inventories differ")
+        canonical_inventory: dict[str, Any] = {}
+        canonical_hashes: dict[str, str] = {}
+        inventory_starts: list[str] = []
+        inventory_ends: list[str] = []
+        for name in sorted(frame_hashes):
+            _require_hash(str(frame_hashes[name]), f"frame_content_hashes.{name}")
+            item = inventory[name]
+            if not isinstance(item, Mapping) or set(item) != {
+                "date_count",
+                "symbol_count",
+                "date_start",
+                "date_end",
+            }:
+                raise ValueError("Decision snapshot frame inventory is invalid")
+            normalized = dict(item)
+            if (
+                isinstance(normalized["date_count"], bool)
+                or not isinstance(normalized["date_count"], int)
+                or normalized["date_count"] <= 0
+                or isinstance(normalized["symbol_count"], bool)
+                or not isinstance(normalized["symbol_count"], int)
+                or normalized["symbol_count"] <= 0
+                or not isinstance(normalized["date_start"], str)
+                or not isinstance(normalized["date_end"], str)
+                or not normalized["date_start"]
+                or not normalized["date_end"]
+            ):
+                raise ValueError("Decision snapshot frame inventory values are invalid")
+            for date_name in ("date_start", "date_end"):
+                try:
+                    if (
+                        date.fromisoformat(normalized[date_name]).isoformat()
+                        != normalized[date_name]
+                    ):
+                        raise ValueError
+                except ValueError as exc:
+                    raise ValueError(
+                        "Decision snapshot frame inventory date is invalid"
+                    ) from exc
+            if normalized["date_start"] > normalized["date_end"]:
+                raise ValueError("Decision snapshot frame date range is reversed")
+            inventory_starts.append(normalized["date_start"])
+            inventory_ends.append(normalized["date_end"])
+            canonical_inventory[str(name)] = normalized
+            canonical_hashes[str(name)] = str(frame_hashes[name])
+        if (
+            payload["observed_date_start"] != min(inventory_starts)
+            or payload["observed_date_end"] != max(inventory_ends)
+        ):
+            raise ValueError("Decision snapshot observed range differs from inventory")
+        expected_cutoff_status = (
+            "contains_dates_after_registered_valid_end"
+            if payload["observed_date_end"] > payload["registered_valid_end"]
+            else "within_registered_valid_end"
+        )
+        if payload["cutoff_status"] != expected_cutoff_status:
+            raise ValueError("Decision snapshot cutoff status differs from inventory")
+        expected_membership = (
+            "present_but_unverified_caller_frame"
+            if "universe_mask" in canonical_inventory
+            else "unavailable"
+        )
+        expected_tradability = (
+            "present_but_unverified_caller_frame"
+            if "tradable_mask" in canonical_inventory
+            else "unavailable"
+        )
+        if (
+            payload["daily_membership_status"] != expected_membership
+            or payload["tradability_status"] != expected_tradability
+        ):
+            raise ValueError("Decision snapshot mask status differs from inventory")
+        caps = tuple(str(item) for item in payload["caps"])
+        if caps != tuple(sorted(set(caps))) or not caps:
+            raise ValueError("Decision snapshot caps must be sorted and non-empty")
+        required_caps = {
+            "AVAILABILITY_TIME_EVIDENCE_UNAVAILABLE",
+            "CALENDAR_PROVIDER_AUTHORITY_UNVERIFIED",
+            "CORPORATE_ACTION_EVIDENCE_UNAVAILABLE",
+            "PIT_SNAPSHOT_PROVENANCE_UNVERIFIED",
+            "SURVIVORSHIP_STATUS_UNKNOWN",
+        }
+        if not required_caps.issubset(caps):
+            raise ValueError("Decision snapshot required insufficiency caps are missing")
+        if (
+            payload["cutoff_status"] == "contains_dates_after_registered_valid_end"
+            and "SNAPSHOT_SCOPE_CUTOFF_VIOLATION" not in caps
+        ):
+            raise ValueError("Decision snapshot cutoff violation cap is missing")
+        if (
+            payload["cutoff_status"] == "within_registered_valid_end"
+            and "SNAPSHOT_SCOPE_CUTOFF_VIOLATION" in caps
+        ):
+            raise ValueError("Decision snapshot has a false cutoff violation cap")
+        if (
+            payload["daily_membership_status"] == "unavailable"
+            and "PIT_UNIVERSE_MASK_UNAVAILABLE" not in caps
+        ):
+            raise ValueError("Decision snapshot membership cap is missing")
+        if (
+            payload["daily_membership_status"]
+            == "present_but_unverified_caller_frame"
+            and "PIT_UNIVERSE_MASK_AUTHORITY_UNVERIFIED" not in caps
+        ):
+            raise ValueError("Decision snapshot membership authority cap is missing")
+        if (
+            payload["tradability_status"] == "unavailable"
+            and "TRADABILITY_MASK_UNAVAILABLE" not in caps
+        ):
+            raise ValueError("Decision snapshot tradability cap is missing")
+        if (
+            payload["tradability_status"]
+            == "present_but_unverified_caller_frame"
+            and "TRADABILITY_MASK_AUTHORITY_UNVERIFIED" not in caps
+        ):
+            raise ValueError("Decision snapshot tradability authority cap is missing")
+        payload["frame_content_hashes"] = canonical_hashes
+        payload["frame_inventory"] = canonical_inventory
+        payload["caps"] = caps
+
     @classmethod
     def _from_artifact_dict(
         cls,
@@ -373,7 +602,7 @@ class DecisionEvidenceRecordV3:
                 value["schema_version"],
             ),
             evidence_kind=cast(
-                Literal["ledger", "scorecard"],
+                Literal["ledger", "scorecard", "snapshot"],
                 value["evidence_kind"],
             ),
             factor_spec_id=str(value["factor_spec_id"]),
@@ -382,6 +611,7 @@ class DecisionEvidenceRecordV3:
                 Literal[
                     "decision_ledger_evidence_service.v3",
                     "decision_scorecard_evidence_service.v3",
+                    "decision_snapshot_evidence_service.v3",
                 ],
                 value["producer_schema_version"],
             ),
@@ -472,6 +702,40 @@ def _mint_scorecard_record(
         evidence_run_id=evidence_run_id,
         producer_schema_version=SCORECARD_PRODUCER_SCHEMA,
         producer_policy_hash=SCORECARD_PRODUCER_POLICY_HASH,
+        source_event_hashes=source_event_hashes,
+        source_artifact_hashes=source_artifact_hashes,
+        evidence_payload=evidence_payload,
+        evidence_hash=canonical_json_hash(content),
+        _authority=_RECORD_MINT_AUTHORITY,
+    )
+
+
+def _mint_snapshot_record(
+    *,
+    factor_spec_id: str,
+    evidence_run_id: str,
+    source_event_hashes: tuple[str, ...],
+    source_artifact_hashes: tuple[str, ...],
+    evidence_payload: Mapping[str, Any],
+) -> DecisionEvidenceRecordV3:
+    content = {
+        "schema_version": "decision_evidence_record.v3",
+        "evidence_kind": "snapshot",
+        "factor_spec_id": factor_spec_id,
+        "evidence_run_id": evidence_run_id,
+        "producer_schema_version": SNAPSHOT_PRODUCER_SCHEMA,
+        "producer_policy_hash": SNAPSHOT_PRODUCER_POLICY_HASH,
+        "source_event_hashes": list(source_event_hashes),
+        "source_artifact_hashes": list(source_artifact_hashes),
+        "evidence_payload": _plain(evidence_payload),
+    }
+    return DecisionEvidenceRecordV3(
+        schema_version="decision_evidence_record.v3",
+        evidence_kind="snapshot",
+        factor_spec_id=factor_spec_id,
+        evidence_run_id=evidence_run_id,
+        producer_schema_version=SNAPSHOT_PRODUCER_SCHEMA,
+        producer_policy_hash=SNAPSHOT_PRODUCER_POLICY_HASH,
         source_event_hashes=source_event_hashes,
         source_artifact_hashes=source_artifact_hashes,
         evidence_payload=evidence_payload,

@@ -33,6 +33,10 @@ from src.alpha_quality.decision_v2.scorecard_evidence_v3 import (
     DecisionScorecardEvidenceServiceV3,
     RebuiltScorecardEvidenceV3,
 )
+from src.alpha_quality.decision_v2.snapshot_evidence_v3 import (
+    DecisionSnapshotEvidenceServiceV3,
+    RebuiltSnapshotEvidenceV3,
+)
 
 __all__ = [
     "AlphaQualityDecisionV2",
@@ -41,6 +45,7 @@ __all__ = [
     "DecisionEvidenceArtifactStoreV3",
     "DecisionLedgerEvidenceServiceV3",
     "DecisionScorecardEvidenceServiceV3",
+    "DecisionSnapshotEvidenceServiceV3",
     "DecisionEvidenceRefs",
     "DecisionEvidenceRepository",
     "DecisionLevel",
@@ -56,4 +61,5 @@ __all__ = [
     "RecordedQualityDecisionV3",
     "RecordedDecisionEvidenceV3",
     "RebuiltScorecardEvidenceV3",
+    "RebuiltSnapshotEvidenceV3",
 ]

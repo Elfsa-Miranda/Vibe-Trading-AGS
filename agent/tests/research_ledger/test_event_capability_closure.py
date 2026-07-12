@@ -54,6 +54,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "QualityDecisionRecorded",
     "DecisionEvidenceV3Recorded",
     "ScorecardDecisionEvidenceV3Recorded",
+    "SnapshotDecisionEvidenceV3Recorded",
     "QualityDecisionV2Recorded",
     "QualityDecisionV3Recorded",
     "FinalCandidateFrozen",
