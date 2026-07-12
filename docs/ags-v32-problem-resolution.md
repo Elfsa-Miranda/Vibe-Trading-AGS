@@ -36,15 +36,15 @@ Status meanings:
 | P0-03 | M1 production evaluator | audit_reported | none |
 | P0-04 | M1/M2 PIT snapshot | audit_reported | none |
 | P0-05 | M2 A-share adapter | audit_reported | none |
-| P0-06 | M2 stateful execution | audit_reported | none |
+| P0-06 | M2 stateful execution | partial | strict actual-holdings/trades kernel exists; A-share fills/T+1/unavailable-holding producer remains open |
 | P0-07 | M1 split registry | partial | content-hashed calendar/policy/plan models pass adversarial tests; producer-scoped registration remains open |
-| P0-08 | M1/M2 execution policy | audit_reported | none |
+| P0-08 | M1/M2 execution policy | partial | closed cost policy and strict missing-return/initial-exit cost kernel pass; production fill authority remains open |
 | P0-09 | M1 immutable output | partial | exact-axis immutable byte content passes adversarial tests; formal Parquet/Arrow refs and evaluator consumption remain open |
 | P0-10 | M1 scorecard/final boundary | audit_reported | none |
 | P0-11 | M1 split-safe scorecard | audit_reported | none |
 | P0-12 | M1 final eligibility/provider | audit_reported | none |
 | P0-13 | M1 falsification v2 | audit_reported | none |
-| P0-14 | M1 weighting policy | audit_reported | none |
+| P0-14 | M1 weighting policy | partial | permutation-invariant tie-neutral v2 weighting passes; legacy scorecard migration remains open |
 | P0-15 | M1 Decision invariants | audit_reported | none |
 | P0-16 | M1 exact projection bundle | audit_reported | none |
 | P0-17 | M1 atomic artifact writer | partial | canonical create-if-absent writer passes collision/concurrency tests; legacy writers and event transitions remain unmigrated |
@@ -173,3 +173,37 @@ Current verification:
 - Research Ledger, contracts, security and acceptance:
   `200 passed in 22.79s`, with 21 existing deprecation warnings;
 - three-source cold mypy: passed.
+
+## M1 weighting/execution-primitives evidence
+
+Branch `codex/ags-v32-m1-execution-primitives` was created from accepted main
+`a8de0d0b2cab9e1157fea501bba7b5c368bcc950`.
+
+`WeightingPolicyV2` separates quantile and continuous-rank methods. Quantile
+membership consumes whole equal-value groups and never splits a tie by ticker
+or column order; constant factors and unresolved boundary ties produce typed
+no-trade results. Long and short sets are disjoint and gross/net exposure is
+recorded.
+
+`ExecutionCostPolicyV1` is a closed finite non-negative policy with separate
+commission, sell stamp duty and buy/sell slippage. The strict v2 kernel starts
+from zero holdings, requires filled trades to reconcile to actual holdings,
+charges initial and terminal trades, rejects non-flat terminal evidence, and
+returns NaN/unavailable whenever any non-zero holding lacks its required
+return. It never sums only the priced remainder of a partially missing
+portfolio.
+
+These primitives accept actual holdings/fills as inputs and therefore are not
+producer authority by themselves. They cannot mint execution evidence or a
+Decision record. A-share can-buy/can-sell, T+1 sellable quantity, delisting,
+unavailable holdings and PIT state transitions remain M2 requirements; legacy
+scorecard functions remain audit/feature-off compatibility paths until the
+production evaluator migration.
+
+Current verification:
+
+- weighting/execution adversarial matrix: `13 passed`;
+- full Alpha Quality: `187 passed in 16.63s`;
+- Alpha Foundry, Research Ledger, contracts, security and acceptance:
+  `470 passed in 66.17s`, with 21 existing deprecation warnings;
+- one-source cold mypy: passed.
