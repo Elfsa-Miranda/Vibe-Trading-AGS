@@ -192,6 +192,9 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
             "ExecutionEvidenceRecorded",
             "ComparisonPoolFrozen",
             "SecondaryEvidenceRecorded",
+            "SelectionAssessmentRecorded",
+            "ClaimMatrixRecorded",
+            "QualityDecisionV4Recorded",
         "ProductionEvaluationNodeRecorded",
         "TrialTerminalDossierRecorded",
         "ReportMaterializationFailed",
@@ -1673,6 +1676,107 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
         }
 
     add_secondary_evidence_samples()
+
+    def add_claim_decision_samples() -> None:
+        terminal_counts = {
+            "success": 0, "reject": 0, "skip": 0, "invalid": 0,
+            "duplicate": 0, "timeout": 0, "error": 0,
+            "infrastructure_failure": 0,
+        }
+        selection_content = {
+            "schema_version": "selection_assessment.v1",
+            "research_family_id": digest,
+            "run_id": "run-1",
+            "trial_count": 1,
+            "candidate_count": 1,
+            "terminal_counts": terminal_counts,
+            "unpublished_or_open_trial_count": 0,
+            "selection_policy_hash": digest,
+            "multiplicity_policy_hash": digest,
+            "effective_independent_run_groups": 1,
+            "final_access_count": 0,
+            "confirmatory_grade_eligible": True,
+            "source_event_hashes": [digest],
+        }
+        selection_hash = canonical_json_hash(selection_content)
+        samples["SelectionAssessmentRecorded"] = {
+            "assessment_id": "selection-" + selection_hash.removeprefix("sha256:")[:24],
+            **selection_content,
+            "assessment_hash": selection_hash,
+            "producer_schema_version": "claim_decision_service.v1",
+            "producer_policy_hash": digest,
+        }
+        claim_content = {
+            "schema_version": "claim_assessment.v1",
+            "claim_type": "observed_panel_predictive_association",
+            "factor_spec_id": "factor-1",
+            "availability": "available",
+            "verdict": "supported",
+            "evidence_grade": "descriptive",
+            "scope": "observed panel valid",
+            "estimate": {},
+            "uncertainty": {},
+            "bias_codes": [],
+            "selection_codes": [],
+            "blocker_codes": [],
+            "root_cause_event_hashes": [],
+            "promotion_effect": "none",
+            "source_event_hashes": [digest],
+        }
+        claim = {**claim_content, "claim_hash": canonical_json_hash(claim_content)}
+        matrix_content = {
+            "schema_version": "claim_matrix.v1",
+            "factor_spec_id": "factor-1",
+            "claims": [claim],
+            "selection_assessment_hash": selection_hash,
+        }
+        matrix_hash = canonical_json_hash(matrix_content)
+        samples["ClaimMatrixRecorded"] = {
+            "matrix_id": "claim-matrix-" + matrix_hash.removeprefix("sha256:")[:24],
+            "factor_spec_id": "factor-1",
+            "claim_matrix_hash": matrix_hash,
+            "selection_event_hash": digest,
+            "selection_assessment_hash": selection_hash,
+            "claims": [claim],
+            "claim_hashes": [claim["claim_hash"]],
+            "source_event_hashes": [digest],
+            "promotion_effect": "none",
+            "producer_schema_version": "claim_decision_service.v1",
+            "producer_policy_hash": digest,
+            "artifact_refs": [],
+        }
+        decision_content = {
+            "schema_version": "narrow_quality_decision.v4",
+            "factor_spec_id": "factor-1",
+            "decision": "research_only",
+            "tier": 1,
+            "reasons": ["RESEARCH_ONLY_NONCOMPENSATORY_CAP"],
+            "warnings": [],
+            "caps": ["TRAIN_VALID_AUTHORITY_INCOMPLETE"],
+            "limitations": ["TRAIN_VALID_ONLY"],
+            "claim_matrix_hash": matrix_hash,
+            "selection_assessment_hash": selection_hash,
+            "evidence_event_hashes": [digest],
+            "profile_template_hash": digest,
+            "profile_authority_class": "build_time_allowlisted",
+            "profile_maximum_promotion": "forward_track",
+            "policy_hash": digest,
+            "tier_invariant_manifest_hash": digest,
+        }
+        decision_hash = canonical_json_hash(decision_content)
+        samples["QualityDecisionV4Recorded"] = {
+            "decision_id": "quality-decision-v4-" + decision_hash.removeprefix("sha256:")[:24],
+            **decision_content,
+            "decision_hash": decision_hash,
+            "claim_matrix_event_hash": digest,
+            "selection_event_hash": digest,
+            "promotion_effect": "authoritative_train_valid_tier",
+            "producer_schema_version": "claim_decision_service.v1",
+            "producer_policy_hash": digest,
+            "artifact_refs": [],
+        }
+
+    add_claim_decision_samples()
     frozen = samples["FinalCandidateFrozen"]
     frozen["candidate_hash"] = canonical_json_hash(
         {

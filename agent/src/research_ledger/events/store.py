@@ -115,6 +115,21 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
     ),
+    "SelectionAssessmentRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "ClaimMatrixRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "QualityDecisionV4Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_DECISION_V2",
+    ),
     "ProductionEvaluationNodeRecorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
@@ -255,6 +270,9 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "ExecutionEvidenceRecorded",
         "ComparisonPoolFrozen",
         "SecondaryEvidenceRecorded",
+        "SelectionAssessmentRecorded",
+        "ClaimMatrixRecorded",
+        "QualityDecisionV4Recorded",
         "ProductionEvaluationNodeRecorded",
         "TrialTerminalDossierRecorded",
         "ReportMaterializationFailed",
@@ -468,6 +486,7 @@ class ResearchEventStore:
         self._validate_external_predictive_v4(draft.event_type, payload)
         self._validate_external_execution_evidence(draft.event_type, payload)
         self._validate_external_secondary_evidence(draft.event_type, payload)
+        self._validate_external_claim_decision(draft.event_type, payload)
         self._validate_external_production_evaluator(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
@@ -708,6 +727,9 @@ class ResearchEventStore:
             "ExecutionEvidenceRecorded": "evidence_id",
             "ComparisonPoolFrozen": "pool_id",
             "SecondaryEvidenceRecorded": "evidence_id",
+            "SelectionAssessmentRecorded": "assessment_id",
+            "ClaimMatrixRecorded": "matrix_id",
+            "QualityDecisionV4Recorded": "decision_id",
             "ProductionEvaluationNodeRecorded": "node_id",
             "TrialTerminalDossierRecorded": "dossier_id",
             "ReportMaterializationFailed": "failure_id",
@@ -2528,6 +2550,45 @@ class ResearchEventStore:
                 raise ValueError("secondary evidence envelope differs")
         except (KeyError, TypeError, ValueError) as exc:
             raise EventValidationError("secondary evidence replay is invalid") from exc
+
+    def _validate_external_claim_decision(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type not in {
+            "SelectionAssessmentRecorded", "ClaimMatrixRecorded",
+            "QualityDecisionV4Recorded",
+        }:
+            return
+        try:
+            from src.alpha_quality.claim_decision_v1 import (
+                PRODUCER_POLICY_HASH,
+                PRODUCER_SCHEMA_VERSION,
+                TIER_INVARIANT_MANIFEST_HASH,
+            )
+
+            if (
+                payload["producer_schema_version"] != PRODUCER_SCHEMA_VERSION
+                or payload["producer_policy_hash"] != PRODUCER_POLICY_HASH
+            ):
+                raise ValueError("claim decision producer identity differs")
+            identity = {
+                "SelectionAssessmentRecorded": ("assessment_id", "selection-", "assessment_hash"),
+                "ClaimMatrixRecorded": ("matrix_id", "claim-matrix-", "claim_matrix_hash"),
+                "QualityDecisionV4Recorded": ("decision_id", "quality-decision-v4-", "decision_hash"),
+            }[event_type]
+            expected = identity[1] + str(payload[identity[2]]).removeprefix("sha256:")[:24]
+            if payload[identity[0]] != expected:
+                raise ValueError("claim decision event identity differs")
+            if (
+                event_type == "QualityDecisionV4Recorded"
+                and payload["tier_invariant_manifest_hash"]
+                != TIER_INVARIANT_MANIFEST_HASH
+            ):
+                raise ValueError("narrow decision invariant manifest differs")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise EventValidationError("claim decision replay is invalid") from exc
 
     def _validate_external_quality_decision_evidence(
         self,
@@ -4523,6 +4584,116 @@ class ResearchEventStore:
             ).fetchone()
             if prior is not None:
                 raise EventTransitionError("secondary evidence already exists")
+            return
+        if event_type == "SelectionAssessmentRecorded":
+            contracts = conn.execute(
+                "SELECT event_hash, payload FROM research_events WHERE event_type = 'ResolvedEvaluationContractRegistered' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            starts = conn.execute(
+                "SELECT event_hash, payload FROM research_events WHERE event_type = 'TrialStarted' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            terminals = conn.execute(
+                "SELECT event_hash, payload FROM research_events WHERE event_type = 'TrialTerminated' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            final_events = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type IN ('FinalTestAccessRecorded', 'FinalTestArtifactRecorded') AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            if len(contracts) != 1:
+                raise EventTransitionError("selection requires one exact run contract")
+            contract_payload = json.loads(str(contracts[0]["payload"]))
+            if contract_payload["research_family_id"] != payload["research_family_id"]:
+                raise EventTransitionError("selection research family differs")
+            expected_sources = sorted(
+                {
+                    str(contracts[0]["event_hash"]),
+                    *(str(row["event_hash"]) for row in starts),
+                    *(str(row["event_hash"]) for row in terminals),
+                    *(str(row["event_hash"]) for row in final_events),
+                }
+            )
+            if payload["source_event_hashes"] != expected_sources:
+                raise EventTransitionError("selection source population is incomplete")
+            if payload["trial_count"] != len(starts) or payload["final_access_count"] != len(final_events):
+                raise EventTransitionError("selection population counts differ")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'SelectionAssessmentRecorded' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("selection assessment already exists")
+            return
+        if event_type == "ClaimMatrixRecorded":
+            selection = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'SelectionAssessmentRecorded' AND event_hash = ?",
+                (payload["selection_event_hash"],),
+            ).fetchone()
+            definition = conn.execute(
+                "SELECT run_id FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?",
+                (payload["factor_spec_id"],),
+            ).fetchone()
+            sources = [
+                conn.execute(
+                    "SELECT event_type FROM research_events WHERE event_hash = ?",
+                    (event_hash,),
+                ).fetchone()
+                for event_hash in payload["source_event_hashes"]
+            ]
+            allowed = {
+                "SelectionAssessmentRecorded", "ObservedPanelPredictiveEvidenceRecorded",
+                "PITPredictiveEvidenceRecorded", "ExecutionEvidenceRecorded",
+                "SecondaryEvidenceRecorded",
+            }
+            if (
+                selection is None
+                or definition is None
+                or str(selection["run_id"]) != draft.run_id
+                or str(definition["run_id"]) != draft.run_id
+                or json.loads(str(selection["payload"]))["assessment_hash"]
+                != payload["selection_assessment_hash"]
+                or any(row is None or row["event_type"] not in allowed for row in sources)
+            ):
+                raise EventTransitionError("claim matrix protected sources differ")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'ClaimMatrixRecorded' AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?",
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("claim matrix already exists")
+            return
+        if event_type == "QualityDecisionV4Recorded":
+            matrix = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'ClaimMatrixRecorded' AND event_hash = ?",
+                (payload["claim_matrix_event_hash"],),
+            ).fetchone()
+            selection = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'SelectionAssessmentRecorded' AND event_hash = ?",
+                (payload["selection_event_hash"],),
+            ).fetchone()
+            if matrix is None or selection is None:
+                raise EventTransitionError("narrow decision source event is missing")
+            matrix_payload = json.loads(str(matrix["payload"]))
+            selection_payload = json.loads(str(selection["payload"]))
+            if (
+                str(matrix["run_id"]) != draft.run_id
+                or str(selection["run_id"]) != draft.run_id
+                or matrix_payload["factor_spec_id"] != payload["factor_spec_id"]
+                or matrix_payload["claim_matrix_hash"] != payload["claim_matrix_hash"]
+                or selection_payload["assessment_hash"]
+                != payload["selection_assessment_hash"]
+                or payload["evidence_event_hashes"]
+                != sorted({payload["claim_matrix_event_hash"], payload["selection_event_hash"]})
+            ):
+                raise EventTransitionError("narrow decision source binding differs")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'QualityDecisionV4Recorded' AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?",
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("narrow decision already exists")
             return
         if event_type == "ProductionEvaluationNodeRecorded":
             trial = conn.execute(
@@ -6916,6 +7087,14 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_secondary_evidence(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_claim_decision(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_production_evaluator(
                     event.event_type,
                     validated_payload,
@@ -7093,6 +7272,11 @@ class ResearchEventStore:
         comparison_pool_hashes: set[str] = set()
         comparison_pool_events: dict[str, ResearchEventEnvelope] = {}
         secondary_evidence_keys: set[tuple[str, str]] = set()
+        selection_assessment_runs: set[str] = set()
+        selection_assessment_events: dict[str, ResearchEventEnvelope] = {}
+        claim_matrix_keys: set[tuple[str, str]] = set()
+        claim_matrix_events: dict[str, ResearchEventEnvelope] = {}
+        quality_decision_v4_keys: set[tuple[str, str]] = set()
         production_node_keys: set[tuple[str, str]] = set()
         production_node_events: set[str] = set()
         terminal_dossier_trials: set[str] = set()
@@ -7556,6 +7740,100 @@ class ResearchEventStore:
                 ):
                     return False
                 secondary_evidence_keys.add(key)
+            elif event.event_type == "SelectionAssessmentRecorded":
+                prior_events = events[:event_order[event.event_hash]]
+                contracts = [
+                    item for item in prior_events
+                    if item.event_type == "ResolvedEvaluationContractRegistered"
+                    and item.run_id == event.run_id
+                ]
+                starts_for_run = [
+                    item for item in prior_events
+                    if item.event_type == "TrialStarted" and item.run_id == event.run_id
+                ]
+                terminals_for_run = [
+                    item for item in prior_events
+                    if item.event_type == "TrialTerminated" and item.run_id == event.run_id
+                ]
+                finals_for_run = [
+                    item for item in prior_events
+                    if item.event_type in {"FinalTestAccessRecorded", "FinalTestArtifactRecorded"}
+                    and item.run_id == event.run_id
+                ]
+                expected_sources = tuple(sorted(
+                    {
+                        *(item.event_hash for item in contracts),
+                        *(item.event_hash for item in starts_for_run),
+                        *(item.event_hash for item in terminals_for_run),
+                        *(item.event_hash for item in finals_for_run),
+                    }
+                ))
+                if (
+                    event.run_id in selection_assessment_runs
+                    or len(contracts) != 1
+                    or contracts[0].payload["research_family_id"]
+                    != payload["research_family_id"]
+                    or payload["source_event_hashes"] != expected_sources
+                    or payload["trial_count"] != len(starts_for_run)
+                    or payload["final_access_count"] != len(finals_for_run)
+                ):
+                    return False
+                selection_assessment_runs.add(event.run_id)
+                selection_assessment_events[event.event_hash] = event
+            elif event.event_type == "ClaimMatrixRecorded":
+                key = (event.run_id, str(payload["factor_spec_id"]))
+                selection = selection_assessment_events.get(
+                    str(payload["selection_event_hash"])
+                )
+                sources = [
+                    events_by_hash.get(str(item))
+                    for item in payload["source_event_hashes"]
+                ]
+                allowed = {
+                    "SelectionAssessmentRecorded", "ObservedPanelPredictiveEvidenceRecorded",
+                    "PITPredictiveEvidenceRecorded", "ExecutionEvidenceRecorded",
+                    "SecondaryEvidenceRecorded",
+                }
+                if (
+                    key in claim_matrix_keys
+                    or selection is None
+                    or selection.run_id != event.run_id
+                    or selection.payload["assessment_hash"]
+                    != payload["selection_assessment_hash"]
+                    or any(source is None for source in sources)
+                    or any(
+                        source is not None
+                        and (
+                            source.event_type not in allowed
+                            or event_order[source.event_hash] >= event_order[event.event_hash]
+                        )
+                        for source in sources
+                    )
+                ):
+                    return False
+                claim_matrix_keys.add(key)
+                claim_matrix_events[event.event_hash] = event
+            elif event.event_type == "QualityDecisionV4Recorded":
+                key = (event.run_id, str(payload["factor_spec_id"]))
+                matrix = claim_matrix_events.get(
+                    str(payload["claim_matrix_event_hash"])
+                )
+                selection = selection_assessment_events.get(
+                    str(payload["selection_event_hash"])
+                )
+                if (
+                    key in quality_decision_v4_keys
+                    or matrix is None
+                    or selection is None
+                    or matrix.run_id != event.run_id
+                    or selection.run_id != event.run_id
+                    or matrix.payload["factor_spec_id"] != payload["factor_spec_id"]
+                    or matrix.payload["claim_matrix_hash"] != payload["claim_matrix_hash"]
+                    or selection.payload["assessment_hash"]
+                    != payload["selection_assessment_hash"]
+                ):
+                    return False
+                quality_decision_v4_keys.add(key)
             elif event.event_type == "ProductionEvaluationNodeRecorded":
                 production_node_key = (
                     str(payload["trial_id"]),

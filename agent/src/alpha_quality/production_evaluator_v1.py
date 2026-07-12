@@ -50,7 +50,7 @@ PRODUCER_POLICY_HASH = canonical_json_hash(
         ],
         "execution_authority": "blocked_until_phase_4",
         "secondary_authority": "producer_bound_phase_5",
-        "claim_decision_authority": "blocked_until_phase_6",
+        "claim_decision_authority": "producer_event_only_phase_6",
         "infrastructure_decision": "none",
         "timeout_seconds": 300.0,
     }
@@ -559,6 +559,7 @@ class ProductionCandidateEvaluatorV1:
                 )
                 evidence.append(execution_recorded.event)
             secondary_event: ResearchEventEnvelope | None = None
+            claim_decision_events: tuple[ResearchEventEnvelope, ...] = ()
             if request.frozen_comparison_pool_hash is not None:
                 from src.alpha_quality.evaluation_contract.applicability import (
                     ApplicabilityAssessmentServiceV1,
@@ -588,6 +589,33 @@ class ProductionCandidateEvaluatorV1:
                     applicability_event_hash=applicability.event.event_hash,
                 )
                 evidence.append(secondary_event)
+                if self.store.flags.enabled("VIBE_TRADING_DECISION_V2"):
+                    from src.alpha_quality.claim_decision_v1 import (
+                        ClaimDecisionServiceV1,
+                    )
+
+                    selection_event, claim_event, decision_event, _ = (
+                        ClaimDecisionServiceV1(self.store).record(
+                            run_id=request.run_id,
+                            trial_id=request.trial_id,
+                            factor_spec_id=sources["factor"].entity_id,
+                            contract_event_hash=sources["contract"].event_hash,
+                            observed_event_hash=recorded.observed_event.event_hash,
+                            pit_event_hash=recorded.pit_event.event_hash,
+                            execution_event_hash=(
+                                None
+                                if execution_recorded is None
+                                else execution_recorded.event.event_hash
+                            ),
+                            secondary_event_hash=secondary_event.event_hash,
+                        )
+                    )
+                    claim_decision_events = (
+                        selection_event,
+                        claim_event,
+                        decision_event,
+                    )
+                    evidence.extend(claim_decision_events)
             nodes.extend(self._predictive_nodes(request, recorded))
             nodes.extend(
                 self._blocked_nodes(
@@ -596,15 +624,19 @@ class ProductionCandidateEvaluatorV1:
                     evidence,
                     execution_recorded=execution_recorded,
                     secondary_event=secondary_event,
+                    claim_decision_events=claim_decision_events,
                 )
             )
             self._check_deadline(deadline)
-            return self._complete_partial(
+            return self._complete_evaluation(
                 request=request,
                 factor=sources["factor"],
                 recorded=recorded,
                 evidence=evidence,
                 nodes=nodes,
+                quality_decision_event=(
+                    None if not claim_decision_events else claim_decision_events[-1]
+                ),
             )
         except TimeoutError:
             return self._terminate_failure(
@@ -809,6 +841,7 @@ class ProductionCandidateEvaluatorV1:
         *,
         execution_recorded: Any | None,
         secondary_event: ResearchEventEnvelope | None,
+        claim_decision_events: tuple[ResearchEventEnvelope, ...],
     ) -> list[ResearchEventEnvelope]:
         source_hashes = tuple(event.event_hash for event in evidence)
         if secondary_event is None:
@@ -849,17 +882,29 @@ class ProductionCandidateEvaluatorV1:
                     (secondary_event.event_hash,),
                 ),
             ]
-        result = [
-            *secondary_nodes,
-            self._node(
-                request,
-                factor_spec_id,
-                "claim_assessments",
-                "blocked",
-                ("CLAIM_PRODUCER_NOT_AVAILABLE",),
-                source_hashes,
-            ),
-        ]
+        if claim_decision_events:
+            claim_nodes = [
+                self._node(
+                    request,
+                    factor_spec_id,
+                    "claim_assessments",
+                    "completed",
+                    (),
+                    tuple(event.event_hash for event in claim_decision_events[:2]),
+                )
+            ]
+        else:
+            claim_nodes = [
+                self._node(
+                    request,
+                    factor_spec_id,
+                    "claim_assessments",
+                    "blocked",
+                    ("CLAIM_DECISION_CAPABILITY_DISABLED_OR_SECONDARY_MISSING",),
+                    source_hashes,
+                )
+            ]
+        result = [*secondary_nodes, *claim_nodes]
         if execution_recorded is None:
             execution_node = self._node(
                 request,
@@ -889,19 +934,31 @@ class ProductionCandidateEvaluatorV1:
                 (execution_recorded.event.event_hash,),
             )
         result.insert(1, execution_node)
-        result.append(
-            self._node(
-                request,
-                factor_spec_id,
-                "narrow_decision",
-                "not_run",
-                ("NARROW_DECISION_PRODUCER_NOT_AVAILABLE",),
-                tuple(event.event_hash for event in result),
+        if claim_decision_events:
+            result.append(
+                self._node(
+                    request,
+                    factor_spec_id,
+                    "narrow_decision",
+                    "completed",
+                    (),
+                    (claim_decision_events[-1].event_hash,),
+                )
             )
-        )
+        else:
+            result.append(
+                self._node(
+                    request,
+                    factor_spec_id,
+                    "narrow_decision",
+                    "not_run",
+                    ("NARROW_DECISION_PRODUCER_NOT_AVAILABLE",),
+                    tuple(event.event_hash for event in result),
+                )
+            )
         return result
 
-    def _complete_partial(
+    def _complete_evaluation(
         self,
         *,
         request: ProductionEvaluationRequestV1,
@@ -909,6 +966,7 @@ class ProductionCandidateEvaluatorV1:
         recorded: RecordedPredictiveEvidenceV4,
         evidence: list[ResearchEventEnvelope],
         nodes: list[ResearchEventEnvelope],
+        quality_decision_event: ResearchEventEnvelope | None,
     ) -> ProductionEvaluationResultV1:
         evidence_bundle_hash = self._bundle_hash(evidence, nodes)
         evaluation = self.store.append_event(
@@ -934,12 +992,26 @@ class ProductionCandidateEvaluatorV1:
                         "resolved_contract_hash": request.resolved_contract_hash,
                         "source_watermark_event_hash": request.source_watermark_event_hash,
                         "evidence_bundle_hash": evidence_bundle_hash,
-                        "quality_decision_event_hash": None,
-                        "formal_yield_eligible": False,
+                        "quality_decision_event_hash": (
+                            None
+                            if quality_decision_event is None
+                            else quality_decision_event.event_hash
+                        ),
+                        "formal_yield_eligible": quality_decision_event is not None,
                     },
                 },
             )
         )
+        if quality_decision_event is None:
+            terminal_status = "skip"
+            terminal_decision = "none"
+            terminal_reasons = ["PRODUCTION_EVALUATION_PARTIAL"]
+            completion_status = "partially_completed"
+        else:
+            terminal_decision = str(quality_decision_event.payload["decision"])
+            terminal_status = "reject" if terminal_decision == "reject" else "success"
+            terminal_reasons = list(quality_decision_event.payload["reasons"])
+            completion_status = "completed"
         terminal = self.store.append_event(
             EventDraft(
                 event_type="TrialTerminated",
@@ -949,9 +1021,9 @@ class ProductionCandidateEvaluatorV1:
                 idempotency_key=f"trial-terminal:{request.trial_id}",
                 payload={
                     "trial_id": request.trial_id,
-                    "status": "skip",
-                    "reason_codes": ["PRODUCTION_EVALUATION_PARTIAL"],
-                    "decision": "none",
+                    "status": terminal_status,
+                    "reason_codes": terminal_reasons,
+                    "decision": terminal_decision,
                     "evaluation_event_hash": evaluation.event_hash,
                     "terminated_at": utc_now_iso(),
                 },
@@ -960,13 +1032,14 @@ class ProductionCandidateEvaluatorV1:
         return self._materialize_dossier(
             request=request,
             factor_spec_id=factor.entity_id,
-            completion_status="partially_completed",
+            completion_status=completion_status,
             evidence=evidence,
             nodes=nodes,
             evaluation=evaluation,
             terminal=terminal,
-            reason_codes=("PRODUCTION_EVALUATION_PARTIAL",),
+            reason_codes=tuple(terminal_reasons),
             evidence_bundle_hash=evidence_bundle_hash,
+            quality_decision_event=quality_decision_event,
         )
 
     def _terminate_failure(
@@ -1108,6 +1181,7 @@ class ProductionCandidateEvaluatorV1:
         terminal: ResearchEventEnvelope,
         reason_codes: tuple[str, ...],
         evidence_bundle_hash: str,
+        quality_decision_event: ResearchEventEnvelope | None = None,
     ) -> ProductionEvaluationResultV1:
         content = {
             "schema_version": "trial_terminal_dossier.v1",
@@ -1121,8 +1195,16 @@ class ProductionCandidateEvaluatorV1:
             "evidence_bundle_hash": evidence_bundle_hash,
             "evidence_event_hashes": sorted(event.event_hash for event in evidence),
             "node_event_hashes": sorted(event.event_hash for event in nodes),
-            "claim_assessment_hashes": [],
-            "quality_decision_event_hash": None,
+            "claim_assessment_hashes": sorted(
+                str(event.payload["claim_matrix_hash"])
+                for event in evidence
+                if event.event_type == "ClaimMatrixRecorded"
+            ),
+            "quality_decision_event_hash": (
+                None
+                if quality_decision_event is None
+                else quality_decision_event.event_hash
+            ),
             "evaluation_event_hash": (
                 None if evaluation is None else evaluation.event_hash
             ),
@@ -1157,8 +1239,8 @@ class ProductionCandidateEvaluatorV1:
             completion_status=completion_status,  # type: ignore[arg-type]
             evidence_bundle_hash=evidence_bundle_hash,
             evidence_event_hashes=tuple(content["evidence_event_hashes"]),
-            claim_assessment_hashes=(),
-            quality_decision_event_hash=None,
+            claim_assessment_hashes=tuple(content["claim_assessment_hashes"]),
+            quality_decision_event_hash=content["quality_decision_event_hash"],
             terminal_event_hash=terminal.event_hash,
             terminal_dossier_hash=dossier.terminal_dossier_hash,
             _authority=_RESULT_AUTHORITY,
@@ -1295,6 +1377,9 @@ class ProductionCandidateEvaluatorV1:
                 "ScorecardDecisionEvidenceV4Recorded",
                 "ExecutionEvidenceRecorded",
                 "SecondaryEvidenceRecorded",
+                "SelectionAssessmentRecorded",
+                "ClaimMatrixRecorded",
+                "QualityDecisionV4Recorded",
             }
         ]
         evaluations = [
@@ -1303,6 +1388,10 @@ class ProductionCandidateEvaluatorV1:
             if event.payload["trial_id"] == request.trial_id
         ]
         completion, reasons = self._completion_from_terminal(terminal)
+        decisions = [
+            event for event in evidence
+            if event.event_type == "QualityDecisionV4Recorded"
+        ]
         return self._materialize_dossier(
             request=request,
             factor_spec_id=factor.entity_id,
@@ -1313,6 +1402,7 @@ class ProductionCandidateEvaluatorV1:
             terminal=terminal,
             reason_codes=reasons,
             evidence_bundle_hash=self._bundle_hash(evidence, nodes),
+            quality_decision_event=(decisions[0] if len(decisions) == 1 else None),
         )
 
     @staticmethod
@@ -1329,6 +1419,8 @@ class ProductionCandidateEvaluatorV1:
             return "infrastructure_failure", reasons
         if status == "skip":
             return "partially_completed", reasons
+        if status in {"success", "reject"}:
+            return "completed", reasons
         return "unavailable", reasons
 
 
