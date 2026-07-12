@@ -31,6 +31,8 @@ _SPECIALIZED_EVENT_TYPES = {
     "PITPredictiveEvidenceRecorded",
     "ScorecardDecisionEvidenceV4Recorded",
     "ExecutionEvidenceRecorded",
+    "ComparisonPoolFrozen",
+    "SecondaryEvidenceRecorded",
     "ProductionEvaluationNodeRecorded",
     "TrialTerminalDossierRecorded",
     "ReportMaterializationFailed",

@@ -217,6 +217,29 @@ def _artifact_list(value: Any, path: str) -> None:
         _string(item["media_type"], f"{path}[{index}].media_type")
 
 
+def _comparison_pool_members(value: Any, path: str) -> None:
+    if not isinstance(value, (list, tuple)):
+        raise EventValidationError(f"{path} must be a list")
+    expected = {
+        "factor_spec_id", "factor_definition_event_hash",
+        "factor_output_event_hash", "execution_event_hash", "decision_event_hash",
+    }
+    identities: list[str] = []
+    for index, member in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(member, Mapping) or set(member) != expected:
+            raise EventValidationError(f"{item_path} schema differs")
+        _string(member["factor_spec_id"], f"{item_path}.factor_spec_id")
+        _hash(member["factor_definition_event_hash"], f"{item_path}.definition")
+        for name in (
+            "factor_output_event_hash", "execution_event_hash", "decision_event_hash"
+        ):
+            _nullable_hash(member[name], f"{item_path}.{name}")
+        identities.append(str(member["factor_spec_id"]))
+    if identities != sorted(set(identities)):
+        raise EventValidationError(f"{path} must be canonical")
+
+
 def _activation_terminal_counts(value: Any, path: str) -> None:
     _mapping(value, path)
     expected = {
@@ -894,6 +917,54 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "terminal_flat": _boolean,
             "promotion_effect": _enum("none"),
             "caps": _string_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ComparisonPoolFrozen": PayloadSpec(
+        "comparison_pool_frozen.v1",
+        {
+            "pool_id": _string,
+            "schema_version": _enum("frozen_comparison_pool.v1"),
+            "source_watermark_event_hash": _hash,
+            "evidence_watermark": _nonnegative_integer,
+            "members": _comparison_pool_members,
+            "policy": _mapping,
+            "policy_hash": _hash,
+            "comparison_pool_hash": _hash,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+        },
+    ),
+    "SecondaryEvidenceRecorded": PayloadSpec(
+        "secondary_evidence_recorded.v1",
+        {
+            "evidence_id": _string,
+            "factor_spec_id": _string,
+            "comparison_pool_hash": _hash,
+            "identity_assessment_hash": _hash,
+            "residual_assessment_hash": _hash,
+            "portfolio_assessment_hash": _hash,
+            "mechanism_assessment_hash": _hash,
+            "duplicate_detected": _boolean,
+            "novelty_claim": _enum("rejected", "not_rejected"),
+            "replication_claim": _enum("preserved"),
+            "residual_status": _enum("available", "inconclusive", "unavailable"),
+            "portfolio_status": _enum(
+                "complementary", "nonpositive", "inconclusive", "unavailable"
+            ),
+            "mechanism_status": _enum(
+                "not_applicable", "falsified", "inconclusive",
+                "partial_support", "supported"
+            ),
+            "applicability_event_hash": _hash,
+            "factor_output_event_hash": _nullable_hash,
+            "execution_event_hash": _nullable_hash,
+            "secondary_evidence_bundle": _mapping,
+            "secondary_evidence_bundle_hash": _hash,
+            "promotion_effect": _enum("none"),
             "source_event_hashes": _nonempty_hash_list,
             "producer_schema_version": _string,
             "producer_policy_hash": _hash,
@@ -2581,6 +2652,47 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError(
                 "execution implementability support requires complete evidence"
             )
+    if event_type == "ComparisonPoolFrozen":
+        members = payload["members"]
+        if not isinstance(members, (list, tuple)):
+            raise EventValidationError("comparison pool members must be a list")
+        expected = {
+            "factor_spec_id", "factor_definition_event_hash",
+            "factor_output_event_hash", "execution_event_hash", "decision_event_hash",
+        }
+        identities: list[str] = []
+        for index, member in enumerate(members):
+            if not isinstance(member, Mapping) or set(member) != expected:
+                raise EventValidationError("comparison pool member schema differs")
+            _string(member["factor_spec_id"], f"members[{index}].factor_spec_id")
+            _hash(member["factor_definition_event_hash"], f"members[{index}].definition")
+            for name in ("factor_output_event_hash", "execution_event_hash", "decision_event_hash"):
+                _nullable_hash(member[name], f"members[{index}].{name}")
+            identities.append(str(member["factor_spec_id"]))
+        if identities != sorted(set(identities)):
+            raise EventValidationError("comparison pool members must be canonical")
+    if event_type == "SecondaryEvidenceRecorded":
+        bundle = payload["secondary_evidence_bundle"]
+        expected = {
+            "schema_version", "identity", "residual_prediction",
+            "portfolio_marginal_value", "mechanism",
+        }
+        if set(bundle) != expected or bundle["schema_version"] != "secondary_evidence_bundle.v1":
+            raise EventValidationError("secondary evidence bundle schema differs")
+        hashes = {
+            "identity": payload["identity_assessment_hash"],
+            "residual_prediction": payload["residual_assessment_hash"],
+            "portfolio_marginal_value": payload["portfolio_assessment_hash"],
+            "mechanism": payload["mechanism_assessment_hash"],
+        }
+        if any(bundle[name].get("assessment_hash") != value for name, value in hashes.items()):
+            raise EventValidationError("secondary assessment hash binding differs")
+        if canonical_json_hash(bundle) != payload["secondary_evidence_bundle_hash"]:
+            raise EventValidationError("secondary evidence bundle hash differs")
+        if payload["duplicate_detected"] != bundle["identity"]["duplicate_detected"]:
+            raise EventValidationError("secondary duplicate status differs")
+        if payload["artifact_refs"]:
+            raise EventValidationError("secondary evidence event embeds no external artifact")
     if event_type == "ProductionEvaluationNodeRecorded":
         if payload["run_id"] == "" or payload["trial_id"] == "":
             raise EventValidationError("production node identity is required")

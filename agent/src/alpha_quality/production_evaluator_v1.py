@@ -49,7 +49,7 @@ PRODUCER_POLICY_HASH = canonical_json_hash(
             "narrow_decision",
         ],
         "execution_authority": "blocked_until_phase_4",
-        "secondary_authority": "blocked_until_phase_5",
+        "secondary_authority": "producer_bound_phase_5",
         "claim_decision_authority": "blocked_until_phase_6",
         "infrastructure_decision": "none",
         "timeout_seconds": 300.0,
@@ -558,6 +558,36 @@ class ProductionCandidateEvaluatorV1:
                     observed_predictive_event_hash=recorded.observed_event.event_hash,
                 )
                 evidence.append(execution_recorded.event)
+            secondary_event: ResearchEventEnvelope | None = None
+            if request.frozen_comparison_pool_hash is not None:
+                from src.alpha_quality.evaluation_contract.applicability import (
+                    ApplicabilityAssessmentServiceV1,
+                )
+                from src.alpha_quality.secondary_evidence_v1 import (
+                    SecondaryEvidenceServiceV1,
+                )
+
+                applicability = ApplicabilityAssessmentServiceV1(
+                    self.store, flags=self.store.flags
+                ).assess(
+                    run_id=request.run_id,
+                    contract_event_hash=sources["contract"].event_hash,
+                    factor_definition_event_hash=sources["factor"].event_hash,
+                    claim_type="mechanism",
+                )
+                secondary_event = SecondaryEvidenceServiceV1(self.store).record(
+                    run_id=request.run_id,
+                    factor_definition_event_hash=sources["factor"].event_hash,
+                    comparison_pool_hash=request.frozen_comparison_pool_hash,
+                    factor_output_event_hash=recorded.factor_event.event_hash,
+                    execution_event_hash=(
+                        None
+                        if execution_recorded is None
+                        else execution_recorded.event.event_hash
+                    ),
+                    applicability_event_hash=applicability.event.event_hash,
+                )
+                evidence.append(secondary_event)
             nodes.extend(self._predictive_nodes(request, recorded))
             nodes.extend(
                 self._blocked_nodes(
@@ -565,6 +595,7 @@ class ProductionCandidateEvaluatorV1:
                     sources["factor"].entity_id,
                     evidence,
                     execution_recorded=execution_recorded,
+                    secondary_event=secondary_event,
                 )
             )
             self._check_deadline(deadline)
@@ -668,16 +699,24 @@ class ProductionCandidateEvaluatorV1:
             raise EventTransitionError(
                 "production watermark must close at factor definition"
             )
-        if request.frozen_comparison_pool_hash is not None:
-            raise EventValidationError(
-                "frozen comparison pool producer is unavailable before Phase 5"
-            )
-        return {
+        result = {
             "contract": contract,
             "factor": factor,
             "snapshot": snapshot,
             "watermark": watermark,
         }
+        if request.frozen_comparison_pool_hash is not None:
+            pools = [
+                event
+                for event in events
+                if event.event_type == "ComparisonPoolFrozen"
+                and event.payload["comparison_pool_hash"]
+                == request.frozen_comparison_pool_hash
+            ]
+            if len(pools) != 1:
+                raise EventValidationError("frozen comparison pool is unavailable or ambiguous")
+            result["comparison_pool"] = pools[0]
+        return result
 
     def _node(
         self,
@@ -769,23 +808,57 @@ class ProductionCandidateEvaluatorV1:
         evidence: list[ResearchEventEnvelope],
         *,
         execution_recorded: Any | None,
+        secondary_event: ResearchEventEnvelope | None,
     ) -> list[ResearchEventEnvelope]:
         source_hashes = tuple(event.event_hash for event in evidence)
-        blocked = (
-            ("duplicate_identity", "IDENTITY_POOL_PRODUCER_NOT_AVAILABLE"),
-            ("complement_mechanism", "SECONDARY_EVIDENCE_PRODUCER_NOT_AVAILABLE"),
-            ("claim_assessments", "CLAIM_PRODUCER_NOT_AVAILABLE"),
-        )
+        if secondary_event is None:
+            secondary_nodes = [
+                self._node(
+                    request,
+                    factor_spec_id,
+                    "duplicate_identity",
+                    "blocked",
+                    ("FROZEN_COMPARISON_POOL_NOT_PROVIDED",),
+                    source_hashes,
+                ),
+                self._node(
+                    request,
+                    factor_spec_id,
+                    "complement_mechanism",
+                    "blocked",
+                    ("FROZEN_COMPARISON_POOL_NOT_PROVIDED",),
+                    source_hashes,
+                ),
+            ]
+        else:
+            secondary_nodes = [
+                self._node(
+                    request,
+                    factor_spec_id,
+                    "duplicate_identity",
+                    "completed",
+                    (),
+                    (secondary_event.event_hash,),
+                ),
+                self._node(
+                    request,
+                    factor_spec_id,
+                    "complement_mechanism",
+                    "completed",
+                    (),
+                    (secondary_event.event_hash,),
+                ),
+            ]
         result = [
+            *secondary_nodes,
             self._node(
                 request,
                 factor_spec_id,
-                name,
+                "claim_assessments",
                 "blocked",
-                (reason,),
+                ("CLAIM_PRODUCER_NOT_AVAILABLE",),
                 source_hashes,
-            )
-            for name, reason in blocked
+            ),
         ]
         if execution_recorded is None:
             execution_node = self._node(
@@ -1221,6 +1294,7 @@ class ProductionCandidateEvaluatorV1:
                 "PITPredictiveEvidenceRecorded",
                 "ScorecardDecisionEvidenceV4Recorded",
                 "ExecutionEvidenceRecorded",
+                "SecondaryEvidenceRecorded",
             }
         ]
         evaluations = [
