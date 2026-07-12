@@ -51,6 +51,7 @@ PRODUCER_POLICY_HASH = canonical_json_hash(
         "execution_authority": "blocked_until_phase_4",
         "secondary_authority": "producer_bound_phase_5",
         "claim_decision_authority": "producer_event_only_phase_6",
+        "canonical_dossier_projection": "optional_flag_bound_phase_7",
         "infrastructure_decision": "none",
         "timeout_seconds": 300.0,
     }
@@ -1218,7 +1219,7 @@ class ProductionCandidateEvaluatorV1:
         )
         try:
             artifact = self.dossiers.write(dossier)
-            self.store._append_producer_event(
+            terminal_dossier_event = self.store._append_producer_event(
                 EventDraft(
                     event_type=TERMINAL_DOSSIER_EVENT_TYPE,
                     entity_id=f"terminal-dossier-{request.trial_id}",
@@ -1228,6 +1229,35 @@ class ProductionCandidateEvaluatorV1:
                     payload=self.dossier_event_payload(dossier, artifact.reference()),
                 )
             )
+            if self.store.flags.enabled("VIBE_TRADING_ALPHA_REPORT_API"):
+                from src.alpha_quality.research_dossier_v1 import (
+                    ResearchDossierServiceV1,
+                )
+
+                reports = ResearchDossierServiceV1(self.store)
+                try:
+                    reports.record_candidate(
+                        run_id=request.run_id,
+                        factor_spec_id=factor_spec_id,
+                    )
+                    reports.record_run_report(run_id=request.run_id)
+                    reports.record_release_manifest(run_id=request.run_id)
+                except Exception as exc:
+                    try:
+                        reports.record_failure(
+                            run_id=request.run_id,
+                            trial_id=request.trial_id,
+                            factor_spec_id=factor_spec_id,
+                            terminal_dossier_event_hash=terminal_dossier_event.event_hash,
+                            quality_decision_event_hash=(
+                                None
+                                if quality_decision_event is None
+                                else quality_decision_event.event_hash
+                            ),
+                            failure_class=type(exc).__name__,
+                        )
+                    except Exception:
+                        pass
         except Exception as exc:
             self._record_materialization_failure(
                 request,

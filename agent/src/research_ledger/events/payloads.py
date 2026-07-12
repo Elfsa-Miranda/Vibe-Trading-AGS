@@ -1100,6 +1100,66 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ResearchDossierRecorded": PayloadSpec(
+        "research_dossier_recorded.v1",
+        {
+            "dossier_id": _string,
+            "factor_spec_id": _string,
+            "dossier_hash": _hash,
+            "terminal_dossier_event_hash": _hash,
+            "quality_decision_event_hash": _nullable_hash,
+            "view_hashes": _nonempty_hash_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "promotion_effect": _enum("none"),
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ExperimentRunReportRecorded": PayloadSpec(
+        "experiment_run_report_recorded.v1",
+        {
+            "report_id": _string,
+            "run_report_hash": _hash,
+            "trial_count": _positive_integer,
+            "candidate_dossier_hashes": _nonempty_hash_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "promotion_effect": _enum("none"),
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ResearchReleaseManifestRecorded": PayloadSpec(
+        "research_release_manifest_recorded.v1",
+        {
+            "manifest_id": _string,
+            "manifest_hash": _hash,
+            "engineering_status": _enum("implemented_and_event_bound"),
+            "empirical_status": _enum("train_valid_only", "final_evidence_present"),
+            "source_event_hashes": _nonempty_hash_list,
+            "promotion_effect": _enum("none"),
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ResearchDossierMaterializationFailed": PayloadSpec(
+        "research_dossier_materialization_failed.v1",
+        {
+            "failure_id": _string,
+            "trial_id": _string,
+            "factor_spec_id": _string,
+            "terminal_dossier_event_hash": _hash,
+            "quality_decision_event_hash": _nullable_hash,
+            "failure_code": _enum("RESEARCH_DOSSIER_MATERIALIZATION_FAILED"),
+            "failure_class": _string,
+            "decision_effect": _enum("none"),
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+        },
+    ),
     "ProductionEvaluationNodeRecorded": PayloadSpec(
         "production_evaluation_node_recorded.v1",
         {
@@ -2875,6 +2935,22 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("narrow decision hash differs")
         if payload["artifact_refs"]:
             raise EventValidationError("narrow decision event embeds no external artifact")
+    if event_type == "ResearchDossierRecorded":
+        if len(payload["view_hashes"]) != 5 or len(payload["artifact_refs"]) != 6:
+            raise EventValidationError("research dossier requires candidate plus five views")
+        if payload["terminal_dossier_event_hash"] not in payload["source_event_hashes"]:
+            raise EventValidationError("research dossier omits terminal source")
+        if (
+            payload["quality_decision_event_hash"] is not None
+            and payload["quality_decision_event_hash"] not in payload["source_event_hashes"]
+        ):
+            raise EventValidationError("research dossier omits decision source")
+    if event_type == "ExperimentRunReportRecorded":
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("run report requires one artifact")
+    if event_type == "ResearchReleaseManifestRecorded":
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("release manifest requires one artifact")
     if event_type == "ProductionEvaluationNodeRecorded":
         if payload["run_id"] == "" or payload["trial_id"] == "":
             raise EventValidationError("production node identity is required")

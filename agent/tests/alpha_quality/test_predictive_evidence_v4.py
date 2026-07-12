@@ -47,7 +47,9 @@ def _hash(label: str) -> str:
     return canonical_json_hash({"label": label})
 
 
-def _flags(*, enable_decision: bool = False) -> ResolvedAGSFlags:
+def _flags(
+    *, enable_decision: bool = False, enable_reports: bool = False
+) -> ResolvedAGSFlags:
     return ResolvedAGSFlags.from_settings(
         {
             "VIBE_TRADING_AGS_ENABLED": "1",
@@ -57,6 +59,7 @@ def _flags(*, enable_decision: bool = False) -> ResolvedAGSFlags:
             "VIBE_TRADING_FACTOR_DAG": "1",
             "VIBE_TRADING_PROCESS_MEMORY": "1",
             "VIBE_TRADING_DECISION_V2": "1" if enable_decision else "0",
+            "VIBE_TRADING_ALPHA_REPORT_API": "1" if enable_reports else "0",
         }
     )
 
@@ -162,8 +165,11 @@ def _setup(
     policy_references=PIT_SCORECARD_POLICY_REFERENCES,
     *,
     enable_decision: bool = False,
+    enable_reports: bool = False,
 ):
-    flags = _flags(enable_decision=enable_decision)
+    flags = _flags(
+        enable_decision=enable_decision, enable_reports=enable_reports
+    )
     store = ResearchEventStore(
         tmp_path / "events.sqlite",
         artifact_root=tmp_path / "artifacts",
