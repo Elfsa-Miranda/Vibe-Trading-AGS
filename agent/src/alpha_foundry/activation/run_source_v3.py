@@ -1,8 +1,9 @@
 """Formal Activation run-source authority for Phase 11.
 
 Unlike the legacy v2 audit, this verifier accepts only the current protected
-Retriever v7 / pre-arm Flat schedule and QualityDecision v3 event families.  It
-derives candidate yield from exact ledger events and never from a run summary.
+Retriever v7 / pre-arm Flat schedule and the production evaluator's
+dossier-bound QualityDecision v4 event family.  It derives candidate yield from
+exact ledger events and never from a run summary.
 """
 
 from __future__ import annotations
@@ -129,15 +130,15 @@ class FormalActivationRunSourceAuditorV3:
         )
         evaluations = self._resolve(
             by_hash, evaluation_event_hashes, {"EvaluationRecorded"},
-            "EVALUATION_SOURCE_MISSING", failures,
+            "EVALUATION_SOURCE_MISSING", failures, required=False,
         )
         decisions = self._resolve(
-            by_hash, quality_decision_event_hashes, {"QualityDecisionV3Recorded"},
-            "QUALITY_DECISION_V3_SOURCE_MISSING", failures,
+            by_hash, quality_decision_event_hashes, {"QualityDecisionV4Recorded"},
+            "PRODUCTION_QUALITY_DECISION_SOURCE_MISSING", failures, required=False,
         )
         dossiers = self._resolve(
             by_hash, terminal_dossier_event_hashes, {"TrialTerminalDossierRecorded"},
-            "TERMINAL_DOSSIER_SOURCE_MISSING", failures,
+            "TERMINAL_DOSSIER_SOURCE_MISSING", failures, required=False,
         )
         if any(event.run_id != execution_run_id for event in terminals + evaluations + decisions + dossiers):
             failures.add("ARM_EXECUTION_RUN_ID_MISMATCH")
@@ -217,7 +218,9 @@ class FormalActivationRunSourceAuditorV3:
             failures.add("QUALITY_DECISION_NOT_BOUND_TO_TERMINAL_FACTOR")
 
         terminal_by_hash = {event.event_hash: event for event in terminals}
+        decision_by_hash = {event.event_hash: event for event in decisions}
         dossier_trials: set[str] = set()
+        cited_decisions: set[str] = set()
         for event in dossiers:
             trial_id = str(event.payload.get("trial_id", ""))
             dossier_trials.add(trial_id)
@@ -231,12 +234,43 @@ class FormalActivationRunSourceAuditorV3:
             ):
                 failures.add("TERMINAL_DOSSIER_BINDING_MISMATCH")
             expected_factor = factor_by_trial.get(trial_id)
-            if expected_factor is not None and str(
-                event.payload.get("factor_spec_id", "")
-            ) != expected_factor:
+            dossier_factor = str(event.payload.get("factor_spec_id", ""))
+            if expected_factor is not None and dossier_factor != expected_factor:
                 failures.add("TERMINAL_DOSSIER_FACTOR_MISMATCH")
-        if dossier_trials != terminal_trials or len(dossiers) != len(terminal_trials):
-            failures.add("EVERY_TERMINAL_REQUIRES_ONE_DOSSIER")
+            decision_hash = event.payload.get("quality_decision_event_hash")
+            if decision_hash is not None:
+                normalized_decision_hash = str(decision_hash)
+                cited_decisions.add(normalized_decision_hash)
+                decision = decision_by_hash.get(normalized_decision_hash)
+                if (
+                    decision is None
+                    or str(decision.payload.get("factor_spec_id", "")) != dossier_factor
+                ):
+                    failures.add("QUALITY_DECISION_DOSSIER_BINDING_MISMATCH")
+        identity_only_trials = {
+            trial_id
+            for trial_id, terminal in (
+                (str(event.payload.get("trial_id", "")), event) for event in terminals
+            )
+            if terminal.payload.get("evaluation_event_hash") is None
+            and (
+                terminal.payload.get("status") == "duplicate"
+                or any(
+                    failure.event_type == "GenerationFailureRecorded"
+                    and failure.run_id == execution_run_id
+                    and failure.payload.get("trial_id") == trial_id
+                    for failure in events
+                )
+            )
+        }
+        required_dossier_trials = terminal_trials - identity_only_trials
+        if (
+            dossier_trials != required_dossier_trials
+            or len(dossiers) != len(required_dossier_trials)
+        ):
+            failures.add("EVERY_EVALUATED_TERMINAL_REQUIRES_ONE_DOSSIER")
+        if cited_decisions != set(decision_by_hash):
+            failures.add("QUALITY_DECISION_DOSSIER_BINDING_MISMATCH")
         all_requested = (
             *retrieval_authority_event_hashes,
             *terminal_event_hashes,
@@ -302,9 +336,12 @@ class FormalActivationRunSourceAuditorV3:
         allowed_types: set[str],
         missing_code: str,
         failures: set[str],
+        *,
+        required: bool = True,
     ) -> list[ResearchEventEnvelope]:
         if not requested:
-            failures.add(missing_code)
+            if required:
+                failures.add(missing_code)
             return []
         result: list[ResearchEventEnvelope] = []
         for event_hash in requested:

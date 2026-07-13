@@ -1624,7 +1624,9 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "trial_terminal_event_hashes": _nonempty_hash_list,
             "evaluation_event_hashes": _unique_hash_list,
             "quality_decision_event_hashes": _unique_hash_list,
-            "terminal_dossier_event_hashes": _nonempty_hash_list,
+            # Identity-invalid/duplicate trials terminate before a factor
+            # definition exists and therefore correctly have no dossier.
+            "terminal_dossier_event_hashes": _unique_hash_list,
             "artifact_refs": _artifact_list,
         },
     ),

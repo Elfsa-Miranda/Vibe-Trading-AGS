@@ -30,6 +30,7 @@ from src.alpha_quality.production_evaluator_v1 import (
     ProductionEvaluationRequestV1,
     TrialTerminalDossierArtifactStoreV1,
 )
+from src.alpha_quality.secondary_evidence_v1 import ComparisonPoolServiceV1
 from src.research_ledger.events import ResearchEventStore
 from src.research_ledger.hash_utils import canonical_json_hash
 from tests.alpha_quality.test_predictive_evidence_v4 import _setup
@@ -179,15 +180,43 @@ def test_activation_uses_existing_terminal_and_dossier_builders() -> None:
     assert not hasattr(ProductionActivationCandidateFactoryV1, "dossier_writer")
 
 
-def test_factory_binding_exposes_unresolved_production_authority_blockers(
+def test_factory_binding_has_no_candidate_authority_compatibility_blockers(
     tmp_path: Path,
 ) -> None:
     factory = _factory(tmp_path)
 
-    assert factory._compatibility_blockers() == (
-        "IDENTITY_TERMINAL_DOSSIER_PRODUCER_UNAVAILABLE",
-        "QUALITY_DECISION_V3_PRODUCER_AUTHORITY_INCOMPLETE",
+    assert factory._compatibility_blockers() == ()
+
+
+def test_identity_invalid_terminal_returns_refs_without_fabricated_dossier(
+    tmp_path: Path,
+) -> None:
+    factory = _factory(tmp_path)
+    trial_id = "activation-invalid-identity-trial"
+    run_id = "activation-invalid-identity-run"
+    attempt = factory.record_generated_identity(
+        candidate=make_candidate(
+            "parent", "not_an_allowlisted_function(close)", mutation="invalid"
+        ),
+        semantics=_semantics(),
+        trial_id=trial_id,
+        run_id=run_id,
     )
+
+    refs = factory.identity_terminal_refs(
+        attempt=attempt,
+        trial_id=trial_id,
+        run_id=run_id,
+    )
+
+    assert attempt.status == "invalid"
+    assert refs.evaluation_event_hash is None
+    assert refs.production_quality_decision_event_hash is None
+    assert refs.quality_decision_v3_event_hash is None
+    assert refs.terminal_dossier_event_hash is None
+    assert factory.store.query_events(event_type="GenerationFailureRecorded")
+    assert not factory.store.query_events(event_type="FactorDefinitionRecorded")
+    assert not factory.store.query_events(event_type="TrialTerminalDossierRecorded")
 
 
 def test_factory_real_dag_evaluator_decision_and_dossier_chain(
@@ -212,6 +241,11 @@ def test_factory_real_dag_evaluator_decision_and_dossier_chain(
         store=store,
         quality_decision_v3=service,
     )
+    pool, _ = ComparisonPoolServiceV1(store).freeze(
+        run_id="predictive-run",
+        source_watermark_event_hash=definition.event_hash,
+        members=(),
+    )
     request = ProductionEvaluationRequestV1(
         run_id="predictive-run",
         trial_id="predictive-trial",
@@ -219,7 +253,7 @@ def test_factory_real_dag_evaluator_decision_and_dossier_chain(
         resolved_contract_hash=contract.contract.contract_hash,
         snapshot_event_hash=snapshot.event.event_hash,
         source_watermark_event_hash=definition.event_hash,
-        frozen_comparison_pool_hash=None,
+        frozen_comparison_pool_hash=pool.comparison_pool_hash,
     )
 
     refs = factory.evaluate_recorded_candidate(request=request)
@@ -234,6 +268,11 @@ def test_factory_real_dag_evaluator_decision_and_dossier_chain(
         for event in store.query_events(event_type="QualityDecisionV3Recorded")
         if event.event_hash == refs.quality_decision_v3_event_hash
     )
+    production_decision = next(
+        event
+        for event in store.query_events(event_type="QualityDecisionV4Recorded")
+        if event.event_hash == refs.production_quality_decision_event_hash
+    )
     dossier = next(
         event
         for event in store.query_events(event_type="TrialTerminalDossierRecorded")
@@ -242,7 +281,9 @@ def test_factory_real_dag_evaluator_decision_and_dossier_chain(
     assert terminal.payload["evaluation_event_hash"] == refs.evaluation_event_hash
     assert decision.payload["factor_spec_id"] == definition.entity_id
     assert decision.payload["decision"] == "research_only"
+    assert production_decision.payload["factor_spec_id"] == definition.entity_id
     assert dossier.payload["terminal_event_hash"] == terminal.event_hash
+    assert dossier.payload["quality_decision_event_hash"] == production_decision.event_hash
     assert store.query_events(event_type="ProductionEvaluationNodeRecorded")
     assert store.verify_chain()
 
