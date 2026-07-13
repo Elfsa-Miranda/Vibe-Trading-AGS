@@ -189,6 +189,22 @@ class PreregisteredActivationStatisticalProtocolV2:
         ):
             if not values or values != tuple(sorted(set(values))):
                 raise ValueError(f"{name} must be sorted and unique")
+        legacy_resource_endpoints = ("peak_rss_mb", "wall_seconds")
+        current_resource_endpoints = (
+            "cpu_seconds",
+            "peak_rss_mb",
+            "wall_seconds",
+        )
+        if self.safety_noninferiority_endpoints != (
+            "duplicate_rate",
+            "failure_rate",
+        ) or self.resource_noninferiority_endpoints not in {
+            legacy_resource_endpoints,
+            current_resource_endpoints,
+        }:
+            raise ValueError(
+                "Activation v2 noninferiority endpoints are a closed catalog"
+            )
         margins = dict(self.noninferiority_margins)
         required = set(self.safety_noninferiority_endpoints) | set(
             self.resource_noninferiority_endpoints
@@ -261,8 +277,13 @@ class PreregisteredActivationStatisticalProtocolV2:
             "timeout_pair_policy": "retain_as_timeout_and_apply_failure_noninferiority_gate",
             "contaminated_pair_policy": "invalidate_experiment",
             "safety_noninferiority_endpoints": ("duplicate_rate", "failure_rate"),
-            "resource_noninferiority_endpoints": ("peak_rss_mb", "wall_seconds"),
+            "resource_noninferiority_endpoints": (
+                "cpu_seconds",
+                "peak_rss_mb",
+                "wall_seconds",
+            ),
             "noninferiority_margins": {
+                "cpu_seconds": 30.0,
                 "duplicate_rate": 0.05,
                 "failure_rate": 0.05,
                 "peak_rss_mb": 128.0,

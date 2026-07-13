@@ -11,6 +11,7 @@ from statistics import NormalDist, mean, pvariance
 from typing import Any, Literal, Mapping, Sequence
 
 from src.alpha_foundry.activation.pair_projector_v2 import (
+    ActivationArmEventRefsV2,
     ActivationPairEvidenceV2,
     RecordedActivationPairEvidenceV2,
 )
@@ -650,24 +651,10 @@ class ActivationStatisticalAnalyzerV2:
         effect = mean(values) if values else None
         lower, upper = self._bootstrap_ci(protocol, values)
         p_value = self._randomization_p(protocol, values)
-        safety_ni = self._closed_gate(
-            [pair.safety_noninferiority_pass for pair in complete]
-        )
-        resource_ni = self._closed_gate(
-            [pair.resource_noninferiority_pass for pair in complete]
-        )
-        failure_margin = float(protocol.noninferiority_margins["failure_rate"])
-        failure_ni = (
-            all(
-                (
-                    pair.topology_failure_count / pair.candidate_budget
-                    - pair.flat_failure_count / pair.candidate_budget
-                )
-                <= failure_margin
-                for pair in complete
-            )
-            if complete
-            else None
+        safety_ni, resource_ni, failure_ni = self._exact_noninferiority(
+            protocol=protocol,
+            recorded_pairs=pairs,
+            evidence=evidence,
         )
         diversity = (
             all(pair.changed_selection_rate > 0.0 for pair in complete)
@@ -932,6 +919,123 @@ class ActivationStatisticalAnalyzerV2:
         if not values or any(value is None for value in values):
             return None
         return True
+
+    def _exact_noninferiority(
+        self,
+        *,
+        protocol: PreregisteredActivationStatisticalProtocolV2,
+        recorded_pairs: Sequence[RecordedActivationPairEvidenceV2],
+        evidence: Sequence[ActivationPairEvidenceV2],
+    ) -> tuple[bool | None, bool | None, bool | None]:
+        """Rebuild NI gates from exact terminal/resource events.
+
+        Pair projection booleans are not authority. The recorded projection
+        carries the exact arm refs, and the analyzer resolves those refs in its
+        own verified event store before applying the preregistered margins.
+        """
+        if len(recorded_pairs) != len(evidence):
+            raise EventTransitionError("pair records and verified evidence differ")
+        by_hash = {
+            event.event_hash: event for event in self.store.query_events()
+        }
+        safety: list[bool | None] = []
+        resources: list[bool | None] = []
+        failures: list[bool | None] = []
+        for recorded, pair in zip(recorded_pairs, evidence, strict=True):
+            if not pair.source_complete:
+                continue
+            flat = self._arm_noninferiority_observation(
+                refs=recorded.flat_refs,
+                by_hash=by_hash,
+                candidate_budget=pair.candidate_budget,
+            )
+            topology = self._arm_noninferiority_observation(
+                refs=recorded.topology_refs,
+                by_hash=by_hash,
+                candidate_budget=pair.candidate_budget,
+            )
+            if flat is None or topology is None:
+                safety.append(None)
+                resources.append(None)
+                failures.append(None)
+                continue
+            safety_results = [
+                topology[endpoint] - flat[endpoint]
+                <= float(protocol.noninferiority_margins[endpoint])
+                for endpoint in protocol.safety_noninferiority_endpoints
+            ]
+            resource_results = [
+                topology[endpoint] - flat[endpoint]
+                <= float(protocol.noninferiority_margins[endpoint])
+                for endpoint in protocol.resource_noninferiority_endpoints
+            ]
+            safety.append(all(safety_results))
+            resources.append(all(resource_results))
+            failures.append(
+                topology["failure_rate"] - flat["failure_rate"]
+                <= float(protocol.noninferiority_margins["failure_rate"])
+            )
+        return (
+            self._closed_gate(safety),
+            self._closed_gate(resources),
+            self._closed_gate(failures),
+        )
+
+    @staticmethod
+    def _arm_noninferiority_observation(
+        *,
+        refs: ActivationArmEventRefsV2,
+        by_hash: Mapping[str, ResearchEventEnvelope],
+        candidate_budget: int,
+    ) -> dict[str, float] | None:
+        terminals = [by_hash.get(value) for value in refs.terminal_event_hashes]
+        resources = [by_hash.get(value) for value in refs.resource_event_hashes]
+        if (
+            candidate_budget < 1
+            or any(
+                event is None or event.event_type != "TrialTerminated"
+                for event in terminals
+            )
+            or len(resources) != 1
+            or resources[0] is None
+            or resources[0].event_type != "ActivationResourceMeasuredV2"
+            or resources[0].payload.get("source_complete") is not True
+        ):
+            return None
+        statuses = [str(event.payload["status"]) for event in terminals if event]
+        failure_statuses = {
+            "reject",
+            "skip",
+            "invalid",
+            "timeout",
+            "error",
+            "infrastructure_failure",
+        }
+        resource = resources[0]
+        assert resource is not None
+        resource_values = {
+            "cpu_seconds": resource.payload.get("cpu_seconds"),
+            "wall_seconds": resource.payload.get("wall_seconds"),
+            "peak_rss_mb": resource.payload.get("peak_rss_mb"),
+        }
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) < 0.0
+            for value in resource_values.values()
+        ):
+            return None
+        return {
+            "cpu_seconds": float(resource_values["cpu_seconds"]),
+            "duplicate_rate": statuses.count("duplicate") / candidate_budget,
+            "failure_rate": sum(
+                status in failure_statuses for status in statuses
+            )
+            / candidate_budget,
+            "wall_seconds": float(resource_values["wall_seconds"]),
+            "peak_rss_mb": float(resource_values["peak_rss_mb"]),
+        }
 
     @staticmethod
     def _bootstrap_ci(
