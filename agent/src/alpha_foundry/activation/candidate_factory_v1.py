@@ -20,7 +20,11 @@ from src.alpha_foundry.dsl.identity import (
 )
 from src.alpha_foundry.search import AlphaFoundrySearch
 from src.alpha_foundry.seed_bank import SeedBank
-from src.alpha_quality.decision_v2.model import DecisionEvidenceRefs
+from src.alpha_quality.decision_v2.model import (
+    DecisionEvidenceRecord,
+    DecisionEvidenceRefs,
+)
+from src.alpha_quality.decision_v2.repository import DecisionEvidenceRepository
 from src.alpha_quality.decision_v2.source_v3 import (
     QualityDecisionV3Service,
     RecordedQualityDecisionV3,
@@ -213,6 +217,12 @@ class ProductionActivationCandidateFactoryV1:
             raise TypeError("Activation candidate factory requires QualityDecisionV3Service")
         if quality_decision_v3.store is not store:
             raise ValueError("Activation factory and Decision v3 must share the event store")
+        if not isinstance(
+            quality_decision_v3.repository, DecisionEvidenceRepository
+        ):
+            raise TypeError(
+                "Activation factory requires the existing writable Decision evidence repository"
+            )
         self.store = store
         self.identity = FactorIdentityService(store=store, flags=store.flags)
         # Creating the DAG evaluator also creates ProductionCandidateEvaluatorV1
@@ -451,18 +461,10 @@ class ProductionActivationCandidateFactoryV1:
         self,
         *,
         request: ProductionEvaluationRequestV1,
-        decision_evidence_refs: DecisionEvidenceRefs,
     ) -> ProductionActivationCandidateRefsV1:
-        """Delegate exact refs through DAG evaluator and existing Decision v3.
-
-        ``decision_evidence_refs`` are resolved and frozen by the supplied
-        QualityDecisionV3Service.  This adapter never accepts evidence payloads,
-        scores, decisions, or reports.
-        """
+        """Delegate exact producer refs through DAG evaluator and Decision v3."""
         if not isinstance(request, ProductionEvaluationRequestV1):
             raise TypeError("Activation evaluation requires closed production refs")
-        if not isinstance(decision_evidence_refs, DecisionEvidenceRefs):
-            raise TypeError("Activation Decision v3 input requires typed evidence refs")
         definitions = [
             event
             for event in self.store.query_events()
@@ -471,9 +473,7 @@ class ProductionActivationCandidateFactoryV1:
         ]
         if len(definitions) != 1:
             raise EventTransitionError("Activation candidate definition is unavailable")
-        if definitions[0].entity_id != decision_evidence_refs.factor_spec_id:
-            raise EventTransitionError("Activation Decision refs bind another factor")
-        evaluated = self.evaluator.evaluate(request).authoritative
+        evaluated = self.evaluator.evaluate(request).authoritative_result
         terminal = self._event(evaluated.terminal_event_hash, "TrialTerminated")
         dossier = next(
             (
@@ -491,6 +491,12 @@ class ProductionActivationCandidateFactoryV1:
         evaluation_hash = terminal.payload["evaluation_event_hash"]
         decision: RecordedQualityDecisionV3 | None = None
         if evaluation_hash is not None:
+            decision_evidence_refs = self._producer_bound_decision_refs(
+                request=request,
+                factor_definition=definitions[0],
+                terminal=terminal,
+                evidence_event_hashes=evaluated.evidence_event_hashes,
+            )
             decision = self.quality_decision_v3.decide_and_record(
                 decision_evidence_refs,
                 run_id=request.run_id,
@@ -505,6 +511,205 @@ class ProductionActivationCandidateFactoryV1:
             ),
             terminal_dossier_event_hash=dossier.event_hash,
         )
+
+    def _producer_bound_decision_refs(
+        self,
+        *,
+        request: ProductionEvaluationRequestV1,
+        factor_definition: ResearchEventEnvelope,
+        terminal: ResearchEventEnvelope,
+        evidence_event_hashes: tuple[str, ...],
+    ) -> DecisionEvidenceRefs:
+        """Adapt existing producer events into the existing Decision v3 schema.
+
+        This is deliberately a provenance bridge, not a scorecard or decision
+        implementation.  It reads only exact evaluator/source events and uses
+        the existing DecisionEvidenceRecord validation plus repository.
+        """
+
+        by_hash = {event.event_hash: event for event in self.store.query_events()}
+        evidence = [by_hash[value] for value in evidence_event_hashes]
+        factor_spec_id = factor_definition.entity_id
+        scorecards = [
+            event
+            for event in evidence
+            if event.event_type == "ScorecardDecisionEvidenceV4Recorded"
+            and event.payload.get("factor_spec_id") == factor_spec_id
+        ]
+        if len(scorecards) != 1:
+            raise EventTransitionError(
+                "Decision v3 bridge requires one production scorecard event"
+            )
+        snapshot = self._event(request.snapshot_event_hash, "AsharePITSnapshotRecorded")
+        if snapshot.run_id != request.run_id:
+            raise EventTransitionError("Decision v3 snapshot crosses evaluation runs")
+        scorecard = scorecards[0]
+        scorecard_codes = tuple(
+            sorted(
+                {
+                    *(str(item) for item in scorecard.payload["caps"]),
+                    *(str(item) for item in scorecard.payload["warnings"]),
+                }
+            )
+        )
+        snapshot_codes = tuple(
+            sorted(
+                {
+                    *(str(item) for item in snapshot.payload["hard_failures"]),
+                    *(str(item) for item in snapshot.payload["caps"]),
+                    *(str(item) for item in snapshot.payload["warnings"]),
+                }
+            )
+        )
+        records: dict[str, DecisionEvidenceRecord] = {}
+        records["scorecard"] = DecisionEvidenceRecord.create(
+            evidence_kind="scorecard",
+            factor_spec_id=factor_spec_id,
+            payload={
+                "formula_valid": True,
+                "formula_ambiguous": False,
+                "lookahead_detected": any(
+                    "LOOKAHEAD" in code or "CUTOFF_VIOLATION" in code
+                    for code in snapshot_codes
+                ),
+                "train_valid_terminal": terminal.payload["status"]
+                in {"success", "reject", "skip"},
+                "reproducible": self.store.verify_chain(),
+                "bounded": not any("BOUNDS" in code for code in scorecard_codes),
+                "validation_rank_ic": None,
+                "regime_dependent": "REGIME_DEPENDENT" in scorecard_codes,
+                "limitations": list(scorecard_codes),
+            },
+        )
+        starts = {
+            str(event.payload["trial_id"])
+            for event in self.store.query_events(event_type="TrialStarted")
+            if event.run_id == request.run_id
+        }
+        terminals = {
+            str(event.payload["trial_id"])
+            for event in self.store.query_events(event_type="TrialTerminated")
+            if event.run_id == request.run_id
+        }
+        infrastructure = tuple(
+            sorted(
+                event.event_hash
+                for event in self.store.query_events(event_type="TrialTerminated")
+                if event.run_id == request.run_id
+                and event.payload["status"] == "infrastructure_failure"
+            )
+        )
+        records["ledger"] = DecisionEvidenceRecord.create(
+            evidence_kind="ledger",
+            factor_spec_id=factor_spec_id,
+            payload={
+                "complete": starts == terminals,
+                "terminal_train_valid": terminal.payload["status"]
+                in {"success", "reject", "skip"},
+                "reduced_durability": any(
+                    "REDUCED_DURABILITY" in event.warnings
+                    for event in (factor_definition, terminal)
+                ),
+                "limitations": [],
+                "ledger_schema_version": "decision_ledger_evidence.v2",
+                "infrastructure_failure_event_hashes": list(infrastructure),
+            },
+        )
+        records["snapshot"] = DecisionEvidenceRecord.create(
+            evidence_kind="snapshot",
+            factor_spec_id=factor_spec_id,
+            payload={
+                "pit_available": bool(snapshot.payload["decision_grade"]),
+                "survivorship_bias": snapshot.payload["survivorship_status"]
+                != "controlled_by_daily_membership",
+                "limitations": list(snapshot_codes),
+            },
+        )
+        execution = self._single_optional(evidence, "ExecutionEvidenceRecorded")
+        if execution is not None:
+            execution_codes = tuple(
+                sorted(
+                    {
+                        *(str(item) for item in execution.payload["caps"]),
+                        "EXECUTION_NUMERIC_DECISION_BRIDGE_UNAVAILABLE",
+                    }
+                )
+            )
+            records["execution"] = DecisionEvidenceRecord.create(
+                evidence_kind="execution",
+                factor_spec_id=factor_spec_id,
+                payload={
+                    "available": False,
+                    "execution_alpha": None,
+                    "total_cost": None,
+                    "economically_nonnegative": None,
+                    "limitations": list(execution_codes),
+                },
+            )
+        secondary = self._single_optional(evidence, "SecondaryEvidenceRecorded")
+        if secondary is not None:
+            mechanism_status = str(secondary.payload["mechanism_status"])
+            ordinal = (
+                mechanism_status
+                if mechanism_status
+                in {"falsified", "inconclusive", "partial_support", "supported"}
+                else "inconclusive"
+            )
+            records["mechanism"] = DecisionEvidenceRecord.create(
+                evidence_kind="mechanism",
+                factor_spec_id=factor_spec_id,
+                payload={
+                    "contract_registered": bool(
+                        secondary.payload.get("applicability_event_hash")
+                    ),
+                    "decisive_available": ordinal != "inconclusive",
+                    "ordinal_state": ordinal,
+                    "limitations": [],
+                },
+            )
+            if bool(secondary.payload["duplicate_detected"]):
+                complement_status = "duplicate"
+            else:
+                complement_status = {
+                    "complementary": "complementary",
+                    "nonpositive": "nonpositive_marginal_value",
+                    "inconclusive": "insufficient",
+                    "unavailable": "unavailable",
+                }.get(str(secondary.payload["portfolio_status"]), "unavailable")
+            records["complement"] = DecisionEvidenceRecord.create(
+                evidence_kind="complement",
+                factor_spec_id=factor_spec_id,
+                payload={"status": complement_status, "limitations": []},
+            )
+        repository = self.quality_decision_v3.repository
+        for record in records.values():
+            repository.put(record)
+        return DecisionEvidenceRefs(
+            factor_spec_id=factor_spec_id,
+            scorecard_hash=records["scorecard"].evidence_hash,
+            execution_hash=(
+                None if "execution" not in records else records["execution"].evidence_hash
+            ),
+            snapshot_hash=records["snapshot"].evidence_hash,
+            ledger_watermark_hash=records["ledger"].evidence_hash,
+            mechanism_evidence_hash=(
+                None if "mechanism" not in records else records["mechanism"].evidence_hash
+            ),
+            complement_evidence_hash=(
+                None if "complement" not in records else records["complement"].evidence_hash
+            ),
+            final_test_artifact_hash=None,
+            forward_plan_hash=None,
+        )
+
+    @staticmethod
+    def _single_optional(
+        events: list[ResearchEventEnvelope], event_type: str
+    ) -> ResearchEventEnvelope | None:
+        matches = [event for event in events if event.event_type == event_type]
+        if len(matches) > 1:
+            raise EventTransitionError(f"Decision v3 bridge has multiple {event_type}")
+        return None if not matches else matches[0]
 
     def build_generator(
         self,
@@ -556,16 +761,12 @@ class ProductionActivationCandidateFactoryV1:
 
     @staticmethod
     def _compatibility_blockers() -> tuple[str, ...]:
-        # These are repository facts, not speculative runtime failures.  The
-        # current evaluator emits Decision v4 in its dossier while Run Source
-        # v3 requires a separately frozen Decision v3 event; duplicate/invalid
-        # identity terminals also lack an existing dossier producer.  The
-        # adapter can evaluate prepared, producer-bound refs, but formal arm
-        # execution must remain blocked until both existing boundaries close.
-        return (
-            "IDENTITY_TERMINAL_DOSSIER_PRODUCER_UNAVAILABLE",
-            "QUALITY_DECISION_V3_EVIDENCE_REF_BRIDGE_NOT_PRODUCER_BOUND",
-        )
+        # This is a repository fact, not a speculative runtime failure.
+        # Duplicate/invalid identity terminals are emitted before a production
+        # factor definition exists, while TrialTerminalDossierV1 requires a
+        # non-null factor_spec_id.  Fabricating one would violate identity
+        # authority, so formal arm execution remains blocked on that schema.
+        return ("IDENTITY_TERMINAL_DOSSIER_PRODUCER_UNAVAILABLE",)
 
 
 __all__ = [
