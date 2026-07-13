@@ -1,0 +1,74 @@
+{
+  "schema_version": "phase_execution_record.v1",
+  "phase": "Phase 10C - forward monitoring production authority v3",
+  "base_commit": "98e7d34c",
+  "branch": "codex/ags-v32-forward-authority-v3",
+  "pre_phase_dirty_state": "clean",
+  "remote_operations": [],
+  "dependency_installs": [],
+  "authority_model": {
+    "plan": "protected producer event derived from the current paper_candidate Decision, exact Final v2 artifact, current no-taint state and registered provider",
+    "provider": "versioned descriptor freezes calendar, vintage policy and availability contract",
+    "source": "content-addressed dated raw cross-sectional observations only",
+    "observation": "RankIC, net return, drawdown, effective N, status and kill reasons recomputed by the producer",
+    "revision": "append-only DataRevisionRecorded event; original-as-observed and restated views remain separate",
+    "discovery": "forward sources, observations and revisions are monitoring-only and excluded from discovery projection"
+  },
+  "frozen_plan_fields": [
+    "forward_start",
+    "calendar_id",
+    "return_horizon",
+    "minimum_look_observations",
+    "provider_id and provider_version",
+    "vintage_policy_hash",
+    "availability_contract_hash",
+    "transform, cost, regime and policy hashes",
+    "executable kill rules and kill_rules_hash"
+  ],
+  "validation": [
+    {
+      "command": "python -m pytest -q agent/tests/alpha_quality agent/tests/research_ledger",
+      "result": "613 passed, 1 warning in 1357.96s"
+    },
+    {
+      "command": "python -m pytest -q Phase 10C, legacy forward/final and ledger closure tests",
+      "result": "153 passed in 371.95s"
+    },
+    {
+      "command": "python -m pytest -q agent/tests/contracts agent/tests/security agent/tests/acceptance agent/tests/performance/test_ags_acceptance_budget.py agent/tests/alpha_quality/test_feature_off_identity.py",
+      "result": "95 passed, 21 warnings in 12.35s"
+    },
+    {
+      "command": "python -m ruff format --check and python -m ruff check for Phase 10C files",
+      "result": "passed"
+    },
+    {
+      "command": "python -m mypy --strict --follow-imports=skip agent/src/alpha_quality/forward/authority_v3.py",
+      "result": "passed"
+    },
+    {
+      "command": "python -m pytest -q revision original/restated discovery-isolation test after final assertion",
+      "result": "1 passed in 46.19s"
+    }
+  ],
+  "red_team": [
+    "a final quality boolean without a current paper_candidate Decision cannot register a plan",
+    "a forward_start before registration or final completion is rejected",
+    "late final taint invalidates the current plan view and blocks new observations",
+    "observation API exposes no caller metric parameters",
+    "period reuse and historical backfill are rejected",
+    "frozen RankIC, net-return and drawdown kill rules execute deterministically",
+    "generic plan, observation and revision event forgery is rejected",
+    "provider correction cannot overwrite the original source or original-as-observed view",
+    "forward appends do not alter the discovery projection hash",
+    "no forward success claim is emitted before or after minimum N; status remains monitoring-only"
+  ],
+  "known_unrelated_baseline_failure": "test_tracked_release_manifest_matches_deterministic_rebuild reads user-owned problem.md and was reproduced before Phase 1",
+  "outcome": "ACCEPTED",
+  "limitations": [
+    "v2 forward artifacts remain readable for compatibility but do not gain v3 producer authority",
+    "restatement changes only a monitoring view and never rewrites the original observation event",
+    "forward_track or monitoring status does not claim forward success or live readiness",
+    "no broker, order, live-trading or automatic discovery import path is introduced"
+  ]
+}

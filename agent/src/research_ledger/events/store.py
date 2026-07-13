@@ -394,6 +394,11 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "FinalTestArtifactRecorded": ("VIBE_TRADING_DECISION_V2",),
     "ForwardPlanV2Recorded": ("VIBE_TRADING_FORWARD_TRACKING",),
     "ForwardObservationV2Recorded": ("VIBE_TRADING_FORWARD_TRACKING",),
+    "ForwardMonitoringProviderV3Registered": ("VIBE_TRADING_FORWARD_TRACKING",),
+    "ForwardPlanV3Recorded": ("VIBE_TRADING_FORWARD_TRACKING",),
+    "ForwardSourceArtifactV3Recorded": ("VIBE_TRADING_FORWARD_TRACKING",),
+    "ForwardObservationV3Recorded": ("VIBE_TRADING_FORWARD_TRACKING",),
+    "DataRevisionRecorded": ("VIBE_TRADING_FORWARD_TRACKING",),
     "ForwardPlanRecorded": ("VIBE_TRADING_FORWARD_TRACKING",),
     "ForwardObservationRecorded": ("VIBE_TRADING_FORWARD_TRACKING",),
 }
@@ -438,6 +443,11 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "FalsificationOutcomeAccessV2Recorded",
         "FalsificationSourceArtifactV2Recorded",
         "FalsificationResultV2Recorded",
+        "ForwardMonitoringProviderV3Registered",
+        "ForwardPlanV3Recorded",
+        "ForwardSourceArtifactV3Recorded",
+        "ForwardObservationV3Recorded",
+        "DataRevisionRecorded",
     }
 )
 
@@ -613,6 +623,7 @@ class ResearchEventStore:
         self._validate_payload_entity(draft, payload)
         self._validate_artifacts(payload)
         self._validate_external_falsification_v2(draft.event_type, draft.run_id, payload)
+        self._validate_external_forward_v3(draft.event_type, draft.run_id, payload)
         self._validate_external_process_evidence(draft.event_type, payload)
         self._validate_external_retriever_action_template(draft.event_type, payload)
         self._validate_external_train_valid_snapshot(draft.event_type, payload)
@@ -927,6 +938,11 @@ class ResearchEventStore:
             "FinalTestArtifactRecorded": "artifact_id",
             "ForwardPlanV2Recorded": "plan_id",
             "ForwardObservationV2Recorded": "observation_id",
+            "ForwardMonitoringProviderV3Registered": "registration_id",
+            "ForwardPlanV3Recorded": "plan_id",
+            "ForwardSourceArtifactV3Recorded": "source_id",
+            "ForwardObservationV3Recorded": "observation_id",
+            "DataRevisionRecorded": "revision_id",
             "ForwardPlanRecorded": "plan_id",
             "ForwardObservationRecorded": "observation_id",
         }
@@ -965,6 +981,71 @@ class ResearchEventStore:
             or rebuilt["family_result"] != payload["family_result"]
         ):
             raise EventValidationError("falsification v2 result is not producer-recomputable")
+
+    def _validate_external_forward_v3(
+        self,
+        event_type: str,
+        run_id: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "ForwardObservationV3Recorded":
+            return
+        from src.alpha_quality.forward.authority_v3 import (
+            ForwardMonitoringProducerV3,
+            ForwardMonitoringProviderRegistryV3,
+            ForwardPlanAuthorityV3,
+            MonitoringProviderDescriptorV3,
+        )
+
+        plan_matches = [
+            event
+            for event in self.query_events(event_type="ForwardPlanV3Recorded")
+            if event.event_hash == payload["plan_event_hash"] and event.run_id == run_id
+        ]
+        source_matches = [
+            event
+            for event in self.query_events(event_type="ForwardSourceArtifactV3Recorded")
+            if event.event_hash == payload["source_event_hash"] and event.run_id == run_id
+        ]
+        if len(plan_matches) != 1 or len(source_matches) != 1:
+            raise EventValidationError("forward v3 observation lacks exact producer sources")
+        descriptor_payload = plan_matches[0].payload["config"]
+        registration = [
+            event
+            for event in self.query_events(event_type="ForwardMonitoringProviderV3Registered")
+            if event.event_hash == plan_matches[0].payload["provider_registration_event_hash"]
+        ]
+        if len(registration) != 1:
+            raise EventValidationError("forward v3 provider registration is missing")
+        descriptor = registration[0].payload["descriptor"]
+        registry = ForwardMonitoringProviderRegistryV3(
+            (
+                MonitoringProviderDescriptorV3(
+                    provider_id=str(descriptor["provider_id"]),
+                    provider_version=str(descriptor["provider_version"]),
+                    calendar_id=str(descriptor["calendar_id"]),
+                    vintage_policy="as_observed_append_only",
+                    maximum_availability_delay_days=int(descriptor["maximum_availability_delay_days"]),
+                    provider_policy_hash=str(descriptor["provider_policy_hash"]),
+                ),
+            )
+        )
+        if (
+            descriptor_payload["provider_id"] != descriptor["provider_id"]
+            or descriptor_payload["provider_version"] != descriptor["provider_version"]
+        ):
+            raise EventValidationError("forward v3 provider scope differs")
+        authority = ForwardPlanAuthorityV3(store=self, registry=registry)
+        rebuilt = ForwardMonitoringProducerV3(store=self, authority=authority).recompute(
+            plan_matches[0], source_matches[0]
+        )
+        if (
+            canonical_json_hash(rebuilt) != payload["observation_hash"]
+            or rebuilt["metrics"] != payload["metrics"]
+            or rebuilt["status"] != payload["status"]
+            or rebuilt["kill_reasons"] != payload["kill_reasons"]
+        ):
+            raise EventValidationError("forward v3 observation is not producer-recomputable")
 
     def _validate_external_process_evidence(
         self,
@@ -5652,6 +5733,15 @@ class ResearchEventStore:
         if event_type == "FinalTestArtifactRecorded":
             self._validate_final_artifact_transition(conn, payload)
             return
+        if event_type in {
+            "ForwardMonitoringProviderV3Registered",
+            "ForwardPlanV3Recorded",
+            "ForwardSourceArtifactV3Recorded",
+            "ForwardObservationV3Recorded",
+            "DataRevisionRecorded",
+        }:
+            self._validate_forward_v3_transition(conn, event_type, draft.run_id, payload)
+            return
         if event_type == "ForwardPlanV2Recorded":
             self._validate_forward_plan_v2_transition(conn, payload)
             return
@@ -6584,6 +6674,141 @@ class ResearchEventStore:
         ).fetchone()
         if prior is not None:
             raise EventTransitionError("frozen candidate already has a final artifact")
+
+    @staticmethod
+    def _validate_forward_v3_transition(
+        conn: sqlite3.Connection,
+        event_type: str,
+        run_id: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type == "ForwardMonitoringProviderV3Registered":
+            descriptor = payload["descriptor"]
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.descriptor.provider_id') = ? AND json_extract(payload, '$.descriptor.provider_version') = ?",
+                (event_type, descriptor["provider_id"], descriptor["provider_version"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("forward v3 provider is already registered")
+            return
+        if event_type == "ForwardPlanV3Recorded":
+            final = conn.execute(
+                "SELECT payload, created_at FROM research_events WHERE event_type = 'FinalTestArtifactV2Recorded' AND event_hash = ?",
+                (payload["final_artifact_event_hash"],),
+            ).fetchone()
+            decision = conn.execute(
+                "SELECT payload, created_at FROM research_events WHERE event_type IN ('QualityDecisionV2Recorded', 'QualityDecisionV3Recorded') AND event_hash = ?",
+                (payload["decision_event_hash"],),
+            ).fetchone()
+            provider = conn.execute(
+                "SELECT payload FROM research_events WHERE event_type = 'ForwardMonitoringProviderV3Registered' AND event_hash = ?",
+                (payload["provider_registration_event_hash"],),
+            ).fetchone()
+            config = payload["config"]
+            if final is None or decision is None or provider is None:
+                raise EventTransitionError("forward v3 plan authority sources are missing")
+            final_payload = json.loads(str(final["payload"]))
+            decision_payload = json.loads(str(decision["payload"]))
+            provider_payload = json.loads(str(provider["payload"]))
+            latest = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type IN ('QualityDecisionV2Recorded', 'QualityDecisionV3Recorded') AND json_extract(payload, '$.factor_spec_id') = ? ORDER BY seq DESC LIMIT 1",
+                (config["factor_spec_id"],),
+            ).fetchone()
+            taint = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'FinalContaminationV2Recorded' AND json_extract(payload, '$.final_evaluation_key') = ?",
+                (payload["final_evaluation_key"],),
+            ).fetchone()
+            if (
+                latest is None
+                or latest["event_hash"] != payload["decision_event_hash"]
+                or decision_payload["decision"] != "paper_candidate"
+                or decision_payload["factor_spec_id"] != config["factor_spec_id"]
+                or decision_payload["decision_hash"] != payload["decision_hash"]
+                or final_payload["factor_spec_id"] != config["factor_spec_id"]
+                or final_payload["artifact_hash"] != payload["final_artifact_hash"]
+                or final_payload["final_evaluation_key"] != payload["final_evaluation_key"]
+                or final_payload["contaminated"]
+                or not final_payload["quality_passed"]
+                or provider_payload["descriptor"]["provider_id"] != config["provider_id"]
+                or provider_payload["descriptor"]["provider_version"] != config["provider_version"]
+                or taint is not None
+            ):
+                raise EventTransitionError("forward v3 plan eligibility is not current and authoritative")
+            return
+        plan = conn.execute(
+            "SELECT run_id, payload FROM research_events WHERE event_type = 'ForwardPlanV3Recorded' AND event_hash = ?",
+            (payload["plan_event_hash"],),
+        ).fetchone()
+        if plan is None or str(plan["run_id"]) != run_id:
+            raise EventTransitionError("forward v3 event lacks its exact plan")
+        plan_payload = json.loads(str(plan["payload"]))
+        if plan_payload["plan_hash"] != payload["plan_hash"]:
+            raise EventTransitionError("forward v3 plan binding differs")
+        if event_type == "ForwardSourceArtifactV3Recorded":
+            prior = conn.execute(
+                "SELECT payload FROM research_events WHERE event_type = ? AND json_extract(payload, '$.plan_hash') = ? ORDER BY seq DESC LIMIT 1",
+                (event_type, payload["plan_hash"]),
+            ).fetchone()
+            if (
+                payload["plan_id"] != plan_payload["plan_id"]
+                or payload["provider_registration_event_hash"] != plan_payload["provider_registration_event_hash"]
+                or payload["provider_id"] != plan_payload["config"]["provider_id"]
+                or payload["provider_version"] != plan_payload["config"]["provider_version"]
+                or payload["vintage_policy_hash"] != plan_payload["config"]["vintage_policy_hash"]
+                or payload["availability_contract_hash"] != plan_payload["config"]["availability_contract_hash"]
+                or payload["period_start"] < plan_payload["config"]["forward_start"]
+                or (prior is not None and payload["period_start"] <= json.loads(str(prior["payload"]))["period_end"])
+            ):
+                raise EventTransitionError("forward v3 source scope or period differs")
+            return
+        if event_type == "ForwardObservationV3Recorded":
+            source = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'ForwardSourceArtifactV3Recorded' AND event_hash = ?",
+                (payload["source_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                "SELECT payload FROM research_events WHERE event_type = ? AND json_extract(payload, '$.plan_hash') = ? ORDER BY seq DESC LIMIT 1",
+                (event_type, payload["plan_hash"]),
+            ).fetchone()
+            taint = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'FinalContaminationV2Recorded' AND json_extract(payload, '$.final_evaluation_key') = ?",
+                (plan_payload["final_evaluation_key"],),
+            ).fetchone()
+            if source is None or str(source["run_id"]) != run_id:
+                raise EventTransitionError("forward v3 observation lacks its source")
+            source_payload = json.loads(str(source["payload"]))
+            expected_previous = None if prior is None else json.loads(str(prior["payload"]))["observation_hash"]
+            if (
+                source_payload["plan_event_hash"] != payload["plan_event_hash"]
+                or source_payload["source_hash"] != payload["source_hash"]
+                or source_payload["period_start"] != payload["period_start"]
+                or source_payload["period_end"] != payload["period_end"]
+                or payload["previous_observation_hash"] != expected_previous
+                or taint is not None
+            ):
+                raise EventTransitionError("forward v3 observation authority differs")
+            return
+        if event_type == "DataRevisionRecorded":
+            original = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'ForwardSourceArtifactV3Recorded' AND event_hash = ?",
+                (payload["original_source_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                "SELECT payload FROM research_events WHERE event_type = ? AND json_extract(payload, '$.original_source_event_hash') = ? ORDER BY seq DESC LIMIT 1",
+                (event_type, payload["original_source_event_hash"]),
+            ).fetchone()
+            if original is None or str(original["run_id"]) != run_id:
+                raise EventTransitionError("forward revision lacks its original source")
+            original_payload = json.loads(str(original["payload"]))
+            expected_number = 1 if prior is None else int(json.loads(str(prior["payload"]))["revision_number"]) + 1
+            if (
+                original_payload["plan_event_hash"] != payload["plan_event_hash"]
+                or original_payload["source_hash"] != payload["original_source_hash"]
+                or payload["revision_number"] != expected_number
+                or payload["revised_source_hash"] == payload["original_source_hash"]
+            ):
+                raise EventTransitionError("forward revision authority differs")
+            return
 
     @staticmethod
     def _validate_forward_plan_v2_transition(conn: sqlite3.Connection, payload: Mapping[str, Any]) -> None:
