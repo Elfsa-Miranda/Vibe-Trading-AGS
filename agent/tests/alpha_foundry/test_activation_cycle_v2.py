@@ -255,6 +255,25 @@ def test_projector_rebuilds_metrics_from_exact_events() -> None:
     test_projector_rebuilds_all_metrics_from_exact_events()
 
 
+def test_projector_rejects_empty_or_noncanonical_event_refs() -> None:
+    with pytest.raises(ValueError, match="non-zero canonical hashes"):
+        ActivationArmEventRefsV2(
+            retrieval_authority_event_hashes=(),
+            terminal_event_hashes=(_hash("terminal"),),
+            evaluation_event_hashes=(_hash("evaluation"),),
+            quality_decision_event_hashes=(_hash("decision"),),
+            terminal_dossier_event_hashes=(_hash("dossier"),),
+        )
+    with pytest.raises(ValueError, match="non-zero canonical hashes"):
+        ActivationArmEventRefsV2(
+            retrieval_authority_event_hashes=("not-a-hash",),
+            terminal_event_hashes=(_hash("terminal"),),
+            evaluation_event_hashes=(_hash("evaluation"),),
+            quality_decision_event_hashes=(_hash("decision"),),
+            terminal_dossier_event_hashes=(_hash("dossier"),),
+        )
+
+
 def test_phase8_effective_sample_is_not_activation_pair_count() -> None:
     parameters = inspect.signature(
         ActivationStatisticalAnalyzerV2.mint_confirmatory_plan
