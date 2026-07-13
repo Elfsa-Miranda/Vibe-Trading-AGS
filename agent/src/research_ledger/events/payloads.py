@@ -1497,6 +1497,58 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "matrix": _mapping,
         },
     ),
+    "ProviderFieldPITAuditV1Recorded": PayloadSpec(
+        "provider_field_pit_audit_recorded.v1",
+        {
+            "audit_id": _string,
+            "adapter_registration_event_hash": _hash,
+            "provider": _string,
+            "adapter_id": _string,
+            "interface": _string,
+            "field_name": _string,
+            "claim_scope_ceiling": _enum(
+                "verified_strict", "best_effort", "unavailable"
+            ),
+            "field_audit_hash": _hash,
+            "canonical_hash_spec": _mapping,
+            "audit": _mapping,
+        },
+    ),
+    "ProviderInterfacePITAuditV1Recorded": PayloadSpec(
+        "provider_interface_pit_audit_recorded.v1",
+        {
+            "audit_id": _string,
+            "adapter_registration_event_hash": _hash,
+            "provider": _string,
+            "adapter_id": _string,
+            "interface": _string,
+            "claim_scope_ceiling": _enum(
+                "verified_strict", "best_effort", "unavailable"
+            ),
+            "interface_audit_hash": _hash,
+            "field_audit_event_hashes": _nonempty_hash_list,
+            "canonical_hash_spec": _mapping,
+            "audit": _mapping,
+        },
+    ),
+    "ProviderAuthorityDecisionV1Recorded": PayloadSpec(
+        "provider_authority_decision_recorded.v1",
+        {
+            "decision_id": _string,
+            "provider": _string,
+            "adapter_id": _string,
+            "adapter_registration_event_hash": _hash,
+            "authority_status": _enum("verified_strict", "best_effort", "blocked"),
+            "claim_scope_ceiling": _enum(
+                "verified_strict", "best_effort", "unavailable"
+            ),
+            "activation_eligible": _boolean,
+            "decision_hash": _hash,
+            "interface_audit_event_hashes": _nonempty_hash_list,
+            "canonical_hash_spec": _mapping,
+            "decision": _mapping,
+        },
+    ),
     "ActivationPairExecutionScheduled": PayloadSpec(
         "activation_pair_execution_scheduled.v1",
         {
