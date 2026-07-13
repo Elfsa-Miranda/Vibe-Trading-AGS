@@ -62,6 +62,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "ProductionActivationCandidateFactoryV1Bound",
     "ProductionActivationArmStartedV1Recorded",
     "ProductionActivationArmCompletedV1Recorded",
+    "ActivationPairEvidenceV2Recorded",
     "ActivationReadinessV4Recorded",
     "ActivationPairExecutionScheduled",
     "ActivationPairExecutionClaimed",

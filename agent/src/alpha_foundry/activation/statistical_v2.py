@@ -9,7 +9,10 @@ import random
 from statistics import NormalDist, mean, pvariance
 from typing import Any, Literal, Sequence
 
-from src.alpha_foundry.activation.pair_projector_v2 import ActivationPairEvidenceV2
+from src.alpha_foundry.activation.pair_projector_v2 import (
+    ActivationPairEvidenceV2,
+    RecordedActivationPairEvidenceV2,
+)
 from src.alpha_foundry.activation.protocol_v2 import (
     DEFAULT_ACTIVATION_HASH_SPEC,
     CanonicalHashSpecV1,
@@ -210,14 +213,14 @@ class ActivationStatisticalAnalyzerV2:
         self,
         *,
         registered_protocol: RecordedActivationProtocolV2,
-        pairs: Sequence[ActivationPairEvidenceV2],
+        pairs: Sequence[RecordedActivationPairEvidenceV2],
         preregistered_variance_floor: float,
     ) -> PilotDispersionEvidenceV2:
         protocol = self._protocol(registered_protocol)
-        self._require_pairs(protocol, pairs)
+        evidence = self._require_pairs(protocol, pairs)
         if not math.isfinite(preregistered_variance_floor) or preregistered_variance_floor < 0:
             raise ValueError("variance floor must be frozen and non-negative")
-        complete = [pair for pair in pairs if pair.source_complete]
+        complete = [pair for pair in evidence if pair.source_complete]
         values = [pair.normalized_yield_difference for pair in complete]
         variance = pvariance(values) if len(values) >= 2 else 0.0
         # Conservative one-sided bound fixed before outcomes.  Pilot mean uplift
@@ -231,24 +234,24 @@ class ActivationStatisticalAnalyzerV2:
         content = {
             "schema_version": "activation_pilot_dispersion.v2",
             "pilot_protocol_hash": protocol.protocol_hash,
-            "pair_evidence_hashes": sorted(pair.evidence_hash for pair in pairs),
+            "pair_evidence_hashes": sorted(pair.evidence_hash for pair in evidence),
             "complete_pairs": len(complete),
-            "incomplete_pairs": len(pairs) - len(complete),
+            "incomplete_pairs": len(evidence) - len(complete),
             "paired_variance": variance,
             "conservative_variance_upper_bound": upper,
             "zero_yield_rate": zero,
-            "completion_rate": len(complete) / len(pairs),
+            "completion_rate": len(complete) / len(evidence),
         }
         return PilotDispersionEvidenceV2(
             schema_version="activation_pilot_dispersion.v2",
             pilot_protocol_hash=protocol.protocol_hash,
             pair_evidence_hashes=tuple(content["pair_evidence_hashes"]),  # type: ignore[arg-type]
             complete_pairs=len(complete),
-            incomplete_pairs=len(pairs) - len(complete),
+            incomplete_pairs=len(evidence) - len(complete),
             paired_variance=variance,
             conservative_variance_upper_bound=upper,
             zero_yield_rate=zero,
-            completion_rate=len(complete) / len(pairs),
+            completion_rate=len(complete) / len(evidence),
             evidence_hash=DEFAULT_ACTIVATION_HASH_SPEC.hash_payload(
                 "activation-pilot-dispersion.v2", content
             ),
@@ -342,17 +345,17 @@ class ActivationStatisticalAnalyzerV2:
         self,
         *,
         registered_protocol: RecordedActivationProtocolV2,
-        pairs: Sequence[ActivationPairEvidenceV2],
+        pairs: Sequence[RecordedActivationPairEvidenceV2],
         required_pairs: int,
     ) -> ActivationStatisticalAnalysisV2:
         protocol = self._protocol(registered_protocol)
-        self._require_pairs(protocol, pairs)
-        complete = [pair for pair in pairs if pair.source_complete]
+        evidence = self._require_pairs(protocol, pairs)
+        complete = [pair for pair in evidence if pair.source_complete]
         values = [pair.normalized_yield_difference for pair in complete]
         violations = sorted(
             {
                 code
-                for pair in pairs
+                for pair in evidence
                 for code in pair.source_failure_codes
                 if code in {
                     "CONTAMINATION",
@@ -393,21 +396,21 @@ class ActivationStatisticalAnalyzerV2:
         content: dict[str, Any] = {
             "schema_version": "activation_statistical_analysis.v2",
             "protocol_hash": protocol.protocol_hash,
-            "pair_evidence_hashes": sorted(pair.evidence_hash for pair in pairs),
+            "pair_evidence_hashes": sorted(pair.evidence_hash for pair in evidence),
             "complete_pairs": len(complete),
-            "incomplete_pairs": len(pairs) - len(complete),
+            "incomplete_pairs": len(evidence) - len(complete),
             "primary_effect": effect,
             "confidence_lower": lower,
             "confidence_upper": upper,
             "one_sided_randomization_p_value": p_value,
             "sesoi": protocol.sesoi,
             "adequate_power": len(complete) >= required_pairs,
-            "required_pair_complete": len(complete) == required_pairs == len(pairs),
+            "required_pair_complete": len(complete) == required_pairs == len(evidence),
             "safety_noninferiority_pass": safety_ni,
             "resource_noninferiority_pass": resource_ni,
             "failure_noninferiority_pass": failure_ni,
             "diversity_coverage_pass": diversity,
-            "source_authority_pass": all(pair.source_complete for pair in pairs),
+            "source_authority_pass": all(pair.source_complete for pair in evidence),
             "protocol_violation_codes": violations,
         }
         return ActivationStatisticalAnalysisV2(
@@ -519,18 +522,28 @@ class ActivationStatisticalAnalyzerV2:
         )
         return max(0.0, (center - radius) / denominator)
 
-    @staticmethod
     def _require_pairs(
+        self,
         protocol: PreregisteredActivationStatisticalProtocolV2,
-        pairs: Sequence[ActivationPairEvidenceV2],
-    ) -> None:
+        pairs: Sequence[RecordedActivationPairEvidenceV2],
+    ) -> tuple[ActivationPairEvidenceV2, ...]:
         if not isinstance(protocol, PreregisteredActivationStatisticalProtocolV2):
             raise TypeError("registered Activation statistical protocol is required")
-        if not pairs or any(not isinstance(pair, ActivationPairEvidenceV2) for pair in pairs):
-            raise TypeError("analyzer requires exact projected pair evidence")
-        hashes = [pair.evidence_hash for pair in pairs]
+        if not pairs or any(
+            not isinstance(pair, RecordedActivationPairEvidenceV2) for pair in pairs
+        ):
+            raise TypeError("analyzer requires recorded exact projected pair evidence")
+        evidence = tuple(pair.verify_in(self.store) for pair in pairs)
+        hashes = [pair.evidence_hash for pair in evidence]
         if len(hashes) != len(set(hashes)):
             raise ValueError("pair evidence is duplicated")
+        if (
+            len({pair.plan_hash for pair in evidence}) != 1
+            or len({pair.pair_id for pair in evidence}) != len(evidence)
+            or len({pair.run_group_id for pair in evidence}) != len(evidence)
+        ):
+            raise ValueError("pair evidence does not belong to one unique paired plan")
+        return evidence
 
     @staticmethod
     def _randomization_p(

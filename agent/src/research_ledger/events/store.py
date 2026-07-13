@@ -349,6 +349,11 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
         "VIBE_TRADING_DECISION_V2",
     ),
+    "ActivationPairEvidenceV2Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ActivationReadinessV4Recorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY",
         "VIBE_TRADING_RESEARCH_EVENTS",
@@ -520,6 +525,7 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "ProductionActivationCandidateFactoryV1Bound",
         "ProductionActivationArmStartedV1Recorded",
         "ProductionActivationArmCompletedV1Recorded",
+        "ActivationPairEvidenceV2Recorded",
         "ActivationReadinessV4Recorded",
     }
 )
@@ -989,6 +995,7 @@ class ResearchEventStore:
             "ProductionActivationCandidateFactoryV1Bound": "binding_id",
             "ProductionActivationArmStartedV1Recorded": "arm_start_id",
             "ProductionActivationArmCompletedV1Recorded": "arm_completion_id",
+            "ActivationPairEvidenceV2Recorded": "pair_evidence_id",
             "ActivationReadinessV4Recorded": "readiness_id",
             "ActivationPairExecutionScheduled": "schedule_id",
             "ActivationPairExecutionClaimed": "claim_id",
