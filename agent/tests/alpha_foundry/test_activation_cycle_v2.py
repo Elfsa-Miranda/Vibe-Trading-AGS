@@ -527,6 +527,45 @@ def test_power_design_alternative_is_strictly_above_sesoi_boundary() -> None:
         )
 
 
+def test_noninferiority_endpoint_catalog_is_frozen() -> None:
+    protocol = _protocol()
+
+    with pytest.raises(ValueError, match="closed catalog"):
+        replace(
+            protocol,
+            safety_noninferiority_endpoints=("failure_rate",),
+        )
+
+
+def test_legacy_resource_endpoint_catalog_remains_replayable() -> None:
+    current = _protocol()
+    values = {
+        name: getattr(current, name)
+        for name in current.__dataclass_fields__
+    }
+    legacy_endpoints = ("peak_rss_mb", "wall_seconds")
+    legacy_margins = {
+        key: value
+        for key, value in current.noninferiority_margins.items()
+        if key != "cpu_seconds"
+    }
+    serial = current._content_dict()
+    serial["resource_noninferiority_endpoints"] = list(legacy_endpoints)
+    serial["noninferiority_margins"] = legacy_margins
+    values.update(
+        resource_noninferiority_endpoints=legacy_endpoints,
+        noninferiority_margins=legacy_margins,
+        protocol_hash=current.canonical_hash_spec.hash_payload(
+            "activation-statistical-protocol.v2", serial
+        ),
+    )
+
+    rebuilt = PreregisteredActivationStatisticalProtocolV2(**values)
+
+    assert rebuilt.resource_noninferiority_endpoints == legacy_endpoints
+    assert "cpu_seconds" not in rebuilt.noninferiority_margins
+
+
 def test_power_simulation_tests_sesoi_null_boundary() -> None:
     source = inspect.getsource(ActivationStatisticalAnalyzerV2._simulate_required_pairs)
 
@@ -664,6 +703,189 @@ def test_analyzer_rejects_caller_constructed_pair_safety_truth(tmp_path: Path) -
             confirmatory_plan=plan,
             pairs=(_raw_pair("caller", 0.2, safety_pass=False),),  # type: ignore[arg-type]
         )
+
+
+def test_analyzer_rebuilds_noninferiority_from_exact_event_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    analyzer = ActivationStatisticalAnalyzerV2(store)
+    protocol = _protocol()
+
+    def event(name: str, event_type: str, payload: dict[str, object]):
+        return SimpleNamespace(
+            event_hash=_hash(name),
+            event_type=event_type,
+            payload=payload,
+        )
+
+    flat_terminals = (
+        event("ni-flat-success", "TrialTerminated", {"status": "success"}),
+        event("ni-flat-duplicate", "TrialTerminated", {"status": "duplicate"}),
+    )
+    topology_terminals = (
+        event("ni-topology-success", "TrialTerminated", {"status": "success"}),
+        event("ni-topology-duplicate", "TrialTerminated", {"status": "duplicate"}),
+    )
+    flat_resource = event(
+        "ni-flat-resource",
+        "ActivationResourceMeasuredV2",
+        {
+            "source_complete": True,
+            "cpu_seconds": 5.0,
+            "wall_seconds": 10.0,
+            "peak_rss_mb": 100.0,
+        },
+    )
+    topology_resource = event(
+        "ni-topology-resource",
+        "ActivationResourceMeasuredV2",
+        {
+            "source_complete": True,
+            "cpu_seconds": 15.0,
+            "wall_seconds": 20.0,
+            "peak_rss_mb": 220.0,
+        },
+    )
+    all_events = (*flat_terminals, *topology_terminals, flat_resource, topology_resource)
+    monkeypatch.setattr(store, "query_events", lambda *args, **kwargs: list(all_events))
+
+    def refs(terminals: tuple[object, ...], resource: object):
+        return ActivationArmEventRefsV2(
+            retrieval_authority_event_hashes=(_hash("ni-retrieval"),),
+            terminal_event_hashes=tuple(
+                sorted(str(item.event_hash) for item in terminals)  # type: ignore[attr-defined]
+            ),
+            evaluation_event_hashes=(),
+            quality_decision_event_hashes=(),
+            terminal_dossier_event_hashes=(),
+            resource_event_hashes=(str(resource.event_hash),),  # type: ignore[attr-defined]
+        )
+
+    recorded = SimpleNamespace(
+        flat_refs=refs(flat_terminals, flat_resource),
+        topology_refs=refs(topology_terminals, topology_resource),
+    )
+    # These legacy pair fields are deliberately false. Exact refs, not these
+    # caller-shaped booleans, are the analyzer authority.
+    pair = _raw_pair("exact-ni-pass", 0.2, safety_pass=False, resource_pass=False)
+
+    result = analyzer._exact_noninferiority(
+        protocol=protocol,
+        recorded_pairs=(recorded,),  # type: ignore[arg-type]
+        evidence=(pair,),
+    )
+
+    assert result == (True, True, True)
+    source = inspect.getsource(ActivationStatisticalAnalyzerV2.analyze)
+    assert "pair.safety_noninferiority_pass" not in source
+    assert "pair.resource_noninferiority_pass" not in source
+
+
+def test_exact_noninferiority_hard_fails_safety_resource_and_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    analyzer = ActivationStatisticalAnalyzerV2(store)
+    protocol = _protocol()
+
+    def item(name: str, event_type: str, payload: dict[str, object]):
+        return SimpleNamespace(
+            event_hash=_hash(name),
+            event_type=event_type,
+            payload=payload,
+        )
+
+    flat_terminal = item("ni-hard-flat", "TrialTerminated", {"status": "success"})
+    topology_terminals = tuple(
+        item(f"ni-hard-topology-{index}", "TrialTerminated", {"status": "error"})
+        for index in range(6)
+    )
+    flat_resource = item(
+        "ni-hard-flat-resource",
+        "ActivationResourceMeasuredV2",
+        {
+            "source_complete": True,
+            "cpu_seconds": 5.0,
+            "wall_seconds": 10.0,
+            "peak_rss_mb": 100.0,
+        },
+    )
+    topology_resource = item(
+        "ni-hard-topology-resource",
+        "ActivationResourceMeasuredV2",
+        {
+            "source_complete": True,
+            "cpu_seconds": 35.1,
+            "wall_seconds": 50.1,
+            "peak_rss_mb": 229.0,
+        },
+    )
+    events = (flat_terminal, *topology_terminals, flat_resource, topology_resource)
+    monkeypatch.setattr(store, "query_events", lambda *args, **kwargs: list(events))
+
+    def refs(terminals: tuple[object, ...], resource: object):
+        return ActivationArmEventRefsV2(
+            retrieval_authority_event_hashes=(_hash("ni-hard-retrieval"),),
+            terminal_event_hashes=tuple(
+                sorted(str(value.event_hash) for value in terminals)  # type: ignore[attr-defined]
+            ),
+            evaluation_event_hashes=(),
+            quality_decision_event_hashes=(),
+            terminal_dossier_event_hashes=(),
+            resource_event_hashes=(str(resource.event_hash),),  # type: ignore[attr-defined]
+        )
+
+    recorded = SimpleNamespace(
+        flat_refs=refs((flat_terminal,), flat_resource),
+        topology_refs=refs(topology_terminals, topology_resource),
+    )
+
+    result = analyzer._exact_noninferiority(
+        protocol=protocol,
+        recorded_pairs=(recorded,),  # type: ignore[arg-type]
+        evidence=(_raw_pair("exact-ni-fail", 0.2),),
+    )
+
+    assert result == (False, False, False)
+
+
+def test_safety_failure_blocks_approval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, registered = _registered_protocol(tmp_path)
+    readiness = _record_readiness(
+        store,
+        research_cycle_id=registered.protocol.research_cycle_id,
+    )
+    analyzer = ActivationStatisticalAnalyzerV2(store)
+    plan = _recorded_plan(store, registered)
+    pairs = (
+        _recorded_pair(store, "safety-fail-1", 0.2),
+        _recorded_pair(store, "safety-fail-2", 0.2),
+    )
+    monkeypatch.setattr(
+        analyzer,
+        "_exact_noninferiority",
+        lambda **kwargs: (False, True, False),
+    )
+    analysis = analyzer.analyze(
+        registered_protocol=registered,
+        confirmatory_plan=plan,
+        pairs=pairs,
+    )
+
+    decision = ActivationGovernanceService(store).decide(
+        registered_protocol=registered,
+        analysis=analysis,
+        readiness_event_hash=readiness.event_hash,
+    )
+
+    assert analysis.require_analysis().safety_noninferiority_pass is False
+    assert decision.decision.verdict == "rejected"
+    assert decision.decision.reason_codes == (
+        "SAFETY_RESOURCE_OR_FAILURE_NI_HARD_FAIL",
+    )
 
 
 def test_analyzer_rejects_pair_projection_recorded_in_another_store(
