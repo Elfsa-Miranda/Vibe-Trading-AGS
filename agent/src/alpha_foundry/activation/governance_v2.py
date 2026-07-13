@@ -9,7 +9,10 @@ from src.alpha_foundry.activation.protocol_v2 import (
     DEFAULT_ACTIVATION_HASH_SPEC,
     PreregisteredActivationStatisticalProtocolV2,
 )
+from src.alpha_foundry.activation.coordinator_v2 import ActivationPairCoordinatorV2
+from src.alpha_foundry.activation.pair_projector_v2 import ActivationEvidenceProjector
 from src.alpha_foundry.activation.statistical_v2 import ActivationStatisticalAnalysisV2
+from src.alpha_foundry.activation.statistical_v2 import ActivationStatisticalAnalyzerV2
 from src.research_ledger.events import EventDraft, ResearchEventEnvelope, ResearchEventStore
 
 
@@ -18,6 +21,7 @@ class ActivationReadinessV4:
     schema_version: Literal["activation_readiness.v4"]
     research_cycle_id: str
     production_candidate_factory_bound: bool
+    quality_decision_v3_producer_bound: bool
     production_train_valid_input_bound: bool
     statistical_protocol_registered: bool
     provider_field_audits_sufficient: bool
@@ -219,34 +223,134 @@ class ActivationGovernanceService:
 
 class ActivationReadinessServiceV4:
     def __init__(self, store: ResearchEventStore) -> None:
+        if not isinstance(store, ResearchEventStore):
+            raise TypeError("Activation readiness requires ResearchEventStore")
         self.store = store
 
     def assess(self, *, run_id: str, research_cycle_id: str) -> tuple[ActivationReadinessV4, ResearchEventEnvelope]:
         events = self.store.query_events()
         cycle = [event for event in events if event.run_id == run_id]
-        event_types = {event.event_type for event in cycle}
+        by_hash = {event.event_hash: event for event in events}
         bindings = [event for event in cycle if event.event_type == "ProductionActivationCandidateFactoryV1Bound"]
-        provider = [event for event in cycle if event.event_type == "ProviderAuthorityDecisionV1Recorded"]
-        factory_ok = len(bindings) == 1 and not bindings[0].payload["blocker_codes"]
-        provider_ok = len(provider) == 1 and provider[0].payload["activation_eligible"] is True
+        provider = [
+            event
+            for event in cycle
+            if event.event_type == "ProviderAuthorityDecisionV1Recorded"
+        ]
+        protocols = [
+            event
+            for event in cycle
+            if event.event_type == "ActivationStatisticalProtocolV2Registered"
+            and event.payload["research_cycle_id"] == research_cycle_id
+        ]
+        matrices = [
+            event
+            for event in cycle
+            if event.event_type == "ActivationApplicabilityMatrixV1Registered"
+            and event.payload["research_cycle_id"] == research_cycle_id
+        ]
+        golden = [
+            event
+            for event in cycle
+            if event.event_type == "ProductionGoldenSliceReadinessV1Recorded"
+            and event.payload["research_cycle_id"] == research_cycle_id
+        ]
+        bundles = [
+            event
+            for event in cycle
+            if event.event_type == "ProductionActivationRunInputBundleV1Registered"
+            and event.payload["research_cycle_id"] == research_cycle_id
+        ]
+        schedules = [
+            event
+            for event in cycle
+            if event.event_type == "ActivationPairExecutionScheduled"
+        ]
+        provider_ok = (
+            len(provider) == 1
+            and provider[0].payload["activation_eligible"] is True
+            and provider[0].payload["authority_status"] == "verified_strict"
+            and provider[0].payload["claim_scope_ceiling"] == "verified_strict"
+        )
+        golden_ok = (
+            len(golden) == 1
+            and golden[0].payload["ready"] is True
+            and len(provider) == 1
+            and golden[0].payload["provider_authority_decision_event_hash"]
+            == provider[0].event_hash
+        )
+        bundle_ok = (
+            len(bundles) == 1
+            and golden_ok
+            and bundles[0].payload["provider_authority_decision_event_hash"]
+            == provider[0].event_hash
+            and bundles[0].payload["golden_slice_readiness_event_hash"]
+            == golden[0].event_hash
+        )
+        binding_refs_bundle = (
+            len(bindings) == 1
+            and len(bundles) == 1
+            and bindings[0].payload["run_input_bundle_event_hash"]
+            == bundles[0].event_hash
+        )
+        factory_ok = (
+            binding_refs_bundle
+            and not bindings[0].payload["blocker_codes"]
+            and bindings[0].payload["returns_refs_only"] is True
+        )
+        quality_decision_ok = (
+            factory_ok
+            and bindings[0].payload["quality_decision_service"]
+            == "src.alpha_quality.decision_v2.source_v3.QualityDecisionV3Service"
+            and "QUALITY_DECISION_V3_PRODUCER_AUTHORITY_INCOMPLETE"
+            not in bindings[0].payload["blocker_codes"]
+        )
+        schedule_ok = bool(schedules) and all(
+            event.payload["arm_order"]
+            in (["control", "treatment"], ["treatment", "control"])
+            for event in schedules
+        )
+        replay_refs = {
+            str(value)
+            for event in (*provider, *golden, *bundles, *bindings)
+            for key, value in event.payload.items()
+            if key.endswith("_event_hash")
+        }
+        source_replay = (
+            self.store.verify_chain()
+            and len(protocols) == 1
+            and len(matrices) == 1
+            and len(provider) == 1
+            and len(golden) == 1
+            and len(bundles) == 1
+            and len(bindings) == 1
+            and replay_refs.issubset(by_hash)
+        )
         checks = {
             "production_candidate_factory_bound": factory_ok,
-            "production_train_valid_input_bound": "ProductionActivationRunInputBundleV1Registered" in event_types,
-            "statistical_protocol_registered": "ActivationStatisticalProtocolV2Registered" in event_types,
+            "quality_decision_v3_producer_bound": quality_decision_ok,
+            "production_train_valid_input_bound": bundle_ok,
+            "statistical_protocol_registered": len(protocols) == 1,
             "provider_field_audits_sufficient": provider_ok,
-            "pair_schedule_frozen": "ActivationPairExecutionScheduled" in event_types,
+            "pair_schedule_frozen": schedule_ok,
             "same_factory_for_both_arms": (
                 factory_ok
                 and bool(bindings)
                 and bindings[0].payload["same_factory_both_arms"] is True
+                and bindings[0].payload["only_arm_difference"]
+                == "retriever_policy_hash"
             ),
-            "source_replay_complete": self.store.verify_chain(),
+            "source_replay_complete": source_replay,
             "no_final_forward_access": not any(
                 event.event_type.startswith(("Final", "Forward")) for event in cycle
             ),
-            "resource_isolation_verified": "ActivationIsolatedResourceV3Recorded" in event_types,
-            "applicability_matrix_registered": "ActivationApplicabilityMatrixV1Registered" in event_types,
-            "governance_roles_separated": True,
+            # The only existing isolated-worker v3 implementation is a closed
+            # infrastructure probe.  No production-arm resource event exists,
+            # so this gate must remain false rather than treating probe output
+            # as effect evidence.
+            "resource_isolation_verified": False,
+            "applicability_matrix_registered": len(matrices) == 1,
+            "governance_roles_separated": self._roles_are_separated(),
         }
         blockers = tuple(sorted(name.upper() for name, passed in checks.items() if not passed))
         content = {
@@ -285,6 +389,22 @@ class ActivationReadinessServiceV4:
             )
         )
         return readiness, event
+
+    @staticmethod
+    def _roles_are_separated() -> bool:
+        classes = (
+            ActivationPairCoordinatorV2,
+            ActivationEvidenceProjector,
+            ActivationStatisticalAnalyzerV2,
+            ActivationGovernanceService,
+        )
+        return (
+            len({value.__module__ for value in classes}) == len(classes)
+            and hasattr(ActivationPairCoordinatorV2, "mint_activation_decision")
+            and not hasattr(ActivationEvidenceProjector, "decide")
+            and not hasattr(ActivationStatisticalAnalyzerV2, "decide")
+            and hasattr(ActivationGovernanceService, "decide")
+        )
 
 
 __all__ = [

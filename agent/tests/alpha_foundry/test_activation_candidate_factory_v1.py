@@ -179,6 +179,17 @@ def test_activation_uses_existing_terminal_and_dossier_builders() -> None:
     assert not hasattr(ProductionActivationCandidateFactoryV1, "dossier_writer")
 
 
+def test_factory_binding_exposes_unresolved_production_authority_blockers(
+    tmp_path: Path,
+) -> None:
+    factory = _factory(tmp_path)
+
+    assert factory._compatibility_blockers() == (
+        "IDENTITY_TERMINAL_DOSSIER_PRODUCER_UNAVAILABLE",
+        "QUALITY_DECISION_V3_PRODUCER_AUTHORITY_INCOMPLETE",
+    )
+
+
 def test_factory_real_dag_evaluator_decision_and_dossier_chain(
     tmp_path: Path,
 ) -> None:
