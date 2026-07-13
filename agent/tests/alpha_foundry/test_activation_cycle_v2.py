@@ -17,6 +17,7 @@ from src.alpha_foundry.activation.pair_projector_v2 import (
 )
 from src.alpha_foundry.activation.protocol_v2 import (
     ActivationApplicabilityMatrixV1,
+    ActivationProtocolRegistryV2,
     PreregisteredActivationStatisticalProtocolV2,
 )
 from src.alpha_foundry.activation.run_source_v3 import FormalActivationRunSourceV3
@@ -25,7 +26,7 @@ from src.alpha_foundry.activation.statistical_v2 import (
     PreregisteredConfirmatoryActivationPlanV2,
 )
 from src.alpha_quality.flags import ResolvedAGSFlags
-from src.research_ledger.events import ResearchEventStore
+from src.research_ledger.events import EventTransitionError, ResearchEventStore
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
@@ -43,6 +44,29 @@ def _protocol(*, sesoi: float = 0.05, maximum_pairs: int = 128):
         minimum_pairs=2,
         maximum_pairs=maximum_pairs,
     )
+
+
+def _registered_protocol(
+    tmp_path: Path,
+    *,
+    sesoi: float = 0.05,
+    maximum_pairs: int = 128,
+):
+    store = _store(tmp_path)
+    protocol = PreregisteredActivationStatisticalProtocolV2.create(
+        research_cycle_id="activation-cycle-v2-test",
+        normalization_policy_hash=_hash("normalization"),
+        registration_event_hash="sha256:" + "0" * 64,
+        code_manifest_hash=_hash("code"),
+        sesoi=sesoi,
+        minimum_pairs=2,
+        maximum_pairs=maximum_pairs,
+    )
+    recorded = ActivationProtocolRegistryV2(store).register_protocol(
+        run_id="activation-cycle-v2-test",
+        protocol=protocol,
+    )
+    return store, recorded
 
 
 def _pair(
@@ -247,60 +271,74 @@ def test_primary_test_does_not_switch_after_normality_test() -> None:
     assert "normality" not in inspect.getsource(ActivationStatisticalAnalyzerV2)
 
 
-def test_pilot_observed_uplift_cannot_change_sesoi() -> None:
-    analyzer = ActivationStatisticalAnalyzerV2()
-    protocol = _protocol(sesoi=0.07)
+def test_pilot_observed_uplift_cannot_change_sesoi(tmp_path: Path) -> None:
+    store, registered = _registered_protocol(tmp_path, sesoi=0.07)
+    analyzer = ActivationStatisticalAnalyzerV2(store)
     low = analyzer.summarize_pilot(
-        protocol=protocol,
+        registered_protocol=registered,
         pairs=(_pair("low-1", 0.0), _pair("low-2", 0.01)),
         preregistered_variance_floor=0.01,
     )
     high = analyzer.summarize_pilot(
-        protocol=protocol,
+        registered_protocol=registered,
         pairs=(_pair("high-1", 0.5), _pair("high-2", 0.6)),
         preregistered_variance_floor=0.01,
     )
 
     assert analyzer.mint_confirmatory_plan(
-        protocol=protocol, pilot=low, strata=("all",)
+        registered_protocol=registered, pilot=low, strata=("all",)
     ).fixed_sesoi == 0.07
     assert analyzer.mint_confirmatory_plan(
-        protocol=protocol, pilot=high, strata=("all",)
+        registered_protocol=registered, pilot=high, strata=("all",)
     ).fixed_sesoi == 0.07
     assert not hasattr(low, "observed_uplift")
 
 
-def test_power_uses_fixed_sesoi_and_conservative_variance_rule() -> None:
-    analyzer = ActivationStatisticalAnalyzerV2()
-    protocol = _protocol(sesoi=0.05)
+def test_power_uses_fixed_sesoi_and_conservative_variance_rule(
+    tmp_path: Path,
+) -> None:
+    store, registered = _registered_protocol(tmp_path, sesoi=0.05)
+    analyzer = ActivationStatisticalAnalyzerV2(store)
+    protocol = registered.protocol
     pilot = analyzer.summarize_pilot(
-        protocol=protocol,
+        registered_protocol=registered,
         pairs=(_pair("v1", 0.01), _pair("v2", 0.02)),
         preregistered_variance_floor=0.04,
     )
     plan = analyzer.mint_confirmatory_plan(
-        protocol=protocol, pilot=pilot, strata=("all",)
+        registered_protocol=registered, pilot=pilot, strata=("all",)
     )
 
     assert pilot.conservative_variance_upper_bound >= 0.04
     assert plan.fixed_sesoi == protocol.sesoi
     assert plan.required_pairs >= protocol.minimum_pairs
+    assert plan.conservative_variance_upper_bound == (
+        pilot.conservative_variance_upper_bound
+    )
+    assert plan.power_simulation_seed == protocol.power_simulation_seed
+    assert plan.power_simulation_count == protocol.power_simulation_count
+    assert "simulation" in protocol.power_method
 
 
 def test_confirmatory_plan_cannot_change_after_mint() -> None:
     assert PreregisteredConfirmatoryActivationPlanV2.__dataclass_params__.frozen
 
 
-def test_confirmatory_not_feasible_does_not_lower_thresholds() -> None:
-    analyzer = ActivationStatisticalAnalyzerV2()
-    protocol = _protocol(sesoi=0.01, maximum_pairs=2)
+def test_confirmatory_not_feasible_does_not_lower_thresholds(
+    tmp_path: Path,
+) -> None:
+    store, registered = _registered_protocol(
+        tmp_path, sesoi=0.01, maximum_pairs=2
+    )
+    analyzer = ActivationStatisticalAnalyzerV2(store)
+    protocol = registered.protocol
     pilot = analyzer.summarize_pilot(
-        protocol=protocol,
+        registered_protocol=registered,
         pairs=(_pair("wide-1", -0.4), _pair("wide-2", 0.4)),
         preregistered_variance_floor=1.0,
     )
     plan = analyzer.mint_confirmatory_plan(
-        protocol=protocol, pilot=pilot, strata=("all",)
+        registered_protocol=registered, pilot=pilot, strata=("all",)
     )
 
     assert plan.feasible is False
@@ -310,6 +348,7 @@ def test_confirmatory_not_feasible_does_not_lower_thresholds() -> None:
 
 
 def _analysis(
+    tmp_path: Path,
     values: tuple[float, ...],
     *,
     required_pairs: int,
@@ -317,7 +356,8 @@ def _analysis(
     safety_pass: bool | None = True,
     resource_pass: bool | None = True,
 ):
-    protocol = _protocol()
+    store, registered = _registered_protocol(tmp_path)
+    protocol = registered.protocol
     pairs = tuple(
         _pair(
             str(index),
@@ -329,28 +369,45 @@ def _analysis(
         )
         for index, value in enumerate(values)
     )
-    analysis = ActivationStatisticalAnalyzerV2().analyze(
-        protocol=protocol,
-        registered_protocol_event_hash=protocol.registration_event_hash,
+    analysis = ActivationStatisticalAnalyzerV2(store).analyze(
+        registered_protocol=registered,
         pairs=pairs,
         required_pairs=required_pairs,
     )
     return protocol, analysis
 
 
-def test_analyzer_requires_registered_protocol() -> None:
+def test_analyzer_requires_registered_protocol(tmp_path: Path) -> None:
     protocol = _protocol()
-    with pytest.raises(ValueError, match="registered frozen protocol"):
-        ActivationStatisticalAnalyzerV2().analyze(
-            protocol=protocol,
-            registered_protocol_event_hash=_hash("wrong"),
+    store = _store(tmp_path / "unregistered")
+    with pytest.raises(TypeError, match="registry-minted frozen protocol"):
+        ActivationStatisticalAnalyzerV2(store).analyze(
+            registered_protocol=protocol,  # type: ignore[arg-type]
             pairs=(_pair("one", 0.1), _pair("two", 0.1)),
             required_pairs=2,
         )
 
 
-def test_approval_requires_lcb_above_sesoi() -> None:
-    protocol, analysis = _analysis((0.2, 0.2, 0.2, 0.2), required_pairs=4)
+def test_analyzer_rejects_protocol_registered_in_another_store(
+    tmp_path: Path,
+) -> None:
+    _, registered = _registered_protocol(tmp_path / "source")
+    other_store = _store(tmp_path / "other")
+
+    with pytest.raises(
+        EventTransitionError, match="not in the analyzer event store"
+    ):
+        ActivationStatisticalAnalyzerV2(other_store).analyze(
+            registered_protocol=registered,
+            pairs=(_pair("one", 0.1), _pair("two", 0.1)),
+            required_pairs=2,
+        )
+
+
+def test_approval_requires_lcb_above_sesoi(tmp_path: Path) -> None:
+    protocol, analysis = _analysis(
+        tmp_path, (0.2, 0.2, 0.2, 0.2), required_pairs=4
+    )
     decision = ActivationGovernanceService().decide(
         protocol=protocol, analysis=analysis
     )
@@ -359,9 +416,9 @@ def test_approval_requires_lcb_above_sesoi() -> None:
     assert decision.verdict == "approved"
 
 
-def test_p_value_alone_cannot_approve() -> None:
+def test_p_value_alone_cannot_approve(tmp_path: Path) -> None:
     protocol, analysis = _analysis(
-        (0.2, 0.2, 0.2, 0.2, 0.2, 0.2), required_pairs=8
+        tmp_path, (0.2, 0.2, 0.2, 0.2, 0.2, 0.2), required_pairs=8
     )
     decision = ActivationGovernanceService().decide(
         protocol=protocol, analysis=analysis
@@ -372,8 +429,9 @@ def test_p_value_alone_cannot_approve() -> None:
     assert decision.verdict == "inconclusive"
 
 
-def test_safety_failure_blocks_approval() -> None:
+def test_safety_failure_blocks_approval(tmp_path: Path) -> None:
     protocol, analysis = _analysis(
+        tmp_path,
         (0.2, 0.2, 0.2, 0.2),
         required_pairs=4,
         safety_pass=False,
@@ -384,17 +442,22 @@ def test_safety_failure_blocks_approval() -> None:
     ).verdict == "rejected"
 
 
-def test_underpowered_valid_experiment_is_inconclusive() -> None:
-    protocol, analysis = _analysis((0.2, 0.2), required_pairs=4)
+def test_underpowered_valid_experiment_is_inconclusive(tmp_path: Path) -> None:
+    protocol, analysis = _analysis(tmp_path, (0.2, 0.2), required_pairs=4)
 
     assert ActivationGovernanceService().decide(
         protocol=protocol, analysis=analysis
     ).verdict == "inconclusive"
 
 
-def test_protocol_violation_is_invalidated_not_inconclusive() -> None:
+def test_protocol_violation_is_invalidated_not_inconclusive(
+    tmp_path: Path,
+) -> None:
     protocol, analysis = _analysis(
-        (0.2, 0.2), required_pairs=2, source_failure="CONTAMINATION"
+        tmp_path,
+        (0.2, 0.2),
+        required_pairs=2,
+        source_failure="CONTAMINATION",
     )
 
     assert ActivationGovernanceService().decide(
@@ -402,8 +465,10 @@ def test_protocol_violation_is_invalidated_not_inconclusive() -> None:
     ).verdict == "invalidated"
 
 
-def test_adequately_powered_no_effect_is_rejected() -> None:
-    protocol, analysis = _analysis((0.0, 0.0, 0.0, 0.0), required_pairs=4)
+def test_adequately_powered_no_effect_is_rejected(tmp_path: Path) -> None:
+    protocol, analysis = _analysis(
+        tmp_path, (0.0, 0.0, 0.0, 0.0), required_pairs=4
+    )
 
     assert ActivationGovernanceService().decide(
         protocol=protocol, analysis=analysis
