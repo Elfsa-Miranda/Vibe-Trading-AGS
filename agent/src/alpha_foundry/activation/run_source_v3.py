@@ -166,6 +166,7 @@ class FormalActivationRunSourceAuditorV3:
         candidates: list[str] = []
         terminal_trials: set[str] = set()
         factor_by_trial: dict[str, str] = {}
+        evaluation_by_hash = {event.event_hash: event for event in evaluations}
         evaluation_hashes = {event.event_hash for event in evaluations}
         cited_evaluations: set[str] = set()
         for event in terminals:
@@ -180,10 +181,21 @@ class FormalActivationRunSourceAuditorV3:
             counts[status] += 1
             evaluation_hash = event.payload.get("evaluation_event_hash")
             if evaluation_hash is not None:
-                cited_evaluations.add(str(evaluation_hash))
-            factor_spec_id = event.payload.get("factor_spec_id")
-            if factor_spec_id is not None:
-                factor_by_trial[trial_id] = str(factor_spec_id)
+                normalized_evaluation_hash = str(evaluation_hash)
+                cited_evaluations.add(normalized_evaluation_hash)
+                evaluation = evaluation_by_hash.get(normalized_evaluation_hash)
+                if evaluation is None:
+                    failures.add("EVALUATION_TERMINAL_REFERENCE_MISMATCH")
+                elif str(evaluation.payload.get("trial_id", "")) != trial_id:
+                    failures.add("EVALUATION_TRIAL_BINDING_MISMATCH")
+                else:
+                    factor_spec_id = str(
+                        evaluation.payload.get("factor_spec_id", "")
+                    )
+                    if factor_spec_id:
+                        factor_by_trial[trial_id] = factor_spec_id
+                    else:
+                        failures.add("EVALUATION_FACTOR_BINDING_MISSING")
         if cited_evaluations != evaluation_hashes:
             failures.add("EVALUATION_TERMINAL_REFERENCE_MISMATCH")
         if len(candidates) != candidate_budget or len(starts) != candidate_budget:
@@ -198,13 +210,31 @@ class FormalActivationRunSourceAuditorV3:
             if factor_spec_id in seen_factors:
                 failures.add("DUPLICATE_QUALITY_DECISION_SOURCE")
             seen_factors.add(factor_spec_id)
-            if event.payload.get("tier") in _QUALIFIED_TIERS:
+            if event.payload.get("decision") in _QUALIFIED_TIERS:
                 effective.append(factor_spec_id)
         terminal_factors = set(factor_by_trial.values())
         if not set(effective).issubset(terminal_factors):
             failures.add("QUALITY_DECISION_NOT_BOUND_TO_TERMINAL_FACTOR")
 
-        dossier_trials = {str(event.payload.get("trial_id", "")) for event in dossiers}
+        terminal_by_hash = {event.event_hash: event for event in terminals}
+        dossier_trials: set[str] = set()
+        for event in dossiers:
+            trial_id = str(event.payload.get("trial_id", ""))
+            dossier_trials.add(trial_id)
+            terminal_hash = str(event.payload.get("terminal_event_hash", ""))
+            terminal = terminal_by_hash.get(terminal_hash)
+            if (
+                terminal is None
+                or str(terminal.payload.get("trial_id", "")) != trial_id
+                or event.payload.get("evaluation_event_hash")
+                != terminal.payload.get("evaluation_event_hash")
+            ):
+                failures.add("TERMINAL_DOSSIER_BINDING_MISMATCH")
+            expected_factor = factor_by_trial.get(trial_id)
+            if expected_factor is not None and str(
+                event.payload.get("factor_spec_id", "")
+            ) != expected_factor:
+                failures.add("TERMINAL_DOSSIER_FACTOR_MISMATCH")
         if dossier_trials != terminal_trials or len(dossiers) != len(terminal_trials):
             failures.add("EVERY_TERMINAL_REQUIRES_ONE_DOSSIER")
         all_requested = (

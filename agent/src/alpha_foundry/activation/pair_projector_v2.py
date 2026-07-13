@@ -14,6 +14,19 @@ from src.research_ledger.events import ResearchEventStore
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
+_ZERO_HASH = "sha256:" + "0" * 64
+
+
+def _is_hash(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith("sha256:")
+        and len(value) == 71
+        and all(character in "0123456789abcdef" for character in value[7:])
+        and value != _ZERO_HASH
+    )
+
+
 @dataclass(frozen=True)
 class ActivationArmEventRefsV2:
     retrieval_authority_event_hashes: tuple[str, ...]
@@ -26,6 +39,8 @@ class ActivationArmEventRefsV2:
         for values in self.__dict__.values():
             if values != tuple(sorted(set(values))):
                 raise ValueError("arm event refs must be sorted and unique")
+            if not values or any(not _is_hash(value) for value in values):
+                raise ValueError("arm event refs require non-zero canonical hashes")
 
 
 @dataclass(frozen=True)
@@ -177,7 +192,7 @@ class ActivationEvidenceProjector:
             "error",
             "infrastructure_failure",
         }
-        content = {
+        content: dict[str, Any] = {
             "schema_version": "activation_pair_evidence.v2",
             "plan_hash": flat.plan_hash,
             "pair_id": flat.pair_id,
