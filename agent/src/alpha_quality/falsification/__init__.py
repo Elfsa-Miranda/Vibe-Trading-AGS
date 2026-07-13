@@ -1,6 +1,19 @@
 """Public, feature-gated falsification evidence surface."""
 
 from src.alpha_quality.falsification.catalog import TestCapability
+from src.alpha_quality.falsification.authority_v2 import (
+    DatedObservationV2,
+    FalsificationContractAuthorityV2,
+    FalsificationContractV2,
+    FalsificationExecutorV2,
+    FalsificationSourceProducerV2,
+    FalsificationTestCatalogV2,
+    TestCapabilityV2,
+    TestSpecV2,
+    legacy_v1_view,
+    render_falsification_narrative_v2,
+    validate_contract_v2,
+)
 from src.alpha_quality.falsification.contract import FalsificationContract
 from src.alpha_quality.falsification.executor import (
     FixedFamilyResult,
@@ -35,8 +48,14 @@ from src.alpha_quality.falsification.validator import validate_contract
 
 __all__ = [
     "APPROVED_SEQUENTIAL_METHOD",
+    "DatedObservationV2",
     "FalsificationContract",
+    "FalsificationContractAuthorityV2",
+    "FalsificationContractV2",
+    "FalsificationExecutorV2",
     "FalsificationService",
+    "FalsificationSourceProducerV2",
+    "FalsificationTestCatalogV2",
     "FixedFamilyResult",
     "FixedHorizonExecutor",
     "FixedTestEvidence",
@@ -52,8 +71,13 @@ __all__ = [
     "SequentialProtocol",
     "SequentialState",
     "TestCapability",
+    "TestCapabilityV2",
+    "TestSpecV2",
     "aggregate_mechanism_evidence",
     "execute_fixed_family",
+    "legacy_v1_view",
+    "render_falsification_narrative_v2",
     "sequential_method_availability",
     "validate_contract",
+    "validate_contract_v2",
 ]

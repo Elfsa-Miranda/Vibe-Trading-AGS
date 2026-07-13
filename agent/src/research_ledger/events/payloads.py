@@ -128,6 +128,13 @@ def _mapping(value: Any, path: str) -> None:
         raise EventValidationError(f"{path} must be an object")
 
 
+def _mapping_list(value: Any, path: str) -> None:
+    if not isinstance(value, (list, tuple)) or not value:
+        raise EventValidationError(f"{path} must be a non-empty list")
+    for index, item in enumerate(value):
+        _mapping(item, f"{path}[{index}]")
+
+
 def _sorted_hash_mapping(value: Any, path: str) -> None:
     if not isinstance(value, Mapping) or not value:
         raise EventValidationError(f"{path} must be a non-empty object")
@@ -2091,6 +2098,87 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "FalsificationCatalogV2Registered": PayloadSpec(
+        "falsification_catalog_registered.v2",
+        {
+            "catalog_hash": _hash,
+            "catalog": _mapping,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FalsificationContractV2Registered": PayloadSpec(
+        "falsification_contract_registered.v2",
+        {
+            "contract_id": _string,
+            "contract_hash": _hash,
+            "factor_spec_id": _string,
+            "family_id": _string,
+            "catalog_event_hash": _hash,
+            "catalog_hash": _hash,
+            "contract": _mapping,
+            "registered_at": _timestamp,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FalsificationOutcomeAccessV2Recorded": PayloadSpec(
+        "falsification_outcome_access_recorded.v2",
+        {
+            "access_id": _string,
+            "access_hash": _hash,
+            "contract_event_hash": _hash,
+            "contract_hash": _hash,
+            "factor_spec_id": _string,
+            "test_ids": _string_list,
+            "accessed_at": _timestamp,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FalsificationSourceArtifactV2Recorded": PayloadSpec(
+        "falsification_source_artifact_recorded.v2",
+        {
+            "source_id": _string,
+            "source_hash": _hash,
+            "contract_event_hash": _hash,
+            "contract_hash": _hash,
+            "factor_spec_id": _string,
+            "access_event_hash": _hash,
+            "test_ids": _string_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FalsificationResultV2Recorded": PayloadSpec(
+        "falsification_result_recorded.v2",
+        {
+            "result_id": _string,
+            "result_hash": _hash,
+            "contract_event_hash": _hash,
+            "contract_hash": _hash,
+            "source_event_hash": _hash,
+            "source_hash": _hash,
+            "outcome_access_event_hash": _hash,
+            "factor_spec_id": _string,
+            "family_id": _string,
+            "outcome": _enum("falsified", "inconclusive", "partial_support", "supported"),
+            "test_results": _mapping_list,
+            "family_result": _mapping,
+            "legacy_promotion_cap": _nullable_string,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "FinalRawProviderV2Registered": PayloadSpec(
         "final_raw_provider_registered.v2",
         {
@@ -2390,6 +2478,68 @@ def validate_and_redact_payload(
 
 
 def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> None:
+    if event_type == "FalsificationCatalogV2Registered":
+        if canonical_json_hash(payload["catalog"]) != payload["catalog_hash"]:
+            raise EventValidationError("falsification v2 catalog hash mismatch")
+    if event_type == "FalsificationContractV2Registered":
+        contract = payload["contract"]
+        tests = contract.get("tests") if isinstance(contract, Mapping) else None
+        test_ids = [item.get("test_id") for item in tests] if isinstance(tests, list) else []
+        if (
+            canonical_json_hash(contract) != payload["contract_hash"]
+            or contract.get("factor_spec_id") != payload["factor_spec_id"]
+            or contract.get("family_id") != payload["family_id"]
+            or contract.get("catalog_hash") != payload["catalog_hash"]
+            or not test_ids
+            or test_ids != sorted(test_ids)
+            or len(test_ids) != len(set(test_ids))
+            or payload["source_event_hashes"] != [payload["catalog_event_hash"]]
+        ):
+            raise EventValidationError("falsification v2 contract authority mismatch")
+    if event_type == "FalsificationOutcomeAccessV2Recorded":
+        content = {
+            "contract_event_hash": payload["contract_event_hash"],
+            "contract_hash": payload["contract_hash"],
+            "factor_spec_id": payload["factor_spec_id"],
+            "test_ids": payload["test_ids"],
+        }
+        if (
+            canonical_json_hash(content) != payload["access_hash"]
+            or payload["test_ids"] != sorted(set(payload["test_ids"]))
+            or payload["source_event_hashes"] != [payload["contract_event_hash"]]
+        ):
+            raise EventValidationError("falsification v2 outcome access mismatch")
+    if event_type == "FalsificationSourceArtifactV2Recorded":
+        if (
+            payload["test_ids"] != sorted(set(payload["test_ids"]))
+            or payload["source_event_hashes"] != sorted([payload["contract_event_hash"], payload["access_event_hash"]])
+            or len(payload["artifact_refs"]) != 1
+        ):
+            raise EventValidationError("falsification v2 source artifact mismatch")
+    if event_type == "FalsificationResultV2Recorded":
+        content = {
+            "schema_version": "falsification_result.v2",
+            "contract_hash": payload["contract_hash"],
+            "source_hash": payload["source_hash"],
+            "executor_policy_hash": payload["producer_policy_hash"],
+            "test_results": payload["test_results"],
+            "family_result": payload["family_result"],
+        }
+        if (
+            canonical_json_hash(content) != payload["result_hash"]
+            or payload["outcome"] != payload["family_result"].get("outcome")
+            or payload["family_id"] != payload["family_result"].get("family_id")
+            or payload["source_event_hashes"]
+            != sorted(
+                [
+                    payload["contract_event_hash"],
+                    payload["source_event_hash"],
+                    payload["outcome_access_event_hash"],
+                ]
+            )
+            or len(payload["artifact_refs"]) != 1
+        ):
+            raise EventValidationError("falsification v2 result authority mismatch")
     if event_type == "TrialTerminated":
         status = payload["status"]
         decision = payload["decision"]

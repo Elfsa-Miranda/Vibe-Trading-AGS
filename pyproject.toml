@@ -184,6 +184,7 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-socket>=0.7.0",
     "hypothesis>=6.0",
+    "scipy-stubs>=1.16.3.3,<1.17",
     "types-psutil>=7.0",
 ]
 test = [
@@ -191,6 +192,7 @@ test = [
     "pytest-cov>=4.0",
     "pytest-socket>=0.7.0",
     "hypothesis>=6.0",
+    "scipy-stubs>=1.16.3.3,<1.17",
     "types-psutil>=7.0",
 ]
 security = [
