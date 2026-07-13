@@ -17,6 +17,7 @@ from src.alpha_foundry.activation.pair_projector_v2 import (
     ActivationArmEventRefsV2,
     ActivationEvidenceProjector,
     ActivationPairEvidenceV2,
+    RecordedActivationPairEvidenceV2,
 )
 from src.alpha_foundry.activation.protocol_v2 import (
     ActivationApplicabilityMatrixV1,
@@ -29,8 +30,8 @@ from src.alpha_foundry.activation.statistical_v2 import (
     PreregisteredConfirmatoryActivationPlanV2,
 )
 from src.alpha_quality.flags import ResolvedAGSFlags
-from src.research_ledger.events import EventTransitionError, ResearchEventStore
-from src.research_ledger.hash_utils import canonical_json_hash
+from src.research_ledger.events import EventDraft, EventTransitionError, ResearchEventStore
+from src.research_ledger.hash_utils import canonical_json_hash, utc_now_iso
 
 
 def _hash(name: str) -> str:
@@ -72,7 +73,7 @@ def _registered_protocol(
     return store, recorded
 
 
-def _pair(
+def _raw_pair(
     name: str,
     difference: float,
     *,
@@ -134,7 +135,15 @@ def _pair(
     )
 
 
-def _audit(arm: str, *, candidates: tuple[str, ...], effective: tuple[str, ...]):
+def _audit(
+    arm: str,
+    *,
+    candidates: tuple[str, ...],
+    effective: tuple[str, ...],
+    pair_id: str = "pair-source",
+    run_group_id: str = "group-source",
+    source_failure_codes: tuple[str, ...] = (),
+):
     counts = (
         ("success", len(candidates)),
         ("reject", 0),
@@ -148,8 +157,8 @@ def _audit(arm: str, *, candidates: tuple[str, ...], effective: tuple[str, ...])
     content = {
         "schema_version": "formal_activation_run_source.v3",
         "plan_hash": _hash("plan"),
-        "pair_id": "pair-source",
-        "run_group_id": "group-source",
+        "pair_id": pair_id,
+        "run_group_id": run_group_id,
         "arm": arm,
         "execution_run_id": f"run-{arm}",
         "source_watermark_event_hash": _hash(f"watermark-{arm}"),
@@ -161,14 +170,14 @@ def _audit(arm: str, *, candidates: tuple[str, ...], effective: tuple[str, ...])
         "derived_terminal_status_counts": [list(item) for item in counts],
         "derived_candidate_ids": list(candidates),
         "derived_effective_candidate_ids": list(effective),
-        "source_failure_codes": [],
-        "source_complete": True,
+        "source_failure_codes": list(source_failure_codes),
+        "source_complete": not source_failure_codes,
     }
     return FormalActivationRunSourceV3(
         schema_version="formal_activation_run_source.v3",
         plan_hash=content["plan_hash"],
-        pair_id="pair-source",
-        run_group_id="group-source",
+        pair_id=pair_id,
+        run_group_id=run_group_id,
         arm=arm,  # type: ignore[arg-type]
         execution_run_id=f"run-{arm}",
         source_watermark_event_hash=content["source_watermark_event_hash"],
@@ -180,8 +189,8 @@ def _audit(arm: str, *, candidates: tuple[str, ...], effective: tuple[str, ...])
         derived_terminal_status_counts=counts,
         derived_candidate_ids=candidates,
         derived_effective_candidate_ids=effective,
-        source_failure_codes=(),
-        source_complete=True,
+        source_failure_codes=source_failure_codes,
+        source_complete=not source_failure_codes,
         audit_hash=canonical_json_hash(content),
     )
 
@@ -203,6 +212,79 @@ def _store(tmp_path: Path) -> ResearchEventStore:
     )
 
 
+def _recorded_pair(
+    store: ResearchEventStore,
+    name: str,
+    difference: float,
+    *,
+    source_failure: str | None = None,
+) -> RecordedActivationPairEvidenceV2:
+    budget = 100
+    delta = round(difference * budget)
+    flat_yield = max(0, -delta) if delta else 20
+    topology_yield = flat_yield + delta
+    if not 0 <= topology_yield <= budget:
+        raise ValueError("recorded pair fixture yield is outside the budget")
+    pair_id = f"pair-{name}"
+    run_group_id = f"group-{name}"
+    flat_candidates = tuple(f"flat-{name}-{index}" for index in range(budget))
+    topology_candidates = tuple(
+        f"topology-{name}-{index}" for index in range(budget)
+    )
+    codes = () if source_failure is None else (source_failure,)
+    audits = {
+        "flat": _audit(
+            "flat",
+            candidates=flat_candidates,
+            effective=flat_candidates[:flat_yield],
+            pair_id=pair_id,
+            run_group_id=run_group_id,
+            source_failure_codes=codes,
+        ),
+        "topology": _audit(
+            "topology",
+            candidates=topology_candidates,
+            effective=topology_candidates[:topology_yield],
+            pair_id=pair_id,
+            run_group_id=run_group_id,
+            source_failure_codes=codes,
+        ),
+    }
+    projector = ActivationEvidenceProjector(store)
+    projector.run_source.audit = lambda **kwargs: audits[str(kwargs["arm"])]  # type: ignore[method-assign]
+    source = store.append_event(
+        EventDraft(
+            event_type="TrialStarted",
+            entity_id=f"projection-source-{name}",
+            run_id=run_group_id,
+            payload_schema_version="trial_started.v1",
+            payload={
+                "trial_id": f"projection-source-{name}",
+                "candidate_id": f"projection-candidate-{name}",
+                "data_scope": "train_valid",
+                "objective": "pair_projection_test_source",
+                "started_at": utc_now_iso(),
+            },
+        )
+    )
+
+    def refs() -> ActivationArmEventRefsV2:
+        return ActivationArmEventRefsV2(
+            retrieval_authority_event_hashes=(source.event_hash,),
+            terminal_event_hashes=(source.event_hash,),
+            evaluation_event_hashes=(source.event_hash,),
+            quality_decision_event_hashes=(source.event_hash,),
+            terminal_dossier_event_hashes=(source.event_hash,),
+        )
+
+    return projector.project_pair(
+        plan_hash=_hash("plan"),
+        pair_id=pair_id,
+        run_group_id=run_group_id,
+        candidate_budget=budget,
+        flat_refs=refs(),
+        topology_refs=refs(),
+    )
 def test_activation_projector_delegates_to_run_source_v3(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -221,12 +303,27 @@ def test_activation_projector_delegates_to_run_source_v3(
         return audits[arm]
 
     monkeypatch.setattr(projector.run_source, "audit", audit)
+    source = projector.store.append_event(
+        EventDraft(
+            event_type="TrialStarted",
+            entity_id="projector-delegation-source",
+            run_id="group-source",
+            payload_schema_version="trial_started.v1",
+            payload={
+                "trial_id": "projector-delegation-source",
+                "candidate_id": "projector-delegation-candidate",
+                "data_scope": "train_valid",
+                "objective": "pair_projection_test_source",
+                "started_at": utc_now_iso(),
+            },
+        )
+    )
     refs = ActivationArmEventRefsV2(
-        retrieval_authority_event_hashes=(_hash("r"),),
-        terminal_event_hashes=(_hash("t"),),
-        evaluation_event_hashes=(_hash("e"),),
-        quality_decision_event_hashes=(_hash("q"),),
-        terminal_dossier_event_hashes=(_hash("d"),),
+        retrieval_authority_event_hashes=(source.event_hash,),
+        terminal_event_hashes=(source.event_hash,),
+        evaluation_event_hashes=(source.event_hash,),
+        quality_decision_event_hashes=(source.event_hash,),
+        terminal_dossier_event_hashes=(source.event_hash,),
     )
 
     projected = projector.project_pair(
@@ -239,9 +336,11 @@ def test_activation_projector_delegates_to_run_source_v3(
     )
 
     assert calls == ["flat", "topology"]
-    assert projected.flat_qualified_yield == 1
-    assert projected.topology_qualified_yield == 2
-    assert projected.normalized_yield_difference == 0.5
+    assert projected.evidence.flat_qualified_yield == 1
+    assert projected.evidence.topology_qualified_yield == 2
+    assert projected.evidence.normalized_yield_difference == 0.5
+    assert projected.verify_in(projector.store) == projected.evidence
+    assert projected.event.event_type == "ActivationPairEvidenceV2Recorded"
 
 
 def test_projector_rebuilds_all_metrics_from_exact_events() -> None:
@@ -259,7 +358,7 @@ def test_projector_rebuilds_metrics_from_exact_events() -> None:
 
 
 def test_projector_rejects_empty_or_noncanonical_event_refs() -> None:
-    with pytest.raises(ValueError, match="non-zero canonical hashes"):
+    with pytest.raises(ValueError, match="cannot be empty"):
         ActivationArmEventRefsV2(
             retrieval_authority_event_hashes=(),
             terminal_event_hashes=(_hash("terminal"),),
@@ -298,12 +397,18 @@ def test_pilot_observed_uplift_cannot_change_sesoi(tmp_path: Path) -> None:
     analyzer = ActivationStatisticalAnalyzerV2(store)
     low = analyzer.summarize_pilot(
         registered_protocol=registered,
-        pairs=(_pair("low-1", 0.0), _pair("low-2", 0.01)),
+        pairs=(
+            _recorded_pair(store, "low-1", 0.0),
+            _recorded_pair(store, "low-2", 0.01),
+        ),
         preregistered_variance_floor=0.01,
     )
     high = analyzer.summarize_pilot(
         registered_protocol=registered,
-        pairs=(_pair("high-1", 0.5), _pair("high-2", 0.6)),
+        pairs=(
+            _recorded_pair(store, "high-1", 0.5),
+            _recorded_pair(store, "high-2", 0.6),
+        ),
         preregistered_variance_floor=0.01,
     )
 
@@ -324,7 +429,10 @@ def test_power_uses_fixed_sesoi_and_conservative_variance_rule(
     protocol = registered.protocol
     pilot = analyzer.summarize_pilot(
         registered_protocol=registered,
-        pairs=(_pair("v1", 0.01), _pair("v2", 0.02)),
+        pairs=(
+            _recorded_pair(store, "v1", 0.01),
+            _recorded_pair(store, "v2", 0.02),
+        ),
         preregistered_variance_floor=0.04,
     )
     plan = analyzer.mint_confirmatory_plan(
@@ -377,7 +485,10 @@ def test_confirmatory_not_feasible_does_not_lower_thresholds(
     protocol = registered.protocol
     pilot = analyzer.summarize_pilot(
         registered_protocol=registered,
-        pairs=(_pair("wide-1", -0.4), _pair("wide-2", 0.4)),
+        pairs=(
+            _recorded_pair(store, "wide-1", -0.4),
+            _recorded_pair(store, "wide-2", 0.4),
+        ),
         preregistered_variance_floor=1.0,
     )
     plan = analyzer.mint_confirmatory_plan(
@@ -396,19 +507,15 @@ def _analysis(
     *,
     required_pairs: int,
     source_failure: str | None = None,
-    safety_pass: bool | None = True,
-    resource_pass: bool | None = True,
 ):
     store, registered = _registered_protocol(tmp_path)
     protocol = registered.protocol
     pairs = tuple(
-        _pair(
+        _recorded_pair(
+            store,
             str(index),
             value,
-            source_complete=source_failure is None,
-            failure_codes=(() if source_failure is None else (source_failure,)),
-            safety_pass=safety_pass,
-            resource_pass=resource_pass,
+            source_failure=source_failure,
         )
         for index, value in enumerate(values)
     )
@@ -426,7 +533,7 @@ def test_analyzer_requires_registered_protocol(tmp_path: Path) -> None:
     with pytest.raises(TypeError, match="registry-minted frozen protocol"):
         ActivationStatisticalAnalyzerV2(store).analyze(
             registered_protocol=protocol,  # type: ignore[arg-type]
-            pairs=(_pair("one", 0.1), _pair("two", 0.1)),
+            pairs=(_raw_pair("one", 0.1), _raw_pair("two", 0.1)),
             required_pairs=2,
         )
 
@@ -442,12 +549,14 @@ def test_analyzer_rejects_protocol_registered_in_another_store(
     ):
         ActivationStatisticalAnalyzerV2(other_store).analyze(
             registered_protocol=registered,
-            pairs=(_pair("one", 0.1), _pair("two", 0.1)),
+            pairs=(_raw_pair("one", 0.1), _raw_pair("two", 0.1)),
             required_pairs=2,
         )
 
 
-def test_approval_requires_lcb_above_sesoi(tmp_path: Path) -> None:
+def test_lcb_above_sesoi_cannot_approve_without_resource_and_safety_sources(
+    tmp_path: Path,
+) -> None:
     protocol, analysis = _analysis(
         tmp_path, (0.2, 0.2, 0.2, 0.2), required_pairs=4
     )
@@ -456,7 +565,9 @@ def test_approval_requires_lcb_above_sesoi(tmp_path: Path) -> None:
     )
 
     assert analysis.confidence_lower > protocol.sesoi
-    assert decision.verdict == "approved"
+    assert analysis.safety_noninferiority_pass is None
+    assert analysis.resource_noninferiority_pass is None
+    assert decision.verdict == "inconclusive"
 
 
 def test_p_value_alone_cannot_approve(tmp_path: Path) -> None:
@@ -472,17 +583,29 @@ def test_p_value_alone_cannot_approve(tmp_path: Path) -> None:
     assert decision.verdict == "inconclusive"
 
 
-def test_safety_failure_blocks_approval(tmp_path: Path) -> None:
-    protocol, analysis = _analysis(
-        tmp_path,
-        (0.2, 0.2, 0.2, 0.2),
-        required_pairs=4,
-        safety_pass=False,
-    )
+def test_analyzer_rejects_caller_constructed_pair_safety_truth(tmp_path: Path) -> None:
+    store, registered = _registered_protocol(tmp_path)
+    with pytest.raises(TypeError, match="recorded exact projected pair evidence"):
+        ActivationStatisticalAnalyzerV2(store).analyze(
+            registered_protocol=registered,
+            pairs=(_raw_pair("caller", 0.2, safety_pass=False),),  # type: ignore[arg-type]
+            required_pairs=1,
+        )
 
-    assert ActivationGovernanceService().decide(
-        protocol=protocol, analysis=analysis
-    ).verdict == "rejected"
+
+def test_analyzer_rejects_pair_projection_recorded_in_another_store(
+    tmp_path: Path,
+) -> None:
+    source_store, _ = _registered_protocol(tmp_path / "source-pair")
+    pair = _recorded_pair(source_store, "foreign", 0.1)
+    analyzer_store, registered = _registered_protocol(tmp_path / "analyzer")
+
+    with pytest.raises(EventTransitionError, match="not in the analyzer store"):
+        ActivationStatisticalAnalyzerV2(analyzer_store).analyze(
+            registered_protocol=registered,
+            pairs=(pair,),
+            required_pairs=1,
+        )
 
 
 def test_underpowered_valid_experiment_is_inconclusive(tmp_path: Path) -> None:

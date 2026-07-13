@@ -3,18 +3,40 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import math
-from typing import Any
+from typing import Any, Mapping
 
 from src.alpha_foundry.activation.run_source_v3 import (
     FormalActivationRunSourceAuditorV3,
     FormalActivationRunSourceV3,
 )
-from src.research_ledger.events import ResearchEventStore
+from src.research_ledger.events import (
+    EventDraft,
+    EventTransitionError,
+    ResearchEventEnvelope,
+    ResearchEventStore,
+)
+from src.research_ledger.events.artifacts import (
+    AtomicContentAddressedArtifactWriter,
+    validate_artifact_references,
+)
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
 _ZERO_HASH = "sha256:" + "0" * 64
+_PAIR_PROJECTION_AUTHORITY = object()
+_PAIR_PROJECTION_SCHEMA = "activation_pair_projection_artifact.v2"
+_PAIR_PROJECTION_MEDIA_TYPE = "application/vnd.vibe.activation-pair-projection-v2+json"
+_PAIR_PROJECTION_KEYS = frozenset(
+    {
+        "schema_version",
+        "evidence",
+        "flat_refs",
+        "topology_refs",
+        "projection_hash",
+    }
+)
 
 
 def _is_hash(value: object) -> bool:
@@ -36,11 +58,34 @@ class ActivationArmEventRefsV2:
     terminal_dossier_event_hashes: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        for values in self.__dict__.values():
+        for name, values in self.__dict__.items():
             if values != tuple(sorted(set(values))):
                 raise ValueError("arm event refs must be sorted and unique")
-            if not values or any(not _is_hash(value) for value in values):
+            if name in {
+                "retrieval_authority_event_hashes",
+                "terminal_event_hashes",
+            } and not values:
+                raise ValueError("arm retrieval and terminal refs cannot be empty")
+            if any(not _is_hash(value) for value in values):
                 raise ValueError("arm event refs require non-zero canonical hashes")
+
+    def to_dict(self) -> dict[str, list[str]]:
+        return {name: list(values) for name, values in self.__dict__.items()}
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "ActivationArmEventRefsV2":
+        expected = set(cls.__dataclass_fields__)
+        if set(value) != expected or any(not isinstance(value[name], list) for name in expected):
+            raise ValueError("arm event refs artifact has an invalid closed schema")
+        return cls(
+            **{
+                name: tuple(str(item) for item in value[name])
+                for name in expected
+            }
+        )
+
+    def all_hashes(self) -> tuple[str, ...]:
+        return tuple(sorted({value for values in self.__dict__.values() for value in values}))
 
 
 @dataclass(frozen=True)
@@ -100,6 +145,141 @@ class ActivationPairEvidenceV2:
     def to_dict(self) -> dict[str, Any]:
         return {**self._content_dict(), "evidence_hash": self.evidence_hash}
 
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "ActivationPairEvidenceV2":
+        expected = set(cls.__dataclass_fields__)
+        if set(value) != expected or not isinstance(value["source_failure_codes"], list):
+            raise ValueError("pair evidence artifact has an invalid closed schema")
+        return cls(
+            **{
+                **dict(value),
+                "source_failure_codes": tuple(
+                    str(item) for item in value["source_failure_codes"]
+                ),
+            }
+        )
+
+
+@dataclass(frozen=True, init=False)
+class RecordedActivationPairEvidenceV2:
+    """Projector-minted evidence bound to one protected event and artifact."""
+
+    evidence: ActivationPairEvidenceV2
+    event: ResearchEventEnvelope
+    projection_hash: str
+    flat_refs: ActivationArmEventRefsV2
+    topology_refs: ActivationArmEventRefsV2
+    artifact_ref: Mapping[str, str]
+    _authority: object
+
+    def __init__(self, *, _authority: object, **values: Any) -> None:
+        if _authority is not _PAIR_PROJECTION_AUTHORITY:
+            raise TypeError("recorded pair evidence must be projector-minted")
+        for name, value in values.items():
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, "_authority", _authority)
+
+    def verify_in(self, store: ResearchEventStore) -> ActivationPairEvidenceV2:
+        if not isinstance(store, ResearchEventStore) or not store.verify_chain():
+            raise EventTransitionError("pair evidence requires one valid event store")
+        matches = [
+            event
+            for event in store.query_events(
+                event_type="ActivationPairEvidenceV2Recorded"
+            )
+            if event.event_hash == self.event.event_hash
+        ]
+        if len(matches) != 1 or matches[0] != self.event:
+            raise EventTransitionError("pair evidence event is not in the analyzer store")
+        event = matches[0]
+        expected_sources = tuple(
+            sorted(set(self.flat_refs.all_hashes() + self.topology_refs.all_hashes()))
+        )
+        ordered_events = store.query_events()
+        event_order = {
+            candidate.event_hash: index for index, candidate in enumerate(ordered_events)
+        }
+        projection_index = event_order[event.event_hash]
+        if any(
+            source_hash not in event_order
+            or event_order[source_hash] >= projection_index
+            for source_hash in expected_sources
+        ):
+            raise EventTransitionError("pair evidence source event prefix is incomplete")
+        expected_payload = {
+            "pair_evidence_id": event.entity_id,
+            "pair_evidence_hash": self.evidence.evidence_hash,
+            "projection_hash": self.projection_hash,
+            "plan_hash": self.evidence.plan_hash,
+            "pair_id": self.evidence.pair_id,
+            "run_group_id": self.evidence.run_group_id,
+            "flat_source_audit_hash": self.evidence.flat_source_audit_hash,
+            "topology_source_audit_hash": self.evidence.topology_source_audit_hash,
+            "source_event_hashes": list(expected_sources),
+            "source_failure_codes": list(self.evidence.source_failure_codes),
+            "source_complete": self.evidence.source_complete,
+            "artifact_refs": [dict(self.artifact_ref)],
+        }
+        if (
+            event.payload_hash != canonical_json_hash(expected_payload)
+            or event.run_id != self.evidence.run_group_id
+        ):
+            raise EventTransitionError("pair evidence event binding differs")
+        raw = self._read_artifact(store)
+        expected_artifact = {
+            "schema_version": _PAIR_PROJECTION_SCHEMA,
+            "evidence": self.evidence.to_dict(),
+            "flat_refs": self.flat_refs.to_dict(),
+            "topology_refs": self.topology_refs.to_dict(),
+            "projection_hash": self.projection_hash,
+        }
+        if raw != expected_artifact:
+            raise EventTransitionError("pair evidence artifact binding differs")
+        rebuilt = ActivationPairEvidenceV2.from_mapping(raw["evidence"])
+        if rebuilt != self.evidence:
+            raise EventTransitionError("pair evidence artifact cannot rebuild evidence")
+        return rebuilt
+
+    def _read_artifact(self, store: ResearchEventStore) -> Mapping[str, Any]:
+        normalized = validate_artifact_references(
+            store.artifact_root, [dict(self.artifact_ref)]
+        )[0]
+        digest = self.projection_hash.removeprefix("sha256:")
+        expected_path = f"activation-pair-projection-v2/{digest[:2]}/{digest}.json"
+        if (
+            normalized["relative_path"] != expected_path
+            or normalized["media_type"] != _PAIR_PROJECTION_MEDIA_TYPE
+        ):
+            raise EventTransitionError("pair evidence artifact reference is noncanonical")
+
+        def reject_constant(value: str) -> None:
+            raise ValueError(f"non-finite pair evidence JSON: {value}")
+
+        def reject_duplicates(items: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in items:
+                if key in result:
+                    raise ValueError("duplicate pair evidence artifact key")
+                result[key] = value
+            return result
+
+        target = store.artifact_root.joinpath(*expected_path.split("/"))
+        raw = json.loads(
+            target.read_text(encoding="utf-8"),
+            parse_constant=reject_constant,
+            object_pairs_hook=reject_duplicates,
+        )
+        if not isinstance(raw, Mapping) or set(raw) != _PAIR_PROJECTION_KEYS:
+            raise EventTransitionError("pair evidence artifact schema differs")
+        if (
+            raw.get("schema_version") != _PAIR_PROJECTION_SCHEMA
+            or raw.get("projection_hash") != self.projection_hash
+            or canonical_json_hash(raw, exclude_keys=("projection_hash",))
+            != self.projection_hash
+        ):
+            raise EventTransitionError("pair evidence artifact identity differs")
+        return raw
+
 
 class ActivationEvidenceProjector:
     """Delegate arm authority to Run Source v3, then derive pair metrics."""
@@ -109,6 +289,9 @@ class ActivationEvidenceProjector:
             raise TypeError("Activation projector requires ResearchEventStore")
         self.store = store
         self.run_source = FormalActivationRunSourceAuditorV3(store)
+        self.writer = AtomicContentAddressedArtifactWriter(
+            store.artifact_root, max_bytes=2 * 1024 * 1024
+        )
 
     def project_pair(
         self,
@@ -119,7 +302,7 @@ class ActivationEvidenceProjector:
         candidate_budget: int,
         flat_refs: ActivationArmEventRefsV2,
         topology_refs: ActivationArmEventRefsV2,
-    ) -> ActivationPairEvidenceV2:
+    ) -> RecordedActivationPairEvidenceV2:
         if not isinstance(flat_refs, ActivationArmEventRefsV2) or not isinstance(
             topology_refs, ActivationArmEventRefsV2
         ):
@@ -135,10 +318,66 @@ class ActivationEvidenceProjector:
             candidate_budget,
             topology_refs,
         )
-        return self._derive(
+        evidence = self._derive(
             flat=flat,
             topology=topology,
             candidate_budget=candidate_budget,
+        )
+        projection_content = {
+            "schema_version": _PAIR_PROJECTION_SCHEMA,
+            "evidence": evidence.to_dict(),
+            "flat_refs": flat_refs.to_dict(),
+            "topology_refs": topology_refs.to_dict(),
+        }
+        projection_hash = canonical_json_hash(projection_content)
+        artifact_payload = {**projection_content, "projection_hash": projection_hash}
+        artifact = self.writer.write_json(
+            namespace="activation-pair-projection-v2",
+            payload=artifact_payload,
+            schema_version=_PAIR_PROJECTION_SCHEMA,
+            semantic_hash_field="projection_hash",
+            closed_keys=_PAIR_PROJECTION_KEYS,
+            media_type=_PAIR_PROJECTION_MEDIA_TYPE,
+        )
+        identifier = "activation-pair-evidence-v2-" + projection_hash[-24:]
+        event = self.store._append_producer_event(
+            EventDraft(
+                event_type="ActivationPairEvidenceV2Recorded",
+                entity_id=identifier,
+                run_id=run_group_id,
+                payload_schema_version="activation_pair_evidence_recorded.v2",
+                idempotency_key="activation-pair-evidence-v2:" + projection_hash,
+                payload={
+                    "pair_evidence_id": identifier,
+                    "pair_evidence_hash": evidence.evidence_hash,
+                    "projection_hash": projection_hash,
+                    "plan_hash": evidence.plan_hash,
+                    "pair_id": evidence.pair_id,
+                    "run_group_id": evidence.run_group_id,
+                    "flat_source_audit_hash": evidence.flat_source_audit_hash,
+                    "topology_source_audit_hash": evidence.topology_source_audit_hash,
+                    "source_event_hashes": list(
+                        sorted(
+                            set(
+                                flat_refs.all_hashes()
+                                + topology_refs.all_hashes()
+                            )
+                        )
+                    ),
+                    "source_failure_codes": list(evidence.source_failure_codes),
+                    "source_complete": evidence.source_complete,
+                    "artifact_refs": [artifact.reference()],
+                },
+            )
+        )
+        return RecordedActivationPairEvidenceV2(
+            _authority=_PAIR_PROJECTION_AUTHORITY,
+            evidence=evidence,
+            event=event,
+            projection_hash=projection_hash,
+            flat_refs=flat_refs,
+            topology_refs=topology_refs,
+            artifact_ref=artifact.reference(),
         )
 
     def _audit(
@@ -230,4 +469,5 @@ __all__ = [
     "ActivationArmEventRefsV2",
     "ActivationEvidenceProjector",
     "ActivationPairEvidenceV2",
+    "RecordedActivationPairEvidenceV2",
 ]

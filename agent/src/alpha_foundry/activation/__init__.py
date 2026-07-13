@@ -25,6 +25,7 @@ from src.alpha_foundry.activation.pair_projector_v2 import (
     ActivationArmEventRefsV2,
     ActivationEvidenceProjector,
     ActivationPairEvidenceV2,
+    RecordedActivationPairEvidenceV2,
 )
 from src.alpha_foundry.activation.statistical_v2 import (
     ActivationStatisticalAnalysisV2,
@@ -73,6 +74,7 @@ __all__ = [
     "ProductionActivationFactoryArmRequestV1", "ProductionActivationFactoryArmResultV1",
     "ActivationArmEventRefsV2", "ActivationEvidenceProjector",
     "ActivationPairCoordinatorV2", "ActivationPairEvidenceV2",
+    "RecordedActivationPairEvidenceV2",
     "ActivationReadinessServiceV4", "ActivationReadinessV4",
     "ActivationStatisticalAnalysisV2", "ActivationStatisticalAnalyzerV2",
     "ActivationGovernanceDecisionV2", "ActivationGovernanceService",

@@ -1630,6 +1630,23 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ActivationPairEvidenceV2Recorded": PayloadSpec(
+        "activation_pair_evidence_recorded.v2",
+        {
+            "pair_evidence_id": _string,
+            "pair_evidence_hash": _hash,
+            "projection_hash": _hash,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
+            "flat_source_audit_hash": _hash,
+            "topology_source_audit_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "source_failure_codes": _string_list,
+            "source_complete": _boolean,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "ActivationReadinessV4Recorded": PayloadSpec(
         "activation_readiness_recorded.v4",
         {
