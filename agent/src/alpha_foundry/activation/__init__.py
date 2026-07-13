@@ -8,6 +8,12 @@ from src.alpha_foundry.activation.capability import (
     ActiveRetrieverResolver,
     RetrieverModeResolution,
 )
+from src.alpha_foundry.activation.candidate_factory_v1 import (
+    ProductionActivationCandidateFactoryV1,
+    ProductionActivationCandidateRefsV1,
+    ProductionActivationFactoryArmRequestV1,
+    ProductionActivationFactoryArmResultV1,
+)
 from src.alpha_foundry.activation.model import (
     ActivationAnalysisPolicy,
     ActivationDesign,
@@ -45,6 +51,8 @@ __all__ = [
     "ActivationResourceEvidenceV1", "MeasuredActivationPairV1",
     "ActiveRetrieverCapability", "ActiveRetrieverResolver", "PairedEffect",
     "PairedActivationRunner", "RegisteredActivationPlan", "RetrieverActivationDecision",
+    "ProductionActivationCandidateFactoryV1", "ProductionActivationCandidateRefsV1",
+    "ProductionActivationFactoryArmRequestV1", "ProductionActivationFactoryArmResultV1",
     "RetrieverActivationPolicy", "RetrieverModeResolution", "TrainValidActivationScope",
     "holm_adjust",
     "activation_arm_execution_run_id",

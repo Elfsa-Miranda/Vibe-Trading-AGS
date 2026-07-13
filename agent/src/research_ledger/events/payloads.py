@@ -1577,6 +1577,24 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "bundle": _mapping,
         },
     ),
+    "ProductionActivationCandidateFactoryV1Bound": PayloadSpec(
+        "production_activation_candidate_factory_binding_recorded.v1",
+        {
+            "binding_id": _string,
+            "binding_hash": _hash,
+            "run_input_bundle_event_hash": _hash,
+            "run_input_bundle_hash": _hash,
+            "generator_manifest_hash": _hash,
+            "evaluator_factory_manifest_hash": _hash,
+            "dag_policy_hash": _hash,
+            "identity_service": _string,
+            "quality_decision_service": _string,
+            "same_factory_both_arms": _boolean,
+            "only_arm_difference": _string,
+            "returns_refs_only": _boolean,
+            "blocker_codes": _string_list,
+        },
+    ),
     "ActivationPairExecutionScheduled": PayloadSpec(
         "activation_pair_execution_scheduled.v1",
         {

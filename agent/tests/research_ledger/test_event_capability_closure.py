@@ -59,6 +59,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "ProviderAuthorityDecisionV1Recorded",
     "ProductionGoldenSliceReadinessV1Recorded",
     "ProductionActivationRunInputBundleV1Registered",
+    "ProductionActivationCandidateFactoryV1Bound",
     "ActivationPairExecutionScheduled",
     "ActivationPairExecutionClaimed",
     "ActivationPlanRegistered",
