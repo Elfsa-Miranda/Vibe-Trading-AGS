@@ -1,0 +1,68 @@
+{
+  "schema_version": "phase_execution_record.v1",
+  "phase": "Phase 10A - producer-bound final-test authority v2",
+  "base_commit": "c87b042c",
+  "branch": "codex/ags-v32-final-authority-v2",
+  "pre_phase_dirty_state": "clean",
+  "remote_operations": [],
+  "dependency_installs": [],
+  "authority_model": {
+    "eligibility": "derived from real factor definition, pre-final quality decision, frozen contract, and registered raw provider",
+    "capability": "family-scoped one-shot token with exact frozen scope",
+    "outcome_computation": "runner recomputes signals, returns, costs, and dependence-aware confidence bounds from bounded raw partition references",
+    "terminality": "exactly one immutable artifact or typed failure after outcome access",
+    "decision_input": "immutable final evidence view; no raw panel or caller-authored metric mapping"
+  },
+  "isolation_controls": [
+    "final evaluation key excludes caller timestamps and mutable candidate hashes",
+    "changed scope cannot reopen a candidate family",
+    "physical, selection, and variant contamination are append-only taints",
+    "late taint is reflected by replayed selection assessment",
+    "discovery projections reject final-test authority events",
+    "raw artifact hashes are checked on append and chain verification"
+  ],
+  "validation": [
+    {
+      "command": "python -m pytest -q agent/tests/alpha_quality/test_final_authority_v2.py agent/tests/alpha_quality/test_final_test_runner.py agent/tests/research_ledger agent/tests/contracts agent/tests/security agent/tests/acceptance agent/tests/performance/test_ags_acceptance_budget.py agent/tests/alpha_quality/test_feature_off_identity.py",
+      "result": "258 passed, 21 warnings in 145.64s"
+    },
+    {
+      "command": "python -m pytest -q agent/tests/alpha_quality/test_final_authority_v2.py",
+      "result": "covered by the combined acceptance run"
+    },
+    {
+      "command": "python -m pytest -q agent/tests/alpha_quality/test_final_authority_v2.py agent/tests/research_ledger/test_event_capability_closure.py agent/tests/research_ledger/test_research_events.py",
+      "result": "124 passed in 123.52s after formatting"
+    },
+    {
+      "command": "python -m ruff format --check and python -m ruff check for Phase 10A files",
+      "result": "passed"
+    },
+    {
+      "command": "python -m mypy --strict --follow-imports=skip agent/src/alpha_quality/final_test/authority_v2.py",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check and execution-record JSON validation",
+      "result": "passed"
+    }
+  ],
+  "red_team": [
+    "same family cannot be reopened by changing freeze time or candidate hash",
+    "capability reissue and changed-scope access are rejected",
+    "caller-supplied precomputed final series is absent from the provider contract",
+    "generic protected-event append is rejected",
+    "raw partition tampering breaks verification",
+    "interrupted access reconciles to a typed failure",
+    "late taint prevents promotion on replay",
+    "confidence lower bounds, rather than point estimates, govern scientific pass"
+  ],
+  "legacy_policy": "legacy final-test v1 remains readable for compatibility but cannot exceed research_only under v2 authority",
+  "known_unrelated_baseline_failure": "test_tracked_release_manifest_matches_deterministic_rebuild reads user-owned problem.md and was reproduced before Phase 1",
+  "outcome": "ACCEPTED",
+  "limitations": [
+    "a pre-final research_only decision remains an immutable promotion ceiling even when final scientific evidence passes",
+    "registered raw providers are local bounded artifact descriptors; no network or live-market provider is introduced",
+    "the authority has no live-trading, broker, order, or production-readiness meaning"
+  ]
+}

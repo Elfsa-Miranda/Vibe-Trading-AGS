@@ -221,8 +221,11 @@ def _comparison_pool_members(value: Any, path: str) -> None:
     if not isinstance(value, (list, tuple)):
         raise EventValidationError(f"{path} must be a list")
     expected = {
-        "factor_spec_id", "factor_definition_event_hash",
-        "factor_output_event_hash", "execution_event_hash", "decision_event_hash",
+        "factor_spec_id",
+        "factor_definition_event_hash",
+        "factor_output_event_hash",
+        "execution_event_hash",
+        "decision_event_hash",
     }
     identities: list[str] = []
     for index, member in enumerate(value):
@@ -231,9 +234,7 @@ def _comparison_pool_members(value: Any, path: str) -> None:
             raise EventValidationError(f"{item_path} schema differs")
         _string(member["factor_spec_id"], f"{item_path}.factor_spec_id")
         _hash(member["factor_definition_event_hash"], f"{item_path}.definition")
-        for name in (
-            "factor_output_event_hash", "execution_event_hash", "decision_event_hash"
-        ):
+        for name in ("factor_output_event_hash", "execution_event_hash", "decision_event_hash"):
             _nullable_hash(member[name], f"{item_path}.{name}")
         identities.append(str(member["factor_spec_id"]))
     if identities != sorted(set(identities)):
@@ -244,10 +245,21 @@ def _claim_assessment_list(value: Any, path: str) -> None:
     if not isinstance(value, (list, tuple)) or not value:
         raise EventValidationError(f"{path} must be a non-empty list")
     expected = {
-        "schema_version", "claim_type", "factor_spec_id", "availability",
-        "verdict", "evidence_grade", "scope", "estimate", "uncertainty",
-        "bias_codes", "selection_codes", "blocker_codes",
-        "root_cause_event_hashes", "promotion_effect", "source_event_hashes",
+        "schema_version",
+        "claim_type",
+        "factor_spec_id",
+        "availability",
+        "verdict",
+        "evidence_grade",
+        "scope",
+        "estimate",
+        "uncertainty",
+        "bias_codes",
+        "selection_codes",
+        "blocker_codes",
+        "root_cause_event_hashes",
+        "promotion_effect",
+        "source_event_hashes",
         "claim_hash",
     }
     claim_types: list[str] = []
@@ -273,14 +285,10 @@ def _claim_assessment_list(value: Any, path: str) -> None:
         for name in ("bias_codes", "selection_codes", "blocker_codes"):
             _string_list(item[name], f"{item_path}.{name}")
         _hash_list(item["root_cause_event_hashes"], f"{item_path}.root_causes", allow_empty=True)
-        _enum("none", "reject", "cap_research_only")(
-            item["promotion_effect"], f"{item_path}.promotion_effect"
-        )
+        _enum("none", "reject", "cap_research_only")(item["promotion_effect"], f"{item_path}.promotion_effect")
         _hash_list(item["source_event_hashes"], f"{item_path}.sources", allow_empty=True)
         _hash(item["claim_hash"], f"{item_path}.claim_hash")
-        if item["availability"] == "blocked" and (
-            not item["blocker_codes"] or not item["root_cause_event_hashes"]
-        ):
+        if item["availability"] == "blocked" and (not item["blocker_codes"] or not item["root_cause_event_hashes"]):
             raise EventValidationError(f"{item_path} blocked claim lacks root cause")
         claim_types.append(str(item["claim_type"]))
     if claim_types != sorted(set(claim_types)):
@@ -290,8 +298,14 @@ def _claim_assessment_list(value: Any, path: str) -> None:
 def _selection_terminal_counts(value: Any, path: str) -> None:
     _mapping(value, path)
     expected = {
-        "success", "reject", "skip", "invalid", "duplicate", "timeout",
-        "error", "infrastructure_failure",
+        "success",
+        "reject",
+        "skip",
+        "invalid",
+        "duplicate",
+        "timeout",
+        "error",
+        "infrastructure_failure",
     }
     if set(value) != expected:
         raise EventValidationError(f"{path} terminal inventory differs")
@@ -302,7 +316,13 @@ def _selection_terminal_counts(value: Any, path: str) -> None:
 def _activation_terminal_counts(value: Any, path: str) -> None:
     _mapping(value, path)
     expected = {
-        "success", "reject", "skip", "invalid", "duplicate", "timeout", "error",
+        "success",
+        "reject",
+        "skip",
+        "invalid",
+        "duplicate",
+        "timeout",
+        "error",
         "infrastructure_failure",
     }
     if set(value) != expected:
@@ -345,8 +365,14 @@ def _registry_root_v2_list(value: Any, path: str) -> None:
         raise EventValidationError(f"{path} must be a non-empty list")
     seen: set[str] = set()
     expected = {
-        "alpha_id", "status", "expression_id", "canonical_formula",
-        "legacy_formula_hash", "source_hash", "source_status", "source_reason",
+        "alpha_id",
+        "status",
+        "expression_id",
+        "canonical_formula",
+        "legacy_formula_hash",
+        "source_hash",
+        "source_status",
+        "source_reason",
     }
     for index, item in enumerate(value):
         item_path = f"{path}[{index}]"
@@ -364,17 +390,13 @@ def _registry_root_v2_list(value: Any, path: str) -> None:
         _nullable_hash(item["source_hash"], f"{item_path}.source_hash")
         _enum("available", "unavailable")(item["source_status"], f"{item_path}.source_status")
         _nullable_string(item["source_reason"], f"{item_path}.source_reason")
-        if item["status"] == "canonical_dsl" and (
-            item["expression_id"] is None or item["canonical_formula"] is None
-        ):
+        if item["status"] == "canonical_dsl" and (item["expression_id"] is None or item["canonical_formula"] is None):
             raise EventValidationError(f"{item_path} canonical root lacks identity evidence")
         if item["status"] == "legacy_opaque" and (
             item["expression_id"] is not None or item["canonical_formula"] is not None
         ):
             raise EventValidationError(f"{item_path} opaque root claims canonical identity")
-        if item["source_status"] == "available" and (
-            item["source_hash"] is None or item["source_reason"] is not None
-        ):
+        if item["source_status"] == "available" and (item["source_hash"] is None or item["source_reason"] is not None):
             raise EventValidationError(f"{item_path} available source evidence is malformed")
         if item["source_status"] == "unavailable" and (
             item["source_hash"] is not None or item["source_reason"] is None
@@ -410,12 +432,27 @@ def _validate_retriever_component_list(
     seen_factors: set[str] = set()
     seen_actions: set[str] = set()
     expected = {
-        "factor_spec_id", "action_id", "motif", "node_kind",
-        "output_panel_hash", "semantic_model_id", "semantic_model_version",
-        "semantic_embedding_hash", "cost_evidence_hash", "valdiv",
-        "semdiv", "syndiv", "topology_score", "base_score",
-        "memory_adjustment", "action_score", "confidence", "selected",
-        "selection_propensity", "warnings", "veto_reason",
+        "factor_spec_id",
+        "action_id",
+        "motif",
+        "node_kind",
+        "output_panel_hash",
+        "semantic_model_id",
+        "semantic_model_version",
+        "semantic_embedding_hash",
+        "cost_evidence_hash",
+        "valdiv",
+        "semdiv",
+        "syndiv",
+        "topology_score",
+        "base_score",
+        "memory_adjustment",
+        "action_score",
+        "confidence",
+        "selected",
+        "selection_propensity",
+        "warnings",
+        "veto_reason",
     }
     for index, item in enumerate(value):
         item_path = f"{path}[{index}]"
@@ -427,16 +464,17 @@ def _validate_retriever_component_list(
             _string(item[name], f"{item_path}.{name}")
         for name in ("output_panel_hash", "semantic_embedding_hash", "cost_evidence_hash"):
             _hash(item[name], f"{item_path}.{name}")
-        if (
-            (require_unique_factors and item["factor_spec_id"] in seen_factors)
-            or item["action_id"] in seen_actions
-        ):
+        if (require_unique_factors and item["factor_spec_id"] in seen_factors) or item["action_id"] in seen_actions:
             raise EventValidationError(f"{path} contains duplicate factor or action identity")
         seen_factors.add(item["factor_spec_id"])
         seen_actions.add(item["action_id"])
         _enum("leaf", "nonleaf")(item["node_kind"], f"{item_path}.node_kind")
         for name in (
-            "valdiv", "semdiv", "syndiv", "topology_score", "confidence",
+            "valdiv",
+            "semdiv",
+            "syndiv",
+            "topology_score",
+            "confidence",
             "selection_propensity",
         ):
             _probability(item[name], f"{item_path}.{name}")
@@ -473,16 +511,23 @@ def _retriever_policy_config(value: Any, path: str) -> None:
     if not isinstance(value, Mapping):
         raise EventValidationError(f"{path} must be an object")
     expected = {
-        "policy_version", "epsilon", "memory_weight", "residual_clip",
-        "veto_exploration_probability", "softmax_temperature",
+        "policy_version",
+        "epsilon",
+        "memory_weight",
+        "residual_clip",
+        "veto_exploration_probability",
+        "softmax_temperature",
         "maximum_candidate_budget",
     }
     if set(value) != expected:
         raise EventValidationError(f"{path} has unknown or missing policy fields")
     _enum("topology_shadow_policy.v2")(value["policy_version"], f"{path}.policy_version")
     for name in (
-        "epsilon", "memory_weight", "residual_clip",
-        "veto_exploration_probability", "softmax_temperature",
+        "epsilon",
+        "memory_weight",
+        "residual_clip",
+        "veto_exploration_probability",
+        "softmax_temperature",
     ):
         _finite_number(value[name], f"{path}.{name}")
     _positive_integer(value["maximum_candidate_budget"], f"{path}.maximum_candidate_budget")
@@ -713,9 +758,7 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "data_snapshot_hash": _hash,
             "retrieval_policy_hash": _hash,
             "template_registry_hash": _hash,
-            "template_id": _enum(
-                "identity", "rank_wrap", "decay_3", "delay_1", "zscore_wrap"
-            ),
+            "template_id": _enum("identity", "rank_wrap", "decay_3", "delay_1", "zscore_wrap"),
             "expected_formula": _string,
             "expected_formula_hash": _hash,
             "expected_candidate_id": _string,
@@ -765,12 +808,13 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "profile_template_hash": _hash,
             "profile_id": _string,
             "profile_version": _string,
-            "profile_authority_class": _enum(
-                "build_time_allowlisted", "custom_research_only"
-            ),
+            "profile_authority_class": _enum("build_time_allowlisted", "custom_research_only"),
             "maximum_promotion": _enum(
-                "reject", "research_only", "candidate_zoo",
-                "paper_candidate", "forward_track",
+                "reject",
+                "research_only",
+                "candidate_zoo",
+                "paper_candidate",
+                "forward_track",
             ),
             "evaluation_policy_event_hash": _hash,
             "evaluation_policy_bundle_hash": _hash,
@@ -969,9 +1013,7 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "observed_predictive_event_hash": _hash,
             "resolved_contract_hash": _hash,
             "availability": _enum("available", "partial", "unavailable"),
-            "implementability_claim": _enum(
-                "supported", "inconclusive", "unavailable"
-            ),
+            "implementability_claim": _enum("supported", "inconclusive", "unavailable"),
             "material_unpriced_exposure": _boolean,
             "terminal_flat": _boolean,
             "promotion_effect": _enum("none"),
@@ -1011,13 +1053,8 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "novelty_claim": _enum("rejected", "not_rejected"),
             "replication_claim": _enum("preserved"),
             "residual_status": _enum("available", "inconclusive", "unavailable"),
-            "portfolio_status": _enum(
-                "complementary", "nonpositive", "inconclusive", "unavailable"
-            ),
-            "mechanism_status": _enum(
-                "not_applicable", "falsified", "inconclusive",
-                "partial_support", "supported"
-            ),
+            "portfolio_status": _enum("complementary", "nonpositive", "inconclusive", "unavailable"),
+            "mechanism_status": _enum("not_applicable", "falsified", "inconclusive", "partial_support", "supported"),
             "applicability_event_hash": _hash,
             "factor_output_event_hash": _nullable_hash,
             "execution_event_hash": _nullable_hash,
@@ -1181,9 +1218,7 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
                 "claim_assessments",
                 "narrow_decision",
             ),
-            "status": _enum(
-                "completed", "blocked", "not_run", "unavailable", "invalid"
-            ),
+            "status": _enum("completed", "blocked", "not_run", "unavailable", "invalid"),
             "reason_codes": _reason_codes,
             "source_event_hashes": _nonempty_hash_list,
             "producer_schema_version": _string,
@@ -1337,9 +1372,7 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "data_snapshot_hash": _hash,
             "candidate_budget": _candidate_budget,
             "official_output_hash": _hash,
-            "propensity_semantics": _enum(
-                "sequential_action_softmax_draw_probability.v1"
-            ),
+            "propensity_semantics": _enum("sequential_action_softmax_draw_probability.v1"),
             "components": _retriever_action_component_list,
             "shadow_only": _boolean,
             "artifact_refs": _artifact_list,
@@ -1368,9 +1401,7 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "data_snapshot_hash": _hash,
             "candidate_budget": _candidate_budget,
             "official_output_hash": _hash,
-            "propensity_semantics": _enum(
-                "sequential_action_softmax_draw_probability.v1"
-            ),
+            "propensity_semantics": _enum("sequential_action_softmax_draw_probability.v1"),
             "components": _retriever_action_component_list,
             "shadow_only": _boolean,
             "artifact_refs": _artifact_list,
@@ -1379,24 +1410,31 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
     "RetrieverDecisionV7Recorded": PayloadSpec(
         "retriever_decision_recorded.v7",
         {
-            "decision_id": _string, "decision_hash": _hash,
-            "shadow_decision_hash": _hash, "input_bundle_hash": _hash,
-            "plan_hash": _hash, "pair_id": _string,
-            "schedule_event_hash": _hash, "schedule_hash": _hash,
-            "feature_source_event_hash": _hash, "feature_source_hash": _hash,
+            "decision_id": _string,
+            "decision_hash": _hash,
+            "shadow_decision_hash": _hash,
+            "input_bundle_hash": _hash,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "schedule_event_hash": _hash,
+            "schedule_hash": _hash,
+            "feature_source_event_hash": _hash,
+            "feature_source_hash": _hash,
             "selected_action_ids": _string_list,
             "selected_parent_factor_spec_ids": _string_list,
             "action_template_event_hashes": _ordered_unique_hash_list,
             "seed": _integer,
             "policy_version": _enum("topology_activation_policy.v3"),
-            "policy_hash": _hash, "policy_config": _mapping,
-            "eligible_event_watermark": _hash, "data_snapshot_hash": _hash,
-            "candidate_budget": _candidate_budget, "official_output_hash": _hash,
-            "propensity_semantics": _enum(
-                "sequential_action_softmax_draw_probability.v1"
-            ),
+            "policy_hash": _hash,
+            "policy_config": _mapping,
+            "eligible_event_watermark": _hash,
+            "data_snapshot_hash": _hash,
+            "candidate_budget": _candidate_budget,
+            "official_output_hash": _hash,
+            "propensity_semantics": _enum("sequential_action_softmax_draw_probability.v1"),
             "components": _retriever_action_component_list,
-            "shadow_only": _boolean, "artifact_refs": _artifact_list,
+            "shadow_only": _boolean,
+            "artifact_refs": _artifact_list,
         },
     ),
     "OfficialSearchControlRecorded": PayloadSpec(
@@ -1431,11 +1469,16 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
     "ActivationPairExecutionScheduled": PayloadSpec(
         "activation_pair_execution_scheduled.v1",
         {
-            "schedule_id": _string, "schedule_hash": _hash,
-            "plan_hash": _hash, "pair_id": _string,
-            "run_group_id": _string, "mechanism_family": _string,
-            "dag_region": _string, "seed": _integer,
-            "arm_order": _nonempty_string_list, "order_rule": _string,
+            "schedule_id": _string,
+            "schedule_hash": _hash,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
+            "mechanism_family": _string,
+            "dag_region": _string,
+            "seed": _integer,
+            "arm_order": _nonempty_string_list,
+            "order_rule": _string,
             "candidate_budget": _candidate_budget,
             "compute_budget": _positive_integer,
             "worker_limit": _positive_integer,
@@ -1446,9 +1489,12 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
     "ActivationPairExecutionClaimed": PayloadSpec(
         "activation_pair_execution_claimed.v1",
         {
-            "claim_id": _string, "schedule_event_hash": _hash,
-            "schedule_hash": _hash, "plan_hash": _hash,
-            "pair_id": _string, "run_group_id": _string,
+            "claim_id": _string,
+            "schedule_event_hash": _hash,
+            "schedule_hash": _hash,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
         },
     ),
     "ActivationPlanRegistered": PayloadSpec(
@@ -1516,10 +1562,14 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
     "ActivationResourceMeasuredV2": PayloadSpec(
         "activation_resource_measured.v2",
         {
-            "resource_id": _string, "plan_hash": _hash,
-            "pair_id": _string, "run_group_id": _string,
-            "arm": _enum("control", "treatment"), "manifest_hash": _hash,
-            "pair_schedule_event_hash": _hash, "pair_schedule_hash": _hash,
+            "resource_id": _string,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
+            "arm": _enum("control", "treatment"),
+            "manifest_hash": _hash,
+            "pair_schedule_event_hash": _hash,
+            "pair_schedule_hash": _hash,
             "execution_claim_event_hash": _hash,
             "arm_order_position": _nonnegative_integer,
             "timeout_limit_seconds": _positive_finite_number,
@@ -1530,7 +1580,8 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "peak_rss_method": _string,
             "source_failure_codes": _reason_codes,
             "source_complete": _boolean,
-            "evidence_hash": _hash, "artifact_refs": _artifact_list,
+            "evidence_hash": _hash,
+            "artifact_refs": _artifact_list,
         },
     ),
     "ActivationGenerationConsumptionRecorded": PayloadSpec(
@@ -1624,14 +1675,22 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
     "ActivationGenerationConsumptionV4Recorded": PayloadSpec(
         "activation_generation_consumption_recorded.v4",
         {
-            "generation_id": _string, "plan_hash": _hash, "pair_id": _string,
-            "run_group_id": _string, "mechanism_family": _string,
-            "dag_region": _string, "execution_run_id": _string,
-            "retriever_decision_event_hash": _hash, "retriever_decision_hash": _hash,
+            "generation_id": _string,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
+            "mechanism_family": _string,
+            "dag_region": _string,
+            "execution_run_id": _string,
+            "retriever_decision_event_hash": _hash,
+            "retriever_decision_hash": _hash,
             "retriever_input_bundle_hash": _hash,
-            "schedule_event_hash": _hash, "schedule_hash": _hash,
-            "feature_source_event_hash": _hash, "feature_source_hash": _hash,
-            "feature_snapshot_event_hash": _hash, "feature_snapshot_hash": _hash,
+            "schedule_event_hash": _hash,
+            "schedule_hash": _hash,
+            "feature_source_event_hash": _hash,
+            "feature_source_hash": _hash,
+            "feature_snapshot_event_hash": _hash,
+            "feature_snapshot_hash": _hash,
             "feature_policy_hash": _hash,
             "feature_scorecard_event_hashes": _ordered_unique_hash_list,
             "generator_policy_hash": _hash,
@@ -1641,9 +1700,12 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "consumed_action_ids": _nonempty_string_list,
             "consumed_parent_factor_spec_ids": _nonempty_string_list,
             "generated_candidate_count": _positive_integer,
-            "candidate_budget": _candidate_budget, "compute_budget": _positive_integer,
-            "source_failure_codes": _reason_codes, "source_complete": _boolean,
-            "evidence_hash": _hash, "artifact_refs": _artifact_list,
+            "candidate_budget": _candidate_budget,
+            "compute_budget": _positive_integer,
+            "source_failure_codes": _reason_codes,
+            "source_complete": _boolean,
+            "evidence_hash": _hash,
+            "artifact_refs": _artifact_list,
         },
     ),
     "ActivationResultRecorded": PayloadSpec(
@@ -1775,9 +1837,7 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "source_event_hashes": _nonempty_hash_list,
             "decisive_event_hashes": _unique_hash_list,
             "advisory_event_hashes": _unique_hash_list,
-            "ordinal_state": _enum(
-                "falsified", "inconclusive", "partial_support", "supported"
-            ),
+            "ordinal_state": _enum("falsified", "inconclusive", "partial_support", "supported"),
             "reason_codes": _reason_codes,
             "warning_codes": _reason_codes,
             "limitation_codes": _reason_codes,
@@ -1896,9 +1956,7 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
                 "within_registered_valid_end",
                 "contains_dates_after_registered_valid_end",
             ),
-            "pit_authority_status": _enum(
-                "unverified_legacy_caller_snapshot"
-            ),
+            "pit_authority_status": _enum("unverified_legacy_caller_snapshot"),
             "survivorship_status": _enum("unknown"),
             "decision_grade": _boolean,
             "caps": _nonempty_string_list,
@@ -2033,6 +2091,160 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "FinalRawProviderV2Registered": PayloadSpec(
+        "final_raw_provider_registered.v2",
+        {
+            "registration_id": _string,
+            "registration_hash": _hash,
+            "descriptor": _mapping,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FinalEvaluationEligibilityRecorded": PayloadSpec(
+        "final_evaluation_eligibility_recorded.v2",
+        {
+            "eligibility_id": _string,
+            "eligibility_hash": _hash,
+            "final_evaluation_key": _hash,
+            "research_family_id": _hash,
+            "factor_spec_id": _string,
+            "factor_definition_event_hash": _hash,
+            "prefinal_decision_event_hash": _hash,
+            "prefinal_decision_hash": _hash,
+            "prefinal_decision": _enum("research_only", "candidate_zoo"),
+            "contract_event_hash": _hash,
+            "contract_hash": _hash,
+            "provider_registration_event_hash": _hash,
+            "scope_config": _mapping,
+            "dependence_config": _mapping,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FinalTestCapabilityV2Issued": PayloadSpec(
+        "final_test_capability_issued.v2",
+        {
+            "capability_id": _string,
+            "capability_hash": _hash,
+            "eligibility_event_hash": _hash,
+            "eligibility_hash": _hash,
+            "final_evaluation_key": _hash,
+            "research_family_id": _hash,
+            "exact_scope_hash": _hash,
+            "issued_at": _timestamp,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FinalOutcomeAccessV2Recorded": PayloadSpec(
+        "final_outcome_access_recorded.v2",
+        {
+            "access_id": _string,
+            "access_hash": _hash,
+            "final_evaluation_key": _hash,
+            "eligibility_event_hash": _hash,
+            "eligibility_hash": _hash,
+            "capability_hash": _hash,
+            "request_scope_hash": _hash,
+            "outcome": _enum("allowed", "denied"),
+            "taint_class": _enum("none", "physical", "selection", "variant"),
+            "reason_code": _string,
+            "accessed_at": _timestamp,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FinalContaminationV2Recorded": PayloadSpec(
+        "final_contamination_recorded.v2",
+        {
+            "taint_id": _string,
+            "taint_hash": _hash,
+            "final_evaluation_key": _hash,
+            "research_family_id": _hash,
+            "eligibility_event_hash": _hash,
+            "taint_class": _enum("physical", "selection", "variant"),
+            "reason_code": _string,
+            "recorded_at": _timestamp,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FinalTestArtifactV2Recorded": PayloadSpec(
+        "final_test_artifact_recorded.v2",
+        {
+            "artifact_id": _string,
+            "artifact_hash": _hash,
+            "final_evaluation_key": _hash,
+            "research_family_id": _hash,
+            "factor_spec_id": _string,
+            "eligibility_event_hash": _hash,
+            "eligibility_hash": _hash,
+            "access_event_hash": _hash,
+            "raw_partition_bundle_hash": _hash,
+            "raw_partition_bundle": _mapping,
+            "raw_partition_refs": _artifact_list,
+            "dependence_config_hash": _hash,
+            "metrics": _mapping,
+            "quality_passed": _boolean,
+            "contaminated": _boolean,
+            "limitations": _string_list,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FinalTestFailedV2Recorded": PayloadSpec(
+        "final_test_failed_recorded.v2",
+        {
+            "failure_id": _string,
+            "failure_hash": _hash,
+            "final_evaluation_key": _hash,
+            "research_family_id": _hash,
+            "factor_spec_id": _string,
+            "eligibility_event_hash": _hash,
+            "eligibility_hash": _hash,
+            "access_event_hash": _hash,
+            "failure_code": _string,
+            "failure_class": _enum("provider", "validation", "infrastructure", "contamination"),
+            "contaminated": _boolean,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "FinalSelectionAssessmentV2Recorded": PayloadSpec(
+        "final_selection_assessment_recorded.v2",
+        {
+            "assessment_id": _string,
+            "assessment_hash": _hash,
+            "research_family_id": _hash,
+            "final_evaluation_key": _hash,
+            "access_count": _nonnegative_integer,
+            "terminal_count": _nonnegative_integer,
+            "artifact_count": _nonnegative_integer,
+            "failure_count": _nonnegative_integer,
+            "taint_count": _nonnegative_integer,
+            "missing_terminal": _boolean,
+            "selective_nondisclosure": _boolean,
+            "confirmatory_grade_eligible": _boolean,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "ForwardPlanV2Recorded": PayloadSpec(
         "forward_plan_recorded.v2",
         {
@@ -2155,9 +2367,7 @@ def validate_and_redact_payload(
     if spec is None:
         raise EventValidationError(f"unknown event type: {event_type}")
     if payload_schema_version != spec.version:
-        raise EventValidationError(
-            f"invalid payload schema version for {event_type}: {payload_schema_version}"
-        )
+        raise EventValidationError(f"invalid payload schema version for {event_type}: {payload_schema_version}")
     if not isinstance(raw_payload, Mapping):
         raise EventValidationError("payload must be an object")
     _check_finite_and_bounds(raw_payload)
@@ -2195,10 +2405,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
     if event_type == "RetrieverDecisionV2Recorded":
         if not payload["shadow_only"]:
             raise EventValidationError("retriever v2 is shadow-only before activation")
-        selected = [
-            component["factor_spec_id"]
-            for component in payload["components"] if component["selected"]
-        ]
+        selected = [component["factor_spec_id"] for component in payload["components"] if component["selected"]]
         if set(selected) != set(payload["selected_factor_spec_ids"]):
             raise EventValidationError("retriever selected IDs do not match its components")
         if len(payload["selected_factor_spec_ids"]) != len(set(payload["selected_factor_spec_ids"])):
@@ -2241,10 +2448,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("retriever v3 policy version is inconsistent")
         if not payload["shadow_only"]:
             raise EventValidationError("retriever v3 remains shadow-only before approval")
-        selected = [
-            component["factor_spec_id"]
-            for component in payload["components"] if component["selected"]
-        ]
+        selected = [component["factor_spec_id"] for component in payload["components"] if component["selected"]]
         if set(selected) != set(payload["selected_factor_spec_ids"]):
             raise EventValidationError("retriever v3 selected IDs differ from components")
         if len(selected) != len(set(selected)) or len(selected) > payload["candidate_budget"]:
@@ -2269,14 +2473,9 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         if canonical_json_hash(decision_content) != payload["decision_hash"]:
             raise EventValidationError("retriever v3 source-bound decision hash is invalid")
     if event_type == "RetrieverDecisionV4Recorded":
-        expected_identifier = (
-            "retriever-v4-"
-            + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
-        )
+        expected_identifier = "retriever-v4-" + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
         if payload["decision_id"] != expected_identifier:
-            raise EventValidationError(
-                "retriever v4 identity must derive from its decision hash"
-            )
+            raise EventValidationError("retriever v4 identity must derive from its decision hash")
         try:
             from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 
@@ -2289,10 +2488,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             or not payload["shadow_only"]
         ):
             raise EventValidationError("retriever v4 policy or shadow state is invalid")
-        selected = [
-            component["factor_spec_id"]
-            for component in payload["components"] if component["selected"]
-        ]
+        selected = [component["factor_spec_id"] for component in payload["components"] if component["selected"]]
         if (
             set(selected) != set(payload["selected_factor_spec_ids"])
             or len(selected) != len(set(selected))
@@ -2322,14 +2518,9 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         if canonical_json_hash(decision_content) != payload["decision_hash"]:
             raise EventValidationError("retriever v4 source-bound decision hash is invalid")
     if event_type == "RetrieverDecisionV5Recorded":
-        expected_identifier = (
-            "retriever-v5-"
-            + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
-        )
+        expected_identifier = "retriever-v5-" + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
         if payload["decision_id"] != expected_identifier:
-            raise EventValidationError(
-                "retriever v5 identity must derive from its decision hash"
-            )
+            raise EventValidationError("retriever v5 identity must derive from its decision hash")
         try:
             from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 
@@ -2356,12 +2547,9 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             or set(selected_actions) != set(selected_components)
             or any(
                 selected_components.get(action_id) != parent_id
-                for action_id, parent_id in zip(
-                    selected_actions, selected_parents, strict=True
-                )
+                for action_id, parent_id in zip(selected_actions, selected_parents, strict=True)
             )
-            or len(payload["action_template_event_hashes"])
-            != len(payload["components"])
+            or len(payload["action_template_event_hashes"]) != len(payload["components"])
         ):
             raise EventValidationError("retriever v5 action selection is inconsistent")
         decision_content = {
@@ -2372,12 +2560,8 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             "control_evidence_hash": payload["control_evidence_hash"],
             "control_policy_hash": payload["control_policy_hash"],
             "selected_action_ids": payload["selected_action_ids"],
-            "selected_parent_factor_spec_ids": payload[
-                "selected_parent_factor_spec_ids"
-            ],
-            "action_template_event_hashes": payload[
-                "action_template_event_hashes"
-            ],
+            "selected_parent_factor_spec_ids": payload["selected_parent_factor_spec_ids"],
+            "action_template_event_hashes": payload["action_template_event_hashes"],
             "seed": payload["seed"],
             "policy_version": payload["policy_version"],
             "policy_hash": payload["policy_hash"],
@@ -2393,14 +2577,9 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         if canonical_json_hash(decision_content) != payload["decision_hash"]:
             raise EventValidationError("retriever v5 source-bound decision hash is invalid")
     if event_type == "RetrieverDecisionV6Recorded":
-        expected_identifier = (
-            "retriever-v6-"
-            + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
-        )
+        expected_identifier = "retriever-v6-" + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
         if payload["decision_id"] != expected_identifier:
-            raise EventValidationError(
-                "retriever v6 identity must derive from its decision hash"
-            )
+            raise EventValidationError("retriever v6 identity must derive from its decision hash")
         try:
             from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 
@@ -2427,12 +2606,9 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             or set(selected_actions) != set(selected_components)
             or any(
                 selected_components.get(action_id) != parent_id
-                for action_id, parent_id in zip(
-                    selected_actions, selected_parents, strict=True
-                )
+                for action_id, parent_id in zip(selected_actions, selected_parents, strict=True)
             )
-            or len(payload["action_template_event_hashes"])
-            != len(payload["components"])
+            or len(payload["action_template_event_hashes"]) != len(payload["components"])
         ):
             raise EventValidationError("retriever v6 action selection is inconsistent")
         decision_content = {
@@ -2445,12 +2621,8 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             "feature_source_event_hash": payload["feature_source_event_hash"],
             "feature_source_hash": payload["feature_source_hash"],
             "selected_action_ids": payload["selected_action_ids"],
-            "selected_parent_factor_spec_ids": payload[
-                "selected_parent_factor_spec_ids"
-            ],
-            "action_template_event_hashes": payload[
-                "action_template_event_hashes"
-            ],
+            "selected_parent_factor_spec_ids": payload["selected_parent_factor_spec_ids"],
+            "action_template_event_hashes": payload["action_template_event_hashes"],
             "seed": payload["seed"],
             "policy_version": payload["policy_version"],
             "policy_hash": payload["policy_hash"],
@@ -2466,22 +2638,19 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         if canonical_json_hash(decision_content) != payload["decision_hash"]:
             raise EventValidationError("retriever v6 source-bound decision hash is invalid")
     if event_type == "RetrieverDecisionV7Recorded":
-        expected_identifier = (
-            "retriever-v7-"
-            + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
-        )
+        expected_identifier = "retriever-v7-" + str(payload["decision_hash"]).removeprefix("sha256:")[:20]
         if payload["decision_id"] != expected_identifier:
-            raise EventValidationError(
-                "retriever v7 identity must derive from its decision hash"
-            )
+            raise EventValidationError("retriever v7 identity must derive from its decision hash")
         try:
             from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
+
             policy = ActivationRetrieverPolicy(**dict(payload["policy_config"]))
         except (TypeError, ValueError) as exc:
             raise EventValidationError("retriever v7 policy config is invalid") from exc
         selected_components = {
             component["action_id"]: component["factor_spec_id"]
-            for component in payload["components"] if component["selected"]
+            for component in payload["components"]
+            if component["selected"]
         }
         selected_actions = list(payload["selected_action_ids"])
         selected_parents = list(payload["selected_parent_factor_spec_ids"])
@@ -2495,12 +2664,9 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             or set(selected_actions) != set(selected_components)
             or any(
                 selected_components.get(action_id) != parent_id
-                for action_id, parent_id in zip(
-                    selected_actions, selected_parents, strict=True
-                )
+                for action_id, parent_id in zip(selected_actions, selected_parents, strict=True)
             )
-            or len(payload["action_template_event_hashes"])
-            != len(payload["components"])
+            or len(payload["action_template_event_hashes"]) != len(payload["components"])
         ):
             raise EventValidationError("retriever v7 action selection is inconsistent")
         decision_content = {
@@ -2508,91 +2674,71 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             **{
                 key: payload[key]
                 for key in (
-                    "shadow_decision_hash", "input_bundle_hash", "plan_hash",
-                    "pair_id", "schedule_event_hash", "schedule_hash",
-                    "feature_source_event_hash", "feature_source_hash",
-                    "selected_action_ids", "selected_parent_factor_spec_ids",
-                    "action_template_event_hashes", "seed", "policy_version",
-                    "policy_hash", "policy_config", "eligible_event_watermark",
-                    "data_snapshot_hash", "candidate_budget",
-                    "official_output_hash", "propensity_semantics", "components",
+                    "shadow_decision_hash",
+                    "input_bundle_hash",
+                    "plan_hash",
+                    "pair_id",
+                    "schedule_event_hash",
+                    "schedule_hash",
+                    "feature_source_event_hash",
+                    "feature_source_hash",
+                    "selected_action_ids",
+                    "selected_parent_factor_spec_ids",
+                    "action_template_event_hashes",
+                    "seed",
+                    "policy_version",
+                    "policy_hash",
+                    "policy_config",
+                    "eligible_event_watermark",
+                    "data_snapshot_hash",
+                    "candidate_budget",
+                    "official_output_hash",
+                    "propensity_semantics",
+                    "components",
                     "shadow_only",
                 )
             },
         }
         if canonical_json_hash(decision_content) != payload["decision_hash"]:
-            raise EventValidationError(
-                "retriever v7 schedule-bound decision hash is invalid"
-            )
+            raise EventValidationError("retriever v7 schedule-bound decision hash is invalid")
     if event_type == "TrainValidDataSnapshotFrozen":
-        expected_identifier = (
-            "train-valid-snapshot-v1-"
-            + str(payload["snapshot_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_identifier = "train-valid-snapshot-v1-" + str(payload["snapshot_hash"]).removeprefix("sha256:")[:24]
         if payload["snapshot_id"] != expected_identifier:
-            raise EventValidationError(
-                "train/valid snapshot identity must derive from its hash"
-            )
+            raise EventValidationError("train/valid snapshot identity must derive from its hash")
         frame_names = list(payload["frame_names"])
-        if (
-            frame_names != sorted(set(frame_names))
-            or frame_names != list(payload["frame_content_hashes"])
-        ):
-            raise EventValidationError(
-                "train/valid snapshot frame inventory is inconsistent"
-            )
+        if frame_names != sorted(set(frame_names)) or frame_names != list(payload["frame_content_hashes"]):
+            raise EventValidationError("train/valid snapshot frame inventory is inconsistent")
     if event_type == "AsharePITAdapterRegistered":
-        expected_identifier = (
-            "ashare-pit-adapter-v1-"
-            + str(payload["registration_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_identifier = "ashare-pit-adapter-v1-" + str(payload["registration_hash"]).removeprefix("sha256:")[:24]
         if payload["registration_id"] != expected_identifier:
-            raise EventValidationError(
-                "PIT adapter registration identity must derive from its hash"
-            )
+            raise EventValidationError("PIT adapter registration identity must derive from its hash")
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("PIT adapter registration requires one artifact")
     if event_type == "AsharePITSnapshotRecorded":
-        expected_identifier = (
-            "ashare-pit-snapshot-v2-"
-            + str(payload["snapshot_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_identifier = "ashare-pit-snapshot-v2-" + str(payload["snapshot_hash"]).removeprefix("sha256:")[:24]
         if payload["snapshot_id"] != expected_identifier:
-            raise EventValidationError(
-                "PIT snapshot identity must derive from its hash"
-            )
+            raise EventValidationError("PIT snapshot identity must derive from its hash")
         for name in ("hard_failures", "caps", "warnings"):
             if payload[name] != sorted(set(payload[name])):
                 raise EventValidationError(f"PIT snapshot {name} must be canonical")
         if payload["decision_grade"] and (
             payload["pit_contract_status"] != "complete"
-            or payload["survivorship_status"]
-            != "controlled_by_daily_membership"
+            or payload["survivorship_status"] != "controlled_by_daily_membership"
             or payload["cutoff_status"] != "within_registered_valid_end"
             or payload["hard_failures"]
             or payload["caps"]
         ):
-            raise EventValidationError(
-                "decision-grade PIT snapshot has unresolved evidence defects"
-            )
+            raise EventValidationError("decision-grade PIT snapshot has unresolved evidence defects")
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("PIT snapshot requires one manifest artifact")
     if event_type == "RetrieverFeatureSourceRecorded":
-        expected_identifier = (
-            "retriever-feature-source-v1-"
-            + str(payload["source_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_identifier = "retriever-feature-source-v1-" + str(payload["source_hash"]).removeprefix("sha256:")[:24]
         if payload["feature_source_id"] != expected_identifier:
-            raise EventValidationError(
-                "Retriever feature source identity must derive from its hash"
-            )
-        if (
-            payload["candidate_count"] != len(payload["action_event_hashes"])
-            or payload["candidate_count"] != len(payload["candidate_hashes"])
+            raise EventValidationError("Retriever feature source identity must derive from its hash")
+        if payload["candidate_count"] != len(payload["action_event_hashes"]) or payload["candidate_count"] != len(
+            payload["candidate_hashes"]
         ):
-            raise EventValidationError(
-                "Retriever feature source candidate inventory is inconsistent"
-            )
+            raise EventValidationError("Retriever feature source candidate inventory is inconsistent")
     if event_type == "ActivationRunRecorded":
         attempted = sum(int(value) for value in payload["terminal_status_counts"].values())
         if payload["complete"] and attempted == 0:
@@ -2643,9 +2789,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         if len(support_components) != len(contradiction_components):
             raise EventValidationError("sequential component capital lists must have equal length")
         if len(payload["unit_hashes"]) != payload["incremental_information"]:
-            raise EventValidationError(
-                "incremental_information must equal the number of unique unit hashes"
-            )
+            raise EventValidationError("incremental_information must equal the number of unique unit hashes")
         status = payload["status"]
         reason = payload["stop_reason"]
         expected_reason = {
@@ -2656,22 +2800,15 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         }[status]
         if reason != expected_reason:
             raise EventValidationError("sequential look status and stop reason do not match")
-        support_crossed = (
-            payload["cumulative_support_log_e"] >= payload["support_log_boundary"]
-        )
-        contradiction_crossed = (
-            payload["cumulative_contradiction_log_e"]
-            >= payload["contradiction_log_boundary"]
-        )
+        support_crossed = payload["cumulative_support_log_e"] >= payload["support_log_boundary"]
+        contradiction_crossed = payload["cumulative_contradiction_log_e"] >= payload["contradiction_log_boundary"]
         if support_crossed and contradiction_crossed:
             raise EventValidationError("sequential look cannot cross both opposing boundaries")
         if status == "support_boundary_crossed" and not support_crossed:
             raise EventValidationError("support boundary status requires a crossed boundary")
         if status == "contradiction_boundary_crossed" and not contradiction_crossed:
             raise EventValidationError("contradiction boundary status requires a crossed boundary")
-        if status in {"continue", "max_looks_reached"} and (
-            support_crossed or contradiction_crossed
-        ):
+        if status in {"continue", "max_looks_reached"} and (support_crossed or contradiction_crossed):
             raise EventValidationError("uncrossed sequential status cannot carry crossed evidence")
     if event_type == "MechanismEvidenceIndexRecorded":
         result_hashes = payload["source_result_hashes"]
@@ -2696,9 +2833,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
                 "DECISIVE_TEST_INCONCLUSIVE",
             },
         }
-        if not set(payload["reason_codes"]).intersection(
-            required_reason_by_state[payload["ordinal_state"]]
-        ):
+        if not set(payload["reason_codes"]).intersection(required_reason_by_state[payload["ordinal_state"]]):
             raise EventValidationError("MEI state requires a versioned truth-table reason")
     if event_type == "ComplementEvidenceRecorded":
         missing_status = payload["status"] in {"unavailable", "insufficient"}
@@ -2714,18 +2849,12 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             payload["ledger_watermark_event_hash"],
         }
         if not cited.issubset(set(payload["source_event_hashes"])):
-            raise EventValidationError(
-                "Decision evidence source hashes omit a cited source event"
-            )
+            raise EventValidationError("Decision evidence source hashes omit a cited source event")
         if len(payload["artifact_refs"]) != 1:
-            raise EventValidationError(
-                "Decision evidence requires one content-addressed artifact"
-            )
+            raise EventValidationError("Decision evidence requires one content-addressed artifact")
     if event_type == "EvaluationPolicyRegistered":
         if len(payload["artifact_refs"]) != 1:
-            raise EventValidationError(
-                "evaluation policy registration requires one artifact"
-            )
+            raise EventValidationError("evaluation policy registration requires one artifact")
     if event_type == "ResolvedEvaluationContractRegistered":
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("resolved evaluation contract requires one artifact")
@@ -2755,13 +2884,9 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             payload["source_watermark_event_hash"],
         }
         if not cited.issubset(set(payload["source_event_hashes"])):
-            raise EventValidationError(
-                "scorecard evidence source hashes omit cited events"
-            )
+            raise EventValidationError("scorecard evidence source hashes omit cited events")
         if payload["decision_grade"] is not False:
-            raise EventValidationError(
-                "unverified scorecard evidence cannot be decision grade"
-            )
+            raise EventValidationError("unverified scorecard evidence cannot be decision grade")
         if payload["caps"] != sorted(set(payload["caps"])):
             raise EventValidationError("scorecard evidence caps must be canonical")
         if len(payload["artifact_refs"]) != 1:
@@ -2774,13 +2899,9 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             payload["source_watermark_event_hash"],
         }
         if not cited.issubset(set(payload["source_event_hashes"])):
-            raise EventValidationError(
-                "snapshot evidence source hashes omit cited events"
-            )
+            raise EventValidationError("snapshot evidence source hashes omit cited events")
         if payload["decision_grade"] is not False:
-            raise EventValidationError(
-                "legacy snapshot evidence cannot be decision grade"
-            )
+            raise EventValidationError("legacy snapshot evidence cannot be decision grade")
         if payload["caps"] != sorted(set(payload["caps"])):
             raise EventValidationError("snapshot evidence caps must be canonical")
         if len(payload["artifact_refs"]) != 1:
@@ -2795,11 +2916,10 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("factor output sources omit cited events")
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("factor output requires one manifest artifact")
-    if event_type in {
-        "ObservedPanelPredictiveEvidenceRecorded", "PITPredictiveEvidenceRecorded"
-    }:
+    if event_type in {"ObservedPanelPredictiveEvidenceRecorded", "PITPredictiveEvidenceRecorded"}:
         cited = {
-            payload["factor_output_event_hash"], payload["contract_event_hash"],
+            payload["factor_output_event_hash"],
+            payload["contract_event_hash"],
             payload["pit_snapshot_event_hash"],
         }
         if not cited.issubset(set(payload["source_event_hashes"])):
@@ -2810,7 +2930,8 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("predictive evidence requires one artifact")
     if event_type == "ScorecardDecisionEvidenceV4Recorded":
         cited = {
-            payload["factor_output_event_hash"], payload["observed_event_hash"],
+            payload["factor_output_event_hash"],
+            payload["observed_event_hash"],
             payload["pit_event_hash"],
         }
         if not cited.issubset(set(payload["source_event_hashes"])):
@@ -2830,24 +2951,22 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("execution evidence caps must be canonical")
         if len(payload["artifact_refs"]) != 2:
             raise EventValidationError("execution evidence requires two artifacts")
-        if (
-            payload["implementability_claim"] == "supported"
-            and (
-                payload["availability"] != "available"
-                or payload["material_unpriced_exposure"]
-                or not payload["terminal_flat"]
-            )
+        if payload["implementability_claim"] == "supported" and (
+            payload["availability"] != "available"
+            or payload["material_unpriced_exposure"]
+            or not payload["terminal_flat"]
         ):
-            raise EventValidationError(
-                "execution implementability support requires complete evidence"
-            )
+            raise EventValidationError("execution implementability support requires complete evidence")
     if event_type == "ComparisonPoolFrozen":
         members = payload["members"]
         if not isinstance(members, (list, tuple)):
             raise EventValidationError("comparison pool members must be a list")
         expected = {
-            "factor_spec_id", "factor_definition_event_hash",
-            "factor_output_event_hash", "execution_event_hash", "decision_event_hash",
+            "factor_spec_id",
+            "factor_definition_event_hash",
+            "factor_output_event_hash",
+            "execution_event_hash",
+            "decision_event_hash",
         }
         identities: list[str] = []
         for index, member in enumerate(members):
@@ -2863,8 +2982,11 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
     if event_type == "SecondaryEvidenceRecorded":
         bundle = payload["secondary_evidence_bundle"]
         expected = {
-            "schema_version", "identity", "residual_prediction",
-            "portfolio_marginal_value", "mechanism",
+            "schema_version",
+            "identity",
+            "residual_prediction",
+            "portfolio_marginal_value",
+            "mechanism",
         }
         if set(bundle) != expected or bundle["schema_version"] != "secondary_evidence_bundle.v1":
             raise EventValidationError("secondary evidence bundle schema differs")
@@ -2911,9 +3033,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         }
         if canonical_json_hash(matrix) != payload["claim_matrix_hash"]:
             raise EventValidationError("claim matrix hash differs")
-        if payload["claim_hashes"] != sorted(
-            claim["claim_hash"] for claim in payload["claims"]
-        ):
+        if payload["claim_hashes"] != sorted(claim["claim_hash"] for claim in payload["claims"]):
             raise EventValidationError("claim matrix hash inventory differs")
         if payload["artifact_refs"]:
             raise EventValidationError("claim matrix event embeds no external artifact")
@@ -2925,10 +3045,16 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         content = {
             key: value
             for key, value in payload.items()
-            if key not in {
-                "decision_id", "decision_hash", "claim_matrix_event_hash",
-                "selection_event_hash", "promotion_effect",
-                "producer_schema_version", "producer_policy_hash", "artifact_refs",
+            if key
+            not in {
+                "decision_id",
+                "decision_hash",
+                "claim_matrix_event_hash",
+                "selection_event_hash",
+                "promotion_effect",
+                "producer_schema_version",
+                "producer_policy_hash",
+                "artifact_refs",
             }
         }
         if canonical_json_hash(content) != payload["decision_hash"]:
@@ -2956,9 +3082,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("production node identity is required")
         if payload["reason_codes"] != sorted(set(payload["reason_codes"])):
             raise EventValidationError("production node reasons must be canonical")
-        if payload["source_event_hashes"] != sorted(
-            set(payload["source_event_hashes"])
-        ):
+        if payload["source_event_hashes"] != sorted(set(payload["source_event_hashes"])):
             raise EventValidationError("production node sources must be canonical")
         if payload["status"] == "completed" and payload["reason_codes"]:
             raise EventValidationError("completed production node cannot carry blockers")
@@ -2991,9 +3115,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("Decision v2 reject requires exact reasons")
         if decision == "research_only" and not payload["caps"]:
             raise EventValidationError("Decision v2 research_only requires exact caps")
-        if decision in {"paper_candidate", "forward_track"} and (
-            payload["final_test_artifact_hash"] is None
-        ):
+        if decision in {"paper_candidate", "forward_track"} and (payload["final_test_artifact_hash"] is None):
             raise EventValidationError("paper tiers require a frozen final-test artifact")
         if decision == "forward_track" and payload["forward_plan_hash"] is None:
             raise EventValidationError("forward_track requires a frozen plan")
@@ -3073,49 +3195,29 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             "RESOURCE_METRICS_SOURCE_UNBOUND",
             "QUALITY_DECISION_UPSTREAM_AUTHORITY_UNPROVEN",
         }
-        if payload["source_complete"] or not required.issubset(
-            payload["source_failure_codes"]
-        ):
-            raise EventValidationError(
-                "Activation source v2 must retain its unavailable production sources"
-            )
+        if payload["source_complete"] or not required.issubset(payload["source_failure_codes"]):
+            raise EventValidationError("Activation source v2 must retain its unavailable production sources")
     if event_type == "OfficialSearchControlRecorded" and (
         payload["candidate_count"] != len(payload["terminal_event_hashes"])
     ):
-        raise EventValidationError(
-            "official control terminals must cover every generated candidate"
-        )
+        raise EventValidationError("official control terminals must cover every generated candidate")
     if event_type == "PreArmFlatScheduleFrozen":
-        expected = (
-            "prearm-flat-v1-"
-            + str(payload["schedule_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected = "prearm-flat-v1-" + str(payload["schedule_hash"]).removeprefix("sha256:")[:24]
         if payload["schedule_id"] != expected:
-            raise EventValidationError(
-                "pre-arm flat schedule identity must derive from its hash"
-            )
+            raise EventValidationError("pre-arm flat schedule identity must derive from its hash")
     if event_type == "ActivationPairExecutionScheduled":
-        expected = (
-            "activation-pair-schedule-v1-"
-            + str(payload["schedule_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected = "activation-pair-schedule-v1-" + str(payload["schedule_hash"]).removeprefix("sha256:")[:24]
         if (
             payload["schedule_id"] != expected
-            or payload["arm_order"]
-            not in (["control", "treatment"], ["treatment", "control"])
-            or payload["order_rule"]
-            != "alternating_frozen_run_group_index.v1"
+            or payload["arm_order"] not in (["control", "treatment"], ["treatment", "control"])
+            or payload["order_rule"] != "alternating_frozen_run_group_index.v1"
             or payload["compute_budget"] < payload["candidate_budget"]
-            or payload["pair_id"] != (
-                f"{payload['run_group_id']}:{payload['mechanism_family']}:{payload['dag_region']}"
-            )
+            or payload["pair_id"]
+            != (f"{payload['run_group_id']}:{payload['mechanism_family']}:{payload['dag_region']}")
         ):
             raise EventValidationError("Activation pair schedule binding is invalid")
     if event_type == "ActivationPairExecutionClaimed":
-        expected = (
-            "activation-pair-claim-v1-"
-            + str(payload["schedule_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected = "activation-pair-claim-v1-" + str(payload["schedule_hash"]).removeprefix("sha256:")[:24]
         if payload["claim_id"] != expected:
             raise EventValidationError("Activation pair claim identity is invalid")
     if event_type == "ActivationResourceMeasured" and (
@@ -3128,23 +3230,13 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             "PEAK_RSS_ISOLATED_MEASUREMENT_UNAVAILABLE",
         ]
     ):
-        raise EventValidationError(
-            "Activation resource v1 must retain all runner limitations"
-        )
+        raise EventValidationError("Activation resource v1 must retain all runner limitations")
     if event_type == "ActivationResourceMeasured":
-        expected_resource_id = (
-            "activation-resource-v1-"
-            + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_resource_id = "activation-resource-v1-" + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
         if payload["resource_id"] != expected_resource_id:
-            raise EventValidationError(
-                "Activation resource identity must derive from its evidence hash"
-            )
+            raise EventValidationError("Activation resource identity must derive from its evidence hash")
     if event_type == "ActivationResourceMeasuredV2":
-        expected_resource_id = (
-            "activation-resource-v2-"
-            + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_resource_id = "activation-resource-v2-" + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
         required = {
             "EXECUTOR_TIMEOUT_NOT_ENFORCED",
             "PEAK_RSS_ISOLATED_MEASUREMENT_UNAVAILABLE",
@@ -3157,39 +3249,21 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             or "ARM_ORDER_NOT_COUNTERBALANCED" in payload["source_failure_codes"]
             or payload["arm_order_position"] not in {0, 1}
         ):
-            raise EventValidationError(
-                "Activation resource v2 must retain unresolved limitations"
-            )
+            raise EventValidationError("Activation resource v2 must retain unresolved limitations")
     if event_type == "ActivationGenerationConsumptionRecorded":
-        expected_identifier = (
-            "activation-generation-v1-"
-            + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_identifier = "activation-generation-v1-" + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
         if payload["generation_id"] != expected_identifier:
-            raise EventValidationError(
-                "Activation generation identity must derive from evidence"
-            )
+            raise EventValidationError("Activation generation identity must derive from evidence")
         if payload["source_complete"] != (not payload["source_failure_codes"]):
-            raise EventValidationError(
-                "Activation generation completeness must derive from failures"
-            )
+            raise EventValidationError("Activation generation completeness must derive from failures")
         if payload["generated_candidate_count"] > payload["candidate_budget"]:
-            raise EventValidationError(
-                "Activation generation exceeds its frozen candidate budget"
-            )
+            raise EventValidationError("Activation generation exceeds its frozen candidate budget")
     if event_type == "ActivationGenerationConsumptionV2Recorded":
-        expected_identifier = (
-            "activation-generation-v2-"
-            + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_identifier = "activation-generation-v2-" + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
         if payload["generation_id"] != expected_identifier:
-            raise EventValidationError(
-                "Activation exact generation identity must derive from evidence"
-            )
+            raise EventValidationError("Activation exact generation identity must derive from evidence")
         if payload["source_complete"] != (not payload["source_failure_codes"]):
-            raise EventValidationError(
-                "Activation exact generation completeness must derive from failures"
-            )
+            raise EventValidationError("Activation exact generation completeness must derive from failures")
         selected_actions = list(payload["selected_action_ids"])
         selected_events = list(payload["selected_action_event_hashes"])
         selected_parents = list(payload["selected_parent_factor_spec_ids"])
@@ -3204,18 +3278,11 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             or payload["generated_candidate_count"] != len(consumed_actions)
             or payload["generated_candidate_count"] > payload["candidate_budget"]
         ):
-            raise EventValidationError(
-                "Activation exact generation action binding is inconsistent"
-            )
+            raise EventValidationError("Activation exact generation action binding is inconsistent")
     if event_type == "ActivationGenerationConsumptionV3Recorded":
-        expected_identifier = (
-            "activation-generation-v3-"
-            + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_identifier = "activation-generation-v3-" + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
         if payload["generation_id"] != expected_identifier:
-            raise EventValidationError(
-                "Activation source-bound generation identity must derive from evidence"
-            )
+            raise EventValidationError("Activation source-bound generation identity must derive from evidence")
         selected_actions = list(payload["selected_action_ids"])
         selected_events = list(payload["selected_action_event_hashes"])
         selected_parents = list(payload["selected_parent_factor_spec_ids"])
@@ -3223,8 +3290,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
         consumed_parents = list(payload["consumed_parent_factor_spec_ids"])
         if (
             payload["source_complete"] != (not payload["source_failure_codes"])
-            or "RETRIEVER_FEATURE_SOURCE_UNVERIFIED"
-            in payload["source_failure_codes"]
+            or "RETRIEVER_FEATURE_SOURCE_UNVERIFIED" in payload["source_failure_codes"]
             or len(selected_actions) != len(set(selected_actions))
             or len(selected_actions) != len(selected_events)
             or len(selected_actions) != len(selected_parents)
@@ -3233,22 +3299,16 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             or payload["generated_candidate_count"] != len(consumed_actions)
             or payload["generated_candidate_count"] > payload["candidate_budget"]
         ):
-            raise EventValidationError(
-                "Activation source-bound generation binding is inconsistent"
-            )
+            raise EventValidationError("Activation source-bound generation binding is inconsistent")
     if event_type == "ActivationGenerationConsumptionV4Recorded":
-        expected_identifier = (
-            "activation-generation-v4-"
-            + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
-        )
+        expected_identifier = "activation-generation-v4-" + str(payload["evidence_hash"]).removeprefix("sha256:")[:24]
         selected = list(payload["selected_action_ids"])
         selected_events = list(payload["selected_action_event_hashes"])
         consumed = list(payload["consumed_action_ids"])
         if (
             payload["generation_id"] != expected_identifier
             or payload["source_complete"] != (not payload["source_failure_codes"])
-            or "RETRIEVER_FEATURE_SOURCE_UNVERIFIED"
-            in payload["source_failure_codes"]
+            or "RETRIEVER_FEATURE_SOURCE_UNVERIFIED" in payload["source_failure_codes"]
             or len(selected) != len(set(selected))
             or len(selected) != len(selected_events)
             or len(selected) != len(payload["selected_parent_factor_spec_ids"])
@@ -3257,9 +3317,7 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             or payload["generated_candidate_count"] != len(consumed)
             or payload["generated_candidate_count"] > payload["candidate_budget"]
         ):
-            raise EventValidationError(
-                "Activation schedule-bound generation binding is inconsistent"
-            )
+            raise EventValidationError("Activation schedule-bound generation binding is inconsistent")
     if event_type == "FinalCandidateFrozen":
         candidate_content = {
             "schema_version": payload["candidate_schema_version"],
@@ -3287,6 +3345,149 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
     if event_type == "FinalTestArtifactRecorded":
         if payload["contaminated"] and payload["quality_passed"]:
             raise EventValidationError("contaminated final artifact cannot pass quality")
+    if event_type == "FinalRawProviderV2Registered":
+        content = {
+            "schema_version": "final_raw_provider_registration.v2",
+            "descriptor": payload["descriptor"],
+            "producer_schema_version": payload["producer_schema_version"],
+            "producer_policy_hash": payload["producer_policy_hash"],
+        }
+        if canonical_json_hash(content) != payload["registration_hash"]:
+            raise EventValidationError("final raw provider registration hash differs")
+        if payload["registration_id"] != "final-provider-" + payload["registration_hash"][7:31]:
+            raise EventValidationError("final raw provider registration identity differs")
+        if payload["descriptor"].get("output_capability") != "raw_bounded_parquet_partition_refs":
+            raise EventValidationError("final provider cannot return precomputed outcomes")
+    if event_type == "FinalEvaluationEligibilityRecorded":
+        key_content = {
+            "schema_version": "final_evaluation_key.v2",
+            "research_family_id": payload["research_family_id"],
+            "scope_hash": canonical_json_hash(payload["scope_config"]),
+            "dependence_config_hash": canonical_json_hash(payload["dependence_config"]),
+            "producer_policy_hash": payload["producer_policy_hash"],
+        }
+        if canonical_json_hash(key_content) != payload["final_evaluation_key"]:
+            raise EventValidationError("final v2 family key differs")
+        content = {
+            "schema_version": "final_evaluation_eligibility.v2",
+            "research_family_id": payload["research_family_id"],
+            "factor_spec_id": payload["factor_spec_id"],
+            "factor_definition_event_hash": payload["factor_definition_event_hash"],
+            "prefinal_decision_hash": payload["prefinal_decision_hash"],
+            "prefinal_decision": payload["prefinal_decision"],
+            "contract_hash": payload["contract_hash"],
+            "provider_registration_event_hash": payload["provider_registration_event_hash"],
+            "scope_config": payload["scope_config"],
+            "dependence_config": payload["dependence_config"],
+            "final_evaluation_key": payload["final_evaluation_key"],
+            "producer_schema_version": payload["producer_schema_version"],
+            "producer_policy_hash": payload["producer_policy_hash"],
+        }
+        if canonical_json_hash(content) != payload["eligibility_hash"]:
+            raise EventValidationError("final v2 eligibility hash differs")
+        if payload["eligibility_id"] != "final-eligibility-" + payload["eligibility_hash"][7:31]:
+            raise EventValidationError("final v2 eligibility identity differs")
+        if payload["artifact_refs"]:
+            raise EventValidationError("final v2 eligibility embeds no artifact")
+    if event_type == "FinalTestCapabilityV2Issued":
+        content = {
+            "token_id": payload["capability_id"],
+            "eligibility_event_hash": payload["eligibility_event_hash"],
+            "eligibility_hash": payload["eligibility_hash"],
+            "final_evaluation_key": payload["final_evaluation_key"],
+            "exact_scope_hash": payload["exact_scope_hash"],
+            "issued_at": payload["issued_at"],
+        }
+        if canonical_json_hash(content) != payload["capability_hash"]:
+            raise EventValidationError("final v2 capability hash differs")
+    if event_type == "FinalOutcomeAccessV2Recorded":
+        content = {
+            "final_evaluation_key": payload["final_evaluation_key"],
+            "capability_hash": payload["capability_hash"],
+            "request_scope_hash": payload["request_scope_hash"],
+            "outcome": payload["outcome"],
+            "taint_class": payload["taint_class"],
+            "reason_code": payload["reason_code"],
+            "accessed_at": payload["accessed_at"],
+        }
+        if canonical_json_hash(content) != payload["access_hash"]:
+            raise EventValidationError("final v2 access hash differs")
+        if payload["access_id"] != "final-v2-access-" + payload["access_hash"][7:31]:
+            raise EventValidationError("final v2 access identity differs")
+        if (payload["outcome"] == "allowed") != (payload["taint_class"] == "none"):
+            raise EventValidationError("final v2 access outcome/taint differs")
+    if event_type == "FinalContaminationV2Recorded":
+        if payload["taint_id"] != "final-v2-taint-" + payload["taint_hash"][7:31]:
+            raise EventValidationError("final v2 taint identity differs")
+    if event_type == "FinalTestArtifactV2Recorded":
+        bundle_content = {key: value for key, value in payload["raw_partition_bundle"].items() if key != "bundle_hash"}
+        if (
+            payload["raw_partition_bundle"].get("bundle_hash") != payload["raw_partition_bundle_hash"]
+            or canonical_json_hash(bundle_content) != payload["raw_partition_bundle_hash"]
+        ):
+            raise EventValidationError("final v2 raw partition bundle hash differs")
+        expected_raw_refs = [
+            {
+                "relative_path": item["relative_path"],
+                "artifact_hash": item["artifact_hash"],
+                "media_type": item["media_type"],
+            }
+            for item in payload["raw_partition_bundle"].get("partitions", [])
+        ]
+        if not expected_raw_refs or payload["raw_partition_refs"] != expected_raw_refs:
+            raise EventValidationError("final v2 raw partition refs differ")
+        content = {
+            "schema_version": "final_test_artifact.v2",
+            "final_evaluation_key": payload["final_evaluation_key"],
+            "research_family_id": payload["research_family_id"],
+            "factor_spec_id": payload["factor_spec_id"],
+            "eligibility_hash": payload["eligibility_hash"],
+            "raw_partition_bundle_hash": payload["raw_partition_bundle_hash"],
+            "dependence_config_hash": payload["dependence_config_hash"],
+            "metrics": payload["metrics"],
+            "contaminated": payload["contaminated"],
+            "limitations": payload["limitations"],
+        }
+        if canonical_json_hash(content) != payload["artifact_hash"]:
+            raise EventValidationError("final v2 artifact hash differs")
+        if payload["artifact_id"] != "final-v2-artifact-" + payload["artifact_hash"][7:31]:
+            raise EventValidationError("final v2 artifact identity differs")
+        if payload["contaminated"] and payload["quality_passed"]:
+            raise EventValidationError("contaminated final v2 artifact cannot pass")
+        if len(payload["artifact_refs"]) != 1:
+            raise EventValidationError("final v2 artifact requires one artifact ref")
+    if event_type == "FinalTestFailedV2Recorded":
+        content = {
+            "final_evaluation_key": payload["final_evaluation_key"],
+            "eligibility_hash": payload["eligibility_hash"],
+            "access_event_hash": payload["access_event_hash"],
+            "failure_code": payload["failure_code"],
+            "failure_class": payload["failure_class"],
+            "contaminated": payload["contaminated"],
+        }
+        if canonical_json_hash(content) != payload["failure_hash"]:
+            raise EventValidationError("final v2 failure hash differs")
+        if payload["failure_id"] != "final-v2-failure-" + payload["failure_hash"][7:31]:
+            raise EventValidationError("final v2 failure identity differs")
+        if payload["artifact_refs"]:
+            raise EventValidationError("final v2 failure cannot cite artifact output")
+    if event_type == "FinalSelectionAssessmentV2Recorded":
+        content = {
+            "research_family_id": payload["research_family_id"],
+            "final_evaluation_key": payload["final_evaluation_key"],
+            "access_count": payload["access_count"],
+            "terminal_count": payload["terminal_count"],
+            "artifact_count": payload["artifact_count"],
+            "failure_count": payload["failure_count"],
+            "taint_count": payload["taint_count"],
+            "missing_terminal": payload["missing_terminal"],
+            "selective_nondisclosure": payload["selective_nondisclosure"],
+            "confirmatory_grade_eligible": payload["confirmatory_grade_eligible"],
+        }
+        if canonical_json_hash(content) != payload["assessment_hash"]:
+            raise EventValidationError("final v2 selection hash differs")
+        if payload["assessment_id"] != "final-selection-" + payload["assessment_hash"][7:31]:
+            raise EventValidationError("final v2 selection identity differs")
     if event_type == "ForwardPlanV2Recorded":
         plan_content = {
             "schema_version": payload["plan_schema_version"],
@@ -3343,8 +3544,10 @@ def envelope_diagnostics(
     if event_type == "GenerationFailureRecorded":
         hard_failures.add(str(payload["failure_code"]))
     if event_type in {
-        "RetrieverDecisionV2Recorded", "RetrieverDecisionV3Recorded",
-        "RetrieverDecisionV4Recorded", "RetrieverDecisionV5Recorded",
+        "RetrieverDecisionV2Recorded",
+        "RetrieverDecisionV3Recorded",
+        "RetrieverDecisionV4Recorded",
+        "RetrieverDecisionV5Recorded",
         "RetrieverDecisionV6Recorded",
         "RetrieverDecisionV7Recorded",
     }:
@@ -3385,6 +3588,12 @@ def envelope_diagnostics(
         hard_failures.add("FINAL_TEST_CONTAMINATED")
     if event_type == "FinalTestArtifactRecorded" and payload["contaminated"]:
         hard_failures.add("FINAL_TEST_CONTAMINATED")
+    if event_type == "FinalContaminationV2Recorded":
+        hard_failures.add("FINAL_TEST_CONTAMINATED")
+    if event_type == "FinalTestArtifactV2Recorded" and payload["contaminated"]:
+        hard_failures.add("FINAL_TEST_CONTAMINATED")
+    if event_type == "FinalTestFailedV2Recorded":
+        hard_failures.add(str(payload["failure_code"]))
     if event_type in {"ForwardPlanV2Recorded", "ForwardObservationV2Recorded"}:
         warnings.add("FORWARD_MONITORING_ONLY")
     if event_type in {"QualityDecisionV2Recorded", "QualityDecisionV3Recorded"}:
