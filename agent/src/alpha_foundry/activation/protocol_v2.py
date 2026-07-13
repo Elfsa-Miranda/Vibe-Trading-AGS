@@ -134,6 +134,8 @@ class PreregisteredActivationStatisticalProtocolV2:
     bootstrap_seed: int
     pilot_use_policy: str
     power_method: str
+    power_design_alternative: float
+    power_design_rule: str
     power_simulation_seed: int
     power_simulation_count: int
     variance_upper_bound_rule: str
@@ -168,6 +170,15 @@ class PreregisteredActivationStatisticalProtocolV2:
             raise ValueError("confidence level is out of bounds")
         if not math.isfinite(self.sesoi) or self.sesoi <= 0.0:
             raise ValueError("SESOI must be positive and finite")
+        if (
+            not math.isfinite(self.power_design_alternative)
+            or self.power_design_alternative <= self.sesoi
+            or self.power_design_rule
+            != "sesoi_plus_one_sesoi_design_margin.v1"
+        ):
+            raise ValueError(
+                "power design alternative must be frozen above the SESOI boundary"
+            )
         if self.minimum_pairs < 2 or self.maximum_pairs < self.minimum_pairs:
             raise ValueError("activation pair bounds are invalid")
         if self.bootstrap_repetitions < 1000 or self.power_simulation_count < 1000:
@@ -238,7 +249,9 @@ class PreregisteredActivationStatisticalProtocolV2:
             "pilot_use_policy": (
                 "variance_dispersion_completion_resource_fidelity_only; observed uplift forbidden"
             ),
-            "power_method": "paired_gaussian_working_model_simulation.v2",
+            "power_method": "paired_gaussian_working_model_simulation.v3",
+            "power_design_alternative": 2.0 * float(sesoi),
+            "power_design_rule": "sesoi_plus_one_sesoi_design_margin.v1",
             "power_simulation_seed": 732452,
             "power_simulation_count": 20000,
             "variance_upper_bound_rule": "max(pilot_upper_95_variance,preregistered_variance_floor)",

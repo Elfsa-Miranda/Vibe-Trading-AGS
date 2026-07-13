@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import fields, replace
 import inspect
 from pathlib import Path
 from types import SimpleNamespace
@@ -339,7 +339,28 @@ def test_power_uses_fixed_sesoi_and_conservative_variance_rule(
     )
     assert plan.power_simulation_seed == protocol.power_simulation_seed
     assert plan.power_simulation_count == protocol.power_simulation_count
+    assert plan.power_design_alternative == 2.0 * protocol.sesoi
+    assert plan.power_design_alternative == protocol.power_design_alternative
+    assert plan.power_design_rule == protocol.power_design_rule
     assert "simulation" in protocol.power_method
+
+
+def test_power_design_alternative_is_strictly_above_sesoi_boundary() -> None:
+    protocol = _protocol(sesoi=0.05)
+
+    assert protocol.power_design_alternative > protocol.sesoi
+    with pytest.raises(ValueError, match="frozen above the SESOI boundary"):
+        replace(
+            protocol,
+            power_design_alternative=protocol.sesoi,
+        )
+
+
+def test_power_simulation_tests_sesoi_null_boundary() -> None:
+    source = inspect.getsource(ActivationStatisticalAnalyzerV2._simulate_required_pairs)
+
+    assert "rng.gauss(\n                    protocol.power_design_alternative" in source
+    assert "critical_mean = protocol.sesoi +" in source
 
 
 def test_confirmatory_plan_cannot_change_after_mint() -> None:
