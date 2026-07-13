@@ -304,6 +304,42 @@ def _recorded_plan(store: ResearchEventStore, registered: object):
     )
     assert plan.require_plan().feasible is True
     return plan
+
+
+def _record_readiness(
+    store: ResearchEventStore,
+    *,
+    research_cycle_id: str,
+    ready: bool = True,
+):
+    blockers = [] if ready else ["RESOURCE_ISOLATION_VERIFIED"]
+    readiness_hash = _hash(
+        f"readiness-{research_cycle_id}-{'ready' if ready else 'blocked'}"
+    )
+    return store._append_producer_event(
+        EventDraft(
+            event_type="ActivationReadinessV4Recorded",
+            entity_id=f"readiness-{research_cycle_id}",
+            run_id=research_cycle_id,
+            payload_schema_version="activation_readiness_recorded.v4",
+            payload={
+                "readiness_id": f"readiness-{research_cycle_id}",
+                "research_cycle_id": research_cycle_id,
+                "ready_for_pilot_outcome_access": ready,
+                "blocker_codes": blockers,
+                "readiness_hash": readiness_hash,
+                "readiness": {
+                    "schema_version": "activation_readiness.v4",
+                    "research_cycle_id": research_cycle_id,
+                    "ready_for_pilot_outcome_access": ready,
+                    "blocker_codes": blockers,
+                    "readiness_hash": readiness_hash,
+                },
+            },
+        )
+    )
+
+
 def test_activation_projector_delegates_to_run_source_v3(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -529,7 +565,10 @@ def _analysis(
     source_failure: str | None = None,
 ):
     store, registered = _registered_protocol(tmp_path)
-    protocol = registered.protocol
+    readiness = _record_readiness(
+        store,
+        research_cycle_id=registered.protocol.research_cycle_id,
+    )
     analyzer = ActivationStatisticalAnalyzerV2(store)
     plan = _recorded_plan(store, registered)
     pairs = tuple(
@@ -546,7 +585,20 @@ def _analysis(
         confirmatory_plan=plan,
         pairs=pairs,
     )
-    return protocol, recorded_analysis.require_analysis()
+    return store, registered, recorded_analysis, readiness.event_hash
+
+
+def _governance_fixture(tmp_path: Path, values: tuple[float, ...], **kwargs: object):
+    store, registered, recorded_analysis, readiness_hash = _analysis(
+        tmp_path, values, **kwargs  # type: ignore[arg-type]
+    )
+    recorded_decision = ActivationGovernanceService(store).decide(
+        registered_protocol=registered,
+        analysis=recorded_analysis,
+        readiness_event_hash=readiness_hash,
+    )
+    assert recorded_decision.verify_in(store) == recorded_decision.decision
+    return registered.protocol, recorded_analysis.require_analysis(), recorded_decision.decision
 
 
 def test_analyzer_requires_registered_protocol(tmp_path: Path) -> None:
@@ -579,12 +631,7 @@ def test_analyzer_rejects_protocol_registered_in_another_store(
 def test_lcb_above_sesoi_cannot_approve_without_resource_and_safety_sources(
     tmp_path: Path,
 ) -> None:
-    protocol, analysis = _analysis(
-        tmp_path, (0.2, 0.2)
-    )
-    decision = ActivationGovernanceService().decide(
-        protocol=protocol, analysis=analysis
-    )
+    protocol, analysis, decision = _governance_fixture(tmp_path, (0.2, 0.2))
 
     assert analysis.confidence_lower > protocol.sesoi
     assert analysis.safety_noninferiority_pass is None
@@ -593,11 +640,8 @@ def test_lcb_above_sesoi_cannot_approve_without_resource_and_safety_sources(
 
 
 def test_p_value_alone_cannot_approve(tmp_path: Path) -> None:
-    protocol, analysis = _analysis(
+    protocol, analysis, decision = _governance_fixture(
         tmp_path, (0.2, 0.2, 0.2, 0.2, 0.2, 0.2)
-    )
-    decision = ActivationGovernanceService().decide(
-        protocol=protocol, analysis=analysis
     )
 
     assert analysis.one_sided_randomization_p_value is not None
@@ -633,58 +677,88 @@ def test_analyzer_rejects_pair_projection_recorded_in_another_store(
 
 
 def test_underpowered_valid_experiment_is_inconclusive(tmp_path: Path) -> None:
-    protocol, analysis = _analysis(tmp_path, (0.2,))
-
-    assert ActivationGovernanceService().decide(
-        protocol=protocol, analysis=analysis
-    ).verdict == "inconclusive"
+    _, _, decision = _governance_fixture(tmp_path, (0.2,))
+    assert decision.verdict == "inconclusive"
 
 
 def test_protocol_violation_is_invalidated_not_inconclusive(
     tmp_path: Path,
 ) -> None:
-    protocol, analysis = _analysis(
+    _, _, decision = _governance_fixture(
         tmp_path,
         (0.2, 0.2),
         source_failure="CONTAMINATION",
     )
-
-    assert ActivationGovernanceService().decide(
-        protocol=protocol, analysis=analysis
-    ).verdict == "invalidated"
+    assert decision.verdict == "invalidated"
 
 
 def test_adequately_powered_no_effect_is_rejected(tmp_path: Path) -> None:
-    protocol, analysis = _analysis(
-        tmp_path, (0.0, 0.0)
+    _, _, decision = _governance_fixture(tmp_path, (0.0, 0.0))
+    assert decision.verdict == "rejected"
+
+
+def test_governance_requires_recorded_analysis(tmp_path: Path) -> None:
+    store, registered, recorded_analysis, readiness_hash = _analysis(
+        tmp_path, (0.2, 0.2)
     )
 
-    assert ActivationGovernanceService().decide(
-        protocol=protocol, analysis=analysis
-    ).verdict == "rejected"
+    with pytest.raises(TypeError, match="recorded analyzer statistics"):
+        ActivationGovernanceService(store).decide(
+            registered_protocol=registered,
+            analysis=recorded_analysis.require_analysis(),  # type: ignore[arg-type]
+            readiness_event_hash=readiness_hash,
+        )
 
 
-def test_governance_rejects_caller_authored_statistics() -> None:
+def test_readiness_recorded_after_pilot_invalidates_governance(tmp_path: Path) -> None:
+    store, registered = _registered_protocol(tmp_path)
+    analyzer = ActivationStatisticalAnalyzerV2(store)
+    plan = _recorded_plan(store, registered)
+    readiness = _record_readiness(
+        store,
+        research_cycle_id=registered.protocol.research_cycle_id,
+    )
+    pairs = (
+        _recorded_pair(store, "late-readiness-confirmatory-1", 0.2),
+        _recorded_pair(store, "late-readiness-confirmatory-2", 0.2),
+    )
+    analysis = analyzer.analyze(
+        registered_protocol=registered,
+        confirmatory_plan=plan,
+        pairs=pairs,
+    )
+
+    decision = ActivationGovernanceService(store).decide(
+        registered_protocol=registered,
+        analysis=analysis,
+        readiness_event_hash=readiness.event_hash,
+    )
+
+    assert decision.decision.verdict == "invalidated"
+    assert "PREOUTCOME_READINESS_NOT_SATISFIED" in decision.decision.reason_codes
+
+
+def test_governance_rejects_caller_authored_statistics(tmp_path: Path) -> None:
     with pytest.raises(TypeError, match="caller statistics"):
-        ActivationGovernanceService().decide_from_mapping(
+        ActivationGovernanceService(_store(tmp_path)).decide_from_mapping(
             {"statistics": {"p_value": 0.001}}
         )
 
 
-def test_report_cannot_be_governance_input() -> None:
+def test_report_cannot_be_governance_input(tmp_path: Path) -> None:
     with pytest.raises(TypeError, match="report"):
-        ActivationGovernanceService().decide_from_mapping(
+        ActivationGovernanceService(_store(tmp_path)).decide_from_mapping(
             {"report_json": {"verdict": "approved"}}
         )
 
 
-def test_governance_cannot_accept_report_json() -> None:
-    test_report_cannot_be_governance_input()
+def test_governance_cannot_accept_report_json(tmp_path: Path) -> None:
+    test_report_cannot_be_governance_input(tmp_path)
 
 
-def test_governance_cannot_accept_worker_summary() -> None:
+def test_governance_cannot_accept_worker_summary(tmp_path: Path) -> None:
     with pytest.raises(TypeError, match="summary"):
-        ActivationGovernanceService().decide_from_mapping(
+        ActivationGovernanceService(_store(tmp_path)).decide_from_mapping(
             {"worker_summary": {"success_count": 12}}
         )
 

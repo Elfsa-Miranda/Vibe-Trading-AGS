@@ -20,6 +20,7 @@ from src.alpha_foundry.activation.governance_v2 import (
     ActivationGovernanceService,
     ActivationReadinessServiceV4,
     ActivationReadinessV4,
+    RecordedActivationGovernanceDecisionV2,
 )
 from src.alpha_foundry.activation.pair_projector_v2 import (
     ActivationArmEventRefsV2,
@@ -79,6 +80,7 @@ __all__ = [
     "ActivationReadinessServiceV4", "ActivationReadinessV4",
     "ActivationStatisticalAnalysisV2", "ActivationStatisticalAnalyzerV2",
     "ActivationGovernanceDecisionV2", "ActivationGovernanceService",
+    "RecordedActivationGovernanceDecisionV2",
     "PilotDispersionEvidenceV2", "PreregisteredConfirmatoryActivationPlanV2",
     "RecordedActivationStatisticalArtifactV2",
     "RetrieverActivationPolicy", "RetrieverModeResolution", "TrainValidActivationScope",

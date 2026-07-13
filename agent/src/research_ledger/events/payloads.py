@@ -1683,6 +1683,19 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ActivationGovernanceDecisionV2Recorded": PayloadSpec(
+        "activation_governance_decision_recorded.v2",
+        {
+            "governance_decision_id": _string,
+            "governance_hash": _hash,
+            "artifact_hash": _hash,
+            "protocol_hash": _hash,
+            "analysis_hash": _hash,
+            "verdict": _enum("invalidated", "inconclusive", "rejected", "approved"),
+            "source_event_hashes": _nonempty_hash_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "ActivationReadinessV4Recorded": PayloadSpec(
         "activation_readiness_recorded.v4",
         {
