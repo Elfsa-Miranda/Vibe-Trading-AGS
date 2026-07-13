@@ -55,3 +55,45 @@ Planned focused gates:
 - Ruff, mypy/compileall where configured, `git diff --check`, and affected Alpha Foundry / Research Ledger regressions.
 
 Later milestone file lists will be recorded before each implementation begins. No Activation-specific scorecard, execution engine, Claim Matrix, decision runner, factor parser, identity service, ledger, event store, or artifact repository is planned.
+
+## Post-hardening production-boundary revalidation (2026-07-13)
+
+The 16-row matrix above remains the reuse inventory. The following corrections
+record facts discovered by executing the real boundaries; they supersede only
+the affected call-boundary descriptions, not the historical pre-flight audit.
+
+- `ProductionActivationCandidateFactoryV1` now calls the real
+  `ProductionCandidateDAGEvaluatorV1`, obtains its
+  `authoritative_result`, derives Decision evidence from exact evaluator event
+  refs, invokes the existing `QualityDecisionV3Service`, and returns only
+  terminal/evaluation/decision/dossier refs. The end-to-end boundary test is
+  `test_factory_real_dag_evaluator_decision_and_dossier_chain`.
+- The QualityDecision v3 bridge is not promotion-authoritative. Its input still
+  uses caller-constructable `DecisionEvidenceRecord.v2`; the existing
+  `QualityDecisionAuthorityGateV1` therefore caps every non-reject result at
+  `research_only`. The factory binding exposes
+  `QUALITY_DECISION_V3_PRODUCER_AUTHORITY_INCOMPLETE` rather than treating the
+  bridge as candidate-zoo authority.
+- Invalid/duplicate identity attempts still cannot use the existing
+  `TrialTerminalDossierV1`, because that schema requires a real non-null
+  `factor_spec_id`. The factory binding therefore also exposes
+  `IDENTITY_TERMINAL_DOSSIER_PRODUCER_UNAVAILABLE`; no placeholder identity or
+  Activation-specific dossier was created.
+- `FormalActivationRunSourceAuditorV3` now binds a terminal to
+  `EvaluationRecorded.factor_spec_id`, uses the Decision v3 `decision` field
+  (not integer `tier`) for candidate-zoo eligibility, and verifies the terminal
+  dossier's trial/terminal/evaluation/factor bindings. The production terminal
+  payload does not contain `factor_spec_id`; the old assumption would have made
+  all real effective candidates ineligible.
+- Existing `ActivationResourceEvidenceV2` explicitly has
+  `source_complete=false`, parent timeout unenforced, and RSS unavailable.
+  Existing `IsolatedWorkerResourceV3` is a closed infrastructure probe only.
+  Neither is reinterpreted as source-complete production-arm resource evidence.
+- Readiness v4 now verifies the exact same-cycle protocol, applicability,
+  provider authority, golden-slice readiness, run-input bundle, and factory
+  reference chain. A merely valid/empty event chain is not source replay, and
+  governance role separation is structurally checked rather than hard-coded.
+
+No second ledger, event store, artifact repository, evaluator, scorecard,
+execution engine, Claim Matrix, QualityDecision runner, parser, or identity
+service was introduced during this revalidation.
