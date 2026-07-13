@@ -2333,6 +2333,103 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ForwardMonitoringProviderV3Registered": PayloadSpec(
+        "forward_monitoring_provider_registered.v3",
+        {
+            "registration_id": _string,
+            "registration_hash": _hash,
+            "descriptor": _mapping,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ForwardPlanV3Recorded": PayloadSpec(
+        "forward_plan_recorded.v3",
+        {
+            "plan_id": _string,
+            "plan_hash": _hash,
+            "schema_version": _enum("forward_plan.v3"),
+            "config": _mapping,
+            "final_artifact_event_hash": _hash,
+            "final_artifact_hash": _hash,
+            "final_evaluation_key": _hash,
+            "decision_event_hash": _hash,
+            "decision_hash": _hash,
+            "provider_registration_event_hash": _hash,
+            "eligibility_watermark": _hash,
+            "registered_at": _timestamp,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ForwardSourceArtifactV3Recorded": PayloadSpec(
+        "forward_source_artifact_recorded.v3",
+        {
+            "source_id": _string,
+            "source_hash": _hash,
+            "plan_event_hash": _hash,
+            "plan_id": _string,
+            "plan_hash": _hash,
+            "provider_registration_event_hash": _hash,
+            "provider_id": _string,
+            "provider_version": _string,
+            "vintage_policy_hash": _hash,
+            "availability_contract_hash": _hash,
+            "period_start": _date,
+            "period_end": _date,
+            "produced_at": _timestamp,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ForwardObservationV3Recorded": PayloadSpec(
+        "forward_observation_recorded.v3",
+        {
+            "observation_id": _string,
+            "observation_hash": _hash,
+            "plan_event_hash": _hash,
+            "plan_id": _string,
+            "plan_hash": _hash,
+            "source_event_hash": _hash,
+            "source_hash": _hash,
+            "period_start": _date,
+            "period_end": _date,
+            "metrics": _mapping,
+            "status": _enum("insufficient", "monitoring", "kill_triggered"),
+            "kill_reasons": _string_list,
+            "success_claim": _boolean,
+            "previous_observation_hash": _nullable_hash,
+            "observed_at": _timestamp,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "DataRevisionRecorded": PayloadSpec(
+        "data_revision_recorded.v1",
+        {
+            "revision_id": _string,
+            "revision_hash": _hash,
+            "plan_event_hash": _hash,
+            "plan_hash": _hash,
+            "original_source_event_hash": _hash,
+            "original_source_hash": _hash,
+            "revised_source_hash": _hash,
+            "revision_number": _positive_integer,
+            "reason_code": _string,
+            "revised_at": _timestamp,
+            "source_event_hashes": _nonempty_hash_list,
+            "producer_schema_version": _string,
+            "producer_policy_hash": _hash,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "ForwardPlanV2Recorded": PayloadSpec(
         "forward_plan_recorded.v2",
         {
@@ -2478,6 +2575,75 @@ def validate_and_redact_payload(
 
 
 def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> None:
+    if event_type == "ForwardMonitoringProviderV3Registered":
+        if canonical_json_hash(payload["descriptor"]) != payload["registration_hash"]:
+            raise EventValidationError("forward v3 provider registration hash mismatch")
+    if event_type == "ForwardPlanV3Recorded":
+        content = {
+            "schema_version": payload["schema_version"],
+            "config": payload["config"],
+            "final_artifact_event_hash": payload["final_artifact_event_hash"],
+            "final_artifact_hash": payload["final_artifact_hash"],
+            "final_evaluation_key": payload["final_evaluation_key"],
+            "decision_event_hash": payload["decision_event_hash"],
+            "decision_hash": payload["decision_hash"],
+            "provider_registration_event_hash": payload["provider_registration_event_hash"],
+            "eligibility_watermark": payload["eligibility_watermark"],
+            "registered_at": payload["registered_at"],
+        }
+        if (
+            canonical_json_hash(content) != payload["plan_hash"]
+            or payload["plan_id"] != "forward-plan-v3-" + payload["plan_hash"][7:31]
+            or payload["source_event_hashes"]
+            != sorted(
+                [
+                    payload["final_artifact_event_hash"],
+                    payload["decision_event_hash"],
+                    payload["provider_registration_event_hash"],
+                ]
+            )
+        ):
+            raise EventValidationError("forward v3 plan authority mismatch")
+    if event_type == "ForwardSourceArtifactV3Recorded":
+        if (
+            payload["period_end"] < payload["period_start"]
+            or payload["source_event_hashes"] != [payload["plan_event_hash"]]
+            or len(payload["artifact_refs"]) != 1
+        ):
+            raise EventValidationError("forward v3 source artifact mismatch")
+    if event_type == "ForwardObservationV3Recorded":
+        content = {
+            "schema_version": "forward_observation.v3",
+            "plan_hash": payload["plan_hash"],
+            "source_hash": payload["source_hash"],
+            "period_start": payload["period_start"],
+            "period_end": payload["period_end"],
+            "metrics": payload["metrics"],
+            "status": payload["status"],
+            "kill_reasons": payload["kill_reasons"],
+            "success_claim": payload["success_claim"],
+        }
+        if (
+            canonical_json_hash(content) != payload["observation_hash"]
+            or payload["success_claim"]
+            or payload["source_event_hashes"] != sorted([payload["plan_event_hash"], payload["source_event_hash"]])
+            or len(payload["artifact_refs"]) != 1
+        ):
+            raise EventValidationError("forward v3 observation authority mismatch")
+    if event_type == "DataRevisionRecorded":
+        content = {
+            "original_source_event_hash": payload["original_source_event_hash"],
+            "original_source_hash": payload["original_source_hash"],
+            "revised_source_hash": payload["revised_source_hash"],
+            "revision_number": payload["revision_number"],
+            "reason_code": payload["reason_code"],
+        }
+        if (
+            canonical_json_hash(content) != payload["revision_hash"]
+            or payload["source_event_hashes"] != [payload["original_source_event_hash"]]
+            or len(payload["artifact_refs"]) != 1
+        ):
+            raise EventValidationError("forward data revision authority mismatch")
     if event_type == "FalsificationCatalogV2Registered":
         if canonical_json_hash(payload["catalog"]) != payload["catalog_hash"]:
             raise EventValidationError("falsification v2 catalog hash mismatch")

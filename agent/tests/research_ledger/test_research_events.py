@@ -254,6 +254,11 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "FinalTestArtifactV2Recorded",
         "FinalTestFailedV2Recorded",
         "FinalSelectionAssessmentV2Recorded",
+        "ForwardMonitoringProviderV3Registered",
+        "ForwardPlanV3Recorded",
+        "ForwardSourceArtifactV3Recorded",
+        "ForwardObservationV3Recorded",
+        "DataRevisionRecorded",
         "ForwardPlanV2Recorded",
         "ForwardObservationV2Recorded",
         "ForwardPlanRecorded",
@@ -2075,6 +2080,173 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
         }
 
     add_falsification_v2_samples()
+
+    def add_forward_v3_samples() -> None:
+        producer_schema = "forward_monitoring_authority.v3"
+        descriptor = {
+            "provider_id": "forward-provider-fixture",
+            "provider_version": "3.0.0",
+            "calendar_id": "calendar-daily-v1",
+            "vintage_policy": "as_observed_append_only",
+            "vintage_policy_hash": digest,
+            "maximum_availability_delay_days": 1,
+            "availability_contract_hash": digest,
+            "provider_policy_hash": digest,
+        }
+        registration_hash = canonical_json_hash(descriptor)
+        final_event_hash = canonical_json_hash({"forward": "final"})
+        decision_event_hash = canonical_json_hash({"forward": "decision"})
+        provider_event_hash = canonical_json_hash({"forward": "provider"})
+        plan_event_hash = canonical_json_hash({"forward": "plan"})
+        source_event_hash = canonical_json_hash({"forward": "source"})
+        config = {
+            "factor_spec_id": "factor-1",
+            "forward_start": "2025-01-01",
+            "calendar_id": "calendar-daily-v1",
+            "return_horizon": 5,
+            "minimum_look_observations": 20,
+            "provider_id": "forward-provider-fixture",
+            "provider_version": "3.0.0",
+            "vintage_policy_hash": digest,
+            "availability_contract_hash": digest,
+            "transform_pipeline_hash": digest,
+            "cost_model_hash": digest,
+            "regime_config_hash": digest,
+            "policy_hash": digest,
+            "kill_rules": {
+                "minimum_rank_ic": 0.0,
+                "minimum_net_return": 0.0,
+                "maximum_drawdown": 0.2,
+            },
+            "kill_rules_hash": digest,
+        }
+        plan_content = {
+            "schema_version": "forward_plan.v3",
+            "config": config,
+            "final_artifact_event_hash": final_event_hash,
+            "final_artifact_hash": digest,
+            "final_evaluation_key": digest,
+            "decision_event_hash": decision_event_hash,
+            "decision_hash": digest,
+            "provider_registration_event_hash": provider_event_hash,
+            "eligibility_watermark": digest,
+            "registered_at": timestamp,
+        }
+        plan_hash = canonical_json_hash(plan_content)
+        plan_id = "forward-plan-v3-" + plan_hash[7:31]
+        samples["ForwardMonitoringProviderV3Registered"] = {
+            "registration_id": "forward-provider-v3-fixture",
+            "registration_hash": registration_hash,
+            "descriptor": descriptor,
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [],
+        }
+        samples["ForwardPlanV3Recorded"] = {
+            "plan_id": plan_id,
+            "plan_hash": plan_hash,
+            **plan_content,
+            "source_event_hashes": sorted([final_event_hash, decision_event_hash, provider_event_hash]),
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [],
+        }
+        samples["ForwardSourceArtifactV3Recorded"] = {
+            "source_id": "forward-source-v3-fixture",
+            "source_hash": digest,
+            "plan_event_hash": plan_event_hash,
+            "plan_id": plan_id,
+            "plan_hash": plan_hash,
+            "provider_registration_event_hash": provider_event_hash,
+            "provider_id": "forward-provider-fixture",
+            "provider_version": "3.0.0",
+            "vintage_policy_hash": digest,
+            "availability_contract_hash": digest,
+            "period_start": "2025-01-01",
+            "period_end": "2025-01-31",
+            "produced_at": timestamp,
+            "source_event_hashes": [plan_event_hash],
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": "forward-v3/source.json",
+                    "artifact_hash": digest,
+                    "media_type": "application/vnd.vibe.forward-source-v3+json",
+                }
+            ],
+        }
+        metrics = {
+            "effective_observations": 20,
+            "rank_ic": 0.03,
+            "net_return": 0.02,
+            "drawdown": 0.01,
+        }
+        observation_content = {
+            "schema_version": "forward_observation.v3",
+            "plan_hash": plan_hash,
+            "source_hash": digest,
+            "period_start": "2025-01-01",
+            "period_end": "2025-01-31",
+            "metrics": metrics,
+            "status": "monitoring",
+            "kill_reasons": [],
+            "success_claim": False,
+        }
+        samples["ForwardObservationV3Recorded"] = {
+            "observation_id": "forward-observation-v3-fixture",
+            "observation_hash": canonical_json_hash(observation_content),
+            "plan_event_hash": plan_event_hash,
+            "plan_id": plan_id,
+            "plan_hash": plan_hash,
+            "source_event_hash": source_event_hash,
+            "source_hash": digest,
+            "period_start": "2025-01-01",
+            "period_end": "2025-01-31",
+            "metrics": metrics,
+            "status": "monitoring",
+            "kill_reasons": [],
+            "success_claim": False,
+            "previous_observation_hash": None,
+            "observed_at": timestamp,
+            "source_event_hashes": sorted([plan_event_hash, source_event_hash]),
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": "forward-v3/observation.json",
+                    "artifact_hash": digest,
+                    "media_type": "application/vnd.vibe.forward-observation-v3+json",
+                }
+            ],
+        }
+        revision_content = {
+            "original_source_event_hash": source_event_hash,
+            "original_source_hash": digest,
+            "revised_source_hash": canonical_json_hash({"forward": "revised"}),
+            "revision_number": 1,
+            "reason_code": "PROVIDER_CORRECTION",
+        }
+        samples["DataRevisionRecorded"] = {
+            "revision_id": "forward-revision-v3-fixture",
+            "revision_hash": canonical_json_hash(revision_content),
+            "plan_event_hash": plan_event_hash,
+            "plan_hash": plan_hash,
+            **revision_content,
+            "revised_at": timestamp,
+            "source_event_hashes": [source_event_hash],
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": "forward-v3/revision.json",
+                    "artifact_hash": digest,
+                    "media_type": "application/vnd.vibe.forward-source-v3+json",
+                }
+            ],
+        }
+
+    add_forward_v3_samples()
 
     def add_final_v2_samples() -> None:
         producer_schema = "final_test_authority.v2"
