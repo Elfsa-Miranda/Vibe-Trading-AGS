@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import itertools
+import json
 import math
 import random
 from statistics import NormalDist, mean, pvariance
-from typing import Any, Literal, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 from src.alpha_foundry.activation.pair_projector_v2 import (
     ActivationPairEvidenceV2,
@@ -19,10 +20,22 @@ from src.alpha_foundry.activation.protocol_v2 import (
     PreregisteredActivationStatisticalProtocolV2,
     RecordedActivationProtocolV2,
 )
-from src.research_ledger.events import ResearchEventStore
+from src.research_ledger.events import (
+    EventDraft,
+    EventTransitionError,
+    ResearchEventEnvelope,
+    ResearchEventStore,
+)
+from src.research_ledger.events.artifacts import (
+    AtomicContentAddressedArtifactWriter,
+    validate_artifact_references,
+)
+from src.research_ledger.hash_utils import canonical_json_hash
 
 
 _ANALYSIS_AUTHORITY = object()
+_STATISTICAL_ARTIFACT_AUTHORITY = object()
+StatisticalArtifactKindV2 = Literal["pilot", "confirmatory_plan", "analysis"]
 
 
 @dataclass(frozen=True)
@@ -63,6 +76,24 @@ class PilotDispersionEvidenceV2:
             for name in self.__dataclass_fields__
             if name != "evidence_hash"
         }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._content_dict(), "evidence_hash": self.evidence_hash}
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "PilotDispersionEvidenceV2":
+        if set(value) != set(cls.__dataclass_fields__) or not isinstance(
+            value["pair_evidence_hashes"], list
+        ):
+            raise ValueError("pilot dispersion artifact has an invalid closed schema")
+        return cls(
+            **{
+                **dict(value),
+                "pair_evidence_hashes": tuple(
+                    str(item) for item in value["pair_evidence_hashes"]
+                ),
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -139,6 +170,32 @@ class PreregisteredConfirmatoryActivationPlanV2:
     def to_dict(self) -> dict[str, Any]:
         return {**self._content_dict(), "plan_hash": self.plan_hash}
 
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any]
+    ) -> "PreregisteredConfirmatoryActivationPlanV2":
+        if (
+            set(value) != set(cls.__dataclass_fields__)
+            or not isinstance(value["seeds"], list)
+            or not isinstance(value["strata"], list)
+            or not isinstance(value["arm_orders"], list)
+            or not isinstance(value["canonical_hash_spec"], Mapping)
+        ):
+            raise ValueError("confirmatory plan artifact has an invalid closed schema")
+        return cls(
+            **{
+                **dict(value),
+                "seeds": tuple(int(item) for item in value["seeds"]),
+                "strata": tuple(str(item) for item in value["strata"]),
+                "arm_orders": tuple(
+                    (str(item[0]), str(item[1])) for item in value["arm_orders"]
+                ),
+                "canonical_hash_spec": CanonicalHashSpecV1(
+                    **dict(value["canonical_hash_spec"])
+                ),
+            }
+        )
+
 
 @dataclass(frozen=True, init=False)
 class ActivationStatisticalAnalysisV2:
@@ -202,12 +259,213 @@ class ActivationStatisticalAnalysisV2:
     def to_dict(self) -> dict[str, Any]:
         return {**self._content_dict(), "analysis_hash": self.analysis_hash}
 
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "ActivationStatisticalAnalysisV2":
+        expected = {
+            name for name in cls.__dataclass_fields__ if name != "_authority"
+        }
+        if (
+            set(value) != expected
+            or not isinstance(value["pair_evidence_hashes"], list)
+            or not isinstance(value["protocol_violation_codes"], list)
+        ):
+            raise ValueError("statistical analysis artifact has an invalid closed schema")
+        return cls(
+            _authority=_ANALYSIS_AUTHORITY,
+            **{
+                **dict(value),
+                "pair_evidence_hashes": tuple(
+                    str(item) for item in value["pair_evidence_hashes"]
+                ),
+                "protocol_violation_codes": tuple(
+                    str(item) for item in value["protocol_violation_codes"]
+                ),
+            },
+        )
+
+
+StatisticalArtifactValueV2 = (
+    PilotDispersionEvidenceV2
+    | PreregisteredConfirmatoryActivationPlanV2
+    | ActivationStatisticalAnalysisV2
+)
+_STATISTICAL_CONFIG: dict[StatisticalArtifactKindV2, tuple[str, str, str, str, str]] = {
+    "pilot": (
+        "ActivationPilotDispersionV2Recorded",
+        "activation_pilot_dispersion_recorded.v2",
+        "activation-pilot-dispersion-v2",
+        "evidence_hash",
+        "application/vnd.vibe.activation-pilot-dispersion-v2+json",
+    ),
+    "confirmatory_plan": (
+        "ActivationConfirmatoryPlanV2Registered",
+        "activation_confirmatory_plan_registered.v2",
+        "activation-confirmatory-plan-v2",
+        "plan_hash",
+        "application/vnd.vibe.activation-confirmatory-plan-v2+json",
+    ),
+    "analysis": (
+        "ActivationStatisticalAnalysisV2Recorded",
+        "activation_statistical_analysis_recorded.v2",
+        "activation-statistical-analysis-v2",
+        "analysis_hash",
+        "application/vnd.vibe.activation-statistical-analysis-v2+json",
+    ),
+}
+
+
+@dataclass(frozen=True, init=False)
+class RecordedActivationStatisticalArtifactV2:
+    artifact_kind: StatisticalArtifactKindV2
+    value: StatisticalArtifactValueV2
+    event: ResearchEventEnvelope
+    artifact_hash: str
+    artifact_ref: Mapping[str, str]
+    source_event_hashes: tuple[str, ...]
+    _authority: object
+
+    def __init__(self, *, _authority: object, **values: Any) -> None:
+        if _authority is not _STATISTICAL_ARTIFACT_AUTHORITY:
+            raise TypeError("statistical artifacts must be analyzer-minted")
+        for name, value in values.items():
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, "_authority", _authority)
+
+    @property
+    def semantic_hash(self) -> str:
+        return str(getattr(self.value, _STATISTICAL_CONFIG[self.artifact_kind][3]))
+
+    def require_pilot(self) -> PilotDispersionEvidenceV2:
+        if self.artifact_kind != "pilot" or not isinstance(
+            self.value, PilotDispersionEvidenceV2
+        ):
+            raise TypeError("recorded pilot dispersion evidence is required")
+        return self.value
+
+    def require_plan(self) -> PreregisteredConfirmatoryActivationPlanV2:
+        if self.artifact_kind != "confirmatory_plan" or not isinstance(
+            self.value, PreregisteredConfirmatoryActivationPlanV2
+        ):
+            raise TypeError("recorded confirmatory plan is required")
+        return self.value
+
+    def require_analysis(self) -> ActivationStatisticalAnalysisV2:
+        if self.artifact_kind != "analysis" or not isinstance(
+            self.value, ActivationStatisticalAnalysisV2
+        ):
+            raise TypeError("recorded statistical analysis is required")
+        return self.value
+
+    def verify_in(self, store: ResearchEventStore) -> StatisticalArtifactValueV2:
+        if not isinstance(store, ResearchEventStore) or not store.verify_chain():
+            raise EventTransitionError("statistical artifact requires a valid event chain")
+        event_type, _, namespace, _, media_type = _STATISTICAL_CONFIG[
+            self.artifact_kind
+        ]
+        events = store.query_events()
+        matches = [
+            event
+            for event in events
+            if event.event_type == event_type and event.event_hash == self.event.event_hash
+        ]
+        if len(matches) != 1 or matches[0] != self.event:
+            raise EventTransitionError("statistical artifact is not in the analyzer store")
+        event = matches[0]
+        order = {candidate.event_hash: index for index, candidate in enumerate(events)}
+        event_index = order[event.event_hash]
+        if (
+            not self.source_event_hashes
+            or self.source_event_hashes != tuple(sorted(set(self.source_event_hashes)))
+            or any(
+                source not in order or order[source] >= event_index
+                for source in self.source_event_hashes
+            )
+        ):
+            raise EventTransitionError("statistical artifact source prefix is incomplete")
+        protocol_hash = str(getattr(self.value, "protocol_hash", ""))
+        if isinstance(self.value, PilotDispersionEvidenceV2):
+            protocol_hash = self.value.pilot_protocol_hash
+        expected_payload = {
+            "statistical_artifact_id": event.entity_id,
+            "artifact_kind": self.artifact_kind,
+            "semantic_hash": self.semantic_hash,
+            "artifact_hash": self.artifact_hash,
+            "protocol_hash": protocol_hash,
+            "source_event_hashes": list(self.source_event_hashes),
+            "artifact_refs": [dict(self.artifact_ref)],
+        }
+        if event.payload_hash != canonical_json_hash(expected_payload):
+            raise EventTransitionError("statistical artifact event binding differs")
+        normalized = validate_artifact_references(
+            store.artifact_root, [dict(self.artifact_ref)]
+        )[0]
+        digest = self.artifact_hash.removeprefix("sha256:")
+        expected_path = f"{namespace}/{digest[:2]}/{digest}.json"
+        if (
+            normalized["relative_path"] != expected_path
+            or normalized["media_type"] != media_type
+        ):
+            raise EventTransitionError("statistical artifact reference is noncanonical")
+
+        def reject_constant(item: str) -> None:
+            raise ValueError(f"non-finite statistical artifact JSON: {item}")
+
+        def reject_duplicates(items: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, item in items:
+                if key in result:
+                    raise ValueError("duplicate statistical artifact key")
+                result[key] = item
+            return result
+
+        raw = json.loads(
+            store.artifact_root.joinpath(*expected_path.split("/")).read_text(
+                encoding="utf-8"
+            ),
+            parse_constant=reject_constant,
+            object_pairs_hook=reject_duplicates,
+        )
+        if (
+            not isinstance(raw, Mapping)
+            or set(raw)
+            != {
+                "schema_version",
+                "artifact_kind",
+                "semantic_hash",
+                "value",
+                "artifact_hash",
+            }
+            or raw.get("schema_version")
+            != "activation_statistical_artifact_envelope.v2"
+            or raw.get("artifact_kind") != self.artifact_kind
+            or raw.get("semantic_hash") != self.semantic_hash
+            or raw.get("artifact_hash") != self.artifact_hash
+            or canonical_json_hash(raw, exclude_keys=("artifact_hash",))
+            != self.artifact_hash
+            or not isinstance(raw.get("value"), Mapping)
+        ):
+            raise EventTransitionError("statistical artifact must be one object")
+        raw_value = raw["value"]
+        rebuilt: StatisticalArtifactValueV2
+        if self.artifact_kind == "pilot":
+            rebuilt = PilotDispersionEvidenceV2.from_mapping(raw_value)
+        elif self.artifact_kind == "confirmatory_plan":
+            rebuilt = PreregisteredConfirmatoryActivationPlanV2.from_mapping(raw_value)
+        else:
+            rebuilt = ActivationStatisticalAnalysisV2.from_mapping(raw_value)
+        if rebuilt != self.value:
+            raise EventTransitionError("statistical artifact replay differs")
+        return rebuilt
+
 
 class ActivationStatisticalAnalyzerV2:
     def __init__(self, store: ResearchEventStore) -> None:
         if not isinstance(store, ResearchEventStore):
             raise TypeError("Activation analyzer requires ResearchEventStore")
         self.store = store
+        self.writer = AtomicContentAddressedArtifactWriter(
+            store.artifact_root, max_bytes=2 * 1024 * 1024
+        )
 
     def summarize_pilot(
         self,
@@ -215,7 +473,7 @@ class ActivationStatisticalAnalyzerV2:
         registered_protocol: RecordedActivationProtocolV2,
         pairs: Sequence[RecordedActivationPairEvidenceV2],
         preregistered_variance_floor: float,
-    ) -> PilotDispersionEvidenceV2:
+    ) -> RecordedActivationStatisticalArtifactV2:
         protocol = self._protocol(registered_protocol)
         evidence = self._require_pairs(protocol, pairs)
         if not math.isfinite(preregistered_variance_floor) or preregistered_variance_floor < 0:
@@ -242,7 +500,7 @@ class ActivationStatisticalAnalyzerV2:
             "zero_yield_rate": zero,
             "completion_rate": len(complete) / len(evidence),
         }
-        return PilotDispersionEvidenceV2(
+        pilot = PilotDispersionEvidenceV2(
             schema_version="activation_pilot_dispersion.v2",
             pilot_protocol_hash=protocol.protocol_hash,
             pair_evidence_hashes=tuple(content["pair_evidence_hashes"]),  # type: ignore[arg-type]
@@ -256,20 +514,29 @@ class ActivationStatisticalAnalyzerV2:
                 "activation-pilot-dispersion.v2", content
             ),
         )
+        return self._record_statistical_artifact(
+            artifact_kind="pilot",
+            value=pilot,
+            protocol_hash=protocol.protocol_hash,
+            run_id=protocol.research_cycle_id,
+            source_event_hashes=tuple(sorted(pair.event.event_hash for pair in pairs)),
+        )
 
     def mint_confirmatory_plan(
         self,
         *,
         registered_protocol: RecordedActivationProtocolV2,
-        pilot: PilotDispersionEvidenceV2,
+        pilot: RecordedActivationStatisticalArtifactV2,
         strata: tuple[str, ...],
-    ) -> PreregisteredConfirmatoryActivationPlanV2:
+    ) -> RecordedActivationStatisticalArtifactV2:
         protocol = self._protocol(registered_protocol)
-        if pilot.pilot_protocol_hash != protocol.protocol_hash:
+        pilot.verify_in(self.store)
+        pilot_evidence = pilot.require_pilot()
+        if pilot_evidence.pilot_protocol_hash != protocol.protocol_hash:
             raise ValueError("pilot and protocol differ")
         if not strata or strata != tuple(sorted(set(strata))):
             raise ValueError("confirmatory strata must be frozen and unique")
-        variance = pilot.conservative_variance_upper_bound
+        variance = pilot_evidence.conservative_variance_upper_bound
         required, estimated_power, power_curve_hash = self._simulate_required_pairs(
             protocol=protocol,
             conservative_variance=variance,
@@ -301,7 +568,7 @@ class ActivationStatisticalAnalyzerV2:
             "schema_version": "preregistered_confirmatory_activation_plan.v2",
             "research_cycle_id": protocol.research_cycle_id,
             "protocol_hash": protocol.protocol_hash,
-            "pilot_dispersion_hash": pilot.evidence_hash,
+            "pilot_dispersion_hash": pilot_evidence.evidence_hash,
             "fixed_sesoi": protocol.sesoi,
             "alpha_level": protocol.alpha_level,
             "target_power": protocol.target_power,
@@ -334,21 +601,35 @@ class ActivationStatisticalAnalyzerV2:
             "arm_orders": [list(item) for item in orders],
             "canonical_hash_spec": protocol.canonical_hash_spec.to_dict(),
         }
-        return PreregisteredConfirmatoryActivationPlanV2(
+        plan = PreregisteredConfirmatoryActivationPlanV2(
             **values,
             plan_hash=protocol.canonical_hash_spec.hash_payload(
                 "confirmatory-activation-plan.v2", serial
             ),
+        )
+        return self._record_statistical_artifact(
+            artifact_kind="confirmatory_plan",
+            value=plan,
+            protocol_hash=protocol.protocol_hash,
+            run_id=protocol.research_cycle_id,
+            source_event_hashes=(pilot.event.event_hash,),
         )
 
     def analyze(
         self,
         *,
         registered_protocol: RecordedActivationProtocolV2,
+        confirmatory_plan: RecordedActivationStatisticalArtifactV2,
         pairs: Sequence[RecordedActivationPairEvidenceV2],
-        required_pairs: int,
-    ) -> ActivationStatisticalAnalysisV2:
+    ) -> RecordedActivationStatisticalArtifactV2:
         protocol = self._protocol(registered_protocol)
+        confirmatory_plan.verify_in(self.store)
+        plan = confirmatory_plan.require_plan()
+        if plan.protocol_hash != protocol.protocol_hash:
+            raise ValueError("confirmatory plan and protocol differ")
+        if not plan.feasible:
+            raise ValueError("infeasible confirmatory plan cannot be analyzed")
+        required_pairs = plan.required_pairs
         evidence = self._require_pairs(protocol, pairs)
         complete = [pair for pair in evidence if pair.source_complete]
         values = [pair.normalized_yield_difference for pair in complete]
@@ -413,7 +694,7 @@ class ActivationStatisticalAnalyzerV2:
             "source_authority_pass": all(pair.source_complete for pair in evidence),
             "protocol_violation_codes": violations,
         }
-        return ActivationStatisticalAnalysisV2(
+        analysis = ActivationStatisticalAnalysisV2(
             _authority=_ANALYSIS_AUTHORITY,
             **{
                 **content,
@@ -423,6 +704,82 @@ class ActivationStatisticalAnalyzerV2:
                     "activation-statistical-analysis.v2", content
                 ),
             },
+        )
+        return self._record_statistical_artifact(
+            artifact_kind="analysis",
+            value=analysis,
+            protocol_hash=protocol.protocol_hash,
+            run_id=protocol.research_cycle_id,
+            source_event_hashes=tuple(
+                sorted(
+                    {
+                        confirmatory_plan.event.event_hash,
+                        *(pair.event.event_hash for pair in pairs),
+                    }
+                )
+            ),
+        )
+
+    def _record_statistical_artifact(
+        self,
+        *,
+        artifact_kind: StatisticalArtifactKindV2,
+        value: StatisticalArtifactValueV2,
+        protocol_hash: str,
+        run_id: str,
+        source_event_hashes: tuple[str, ...],
+    ) -> RecordedActivationStatisticalArtifactV2:
+        event_type, payload_schema, namespace, semantic_field, media_type = (
+            _STATISTICAL_CONFIG[artifact_kind]
+        )
+        semantic_hash = str(getattr(value, semantic_field))
+        value_payload = value.to_dict()
+        envelope_content = {
+            "schema_version": "activation_statistical_artifact_envelope.v2",
+            "artifact_kind": artifact_kind,
+            "semantic_hash": semantic_hash,
+            "value": value_payload,
+        }
+        artifact_hash = canonical_json_hash(envelope_content)
+        payload = {**envelope_content, "artifact_hash": artifact_hash}
+        artifact = self.writer.write_json(
+            namespace=namespace,
+            payload=payload,
+            schema_version="activation_statistical_artifact_envelope.v2",
+            semantic_hash_field="artifact_hash",
+            closed_keys=frozenset(payload),
+            media_type=media_type,
+        )
+        sources = tuple(sorted(set(source_event_hashes)))
+        if not sources:
+            raise EventTransitionError("statistical artifact requires protected sources")
+        identifier = f"activation-{artifact_kind.replace('_', '-')}-v2-" + semantic_hash[-24:]
+        event = self.store._append_producer_event(
+            EventDraft(
+                event_type=event_type,
+                entity_id=identifier,
+                run_id=run_id,
+                payload_schema_version=payload_schema,
+                idempotency_key=f"activation-{artifact_kind}-v2:" + semantic_hash,
+                payload={
+                    "statistical_artifact_id": identifier,
+                    "artifact_kind": artifact_kind,
+                    "semantic_hash": semantic_hash,
+                    "artifact_hash": artifact_hash,
+                    "protocol_hash": protocol_hash,
+                    "source_event_hashes": list(sources),
+                    "artifact_refs": [artifact.reference()],
+                },
+            )
+        )
+        return RecordedActivationStatisticalArtifactV2(
+            _authority=_STATISTICAL_ARTIFACT_AUTHORITY,
+            artifact_kind=artifact_kind,
+            value=value,
+            event=event,
+            artifact_hash=artifact_hash,
+            artifact_ref=artifact.reference(),
+            source_event_hashes=sources,
         )
 
     def _protocol(
@@ -602,4 +959,5 @@ __all__ = [
     "ActivationStatisticalAnalyzerV2",
     "PilotDispersionEvidenceV2",
     "PreregisteredConfirmatoryActivationPlanV2",
+    "RecordedActivationStatisticalArtifactV2",
 ]

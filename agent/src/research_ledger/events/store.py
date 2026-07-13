@@ -354,6 +354,21 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "ActivationPilotDispersionV2Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
+    "ActivationConfirmatoryPlanV2Registered": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
+    "ActivationStatisticalAnalysisV2Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ActivationReadinessV4Recorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY",
         "VIBE_TRADING_RESEARCH_EVENTS",
@@ -526,6 +541,9 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "ProductionActivationArmStartedV1Recorded",
         "ProductionActivationArmCompletedV1Recorded",
         "ActivationPairEvidenceV2Recorded",
+        "ActivationPilotDispersionV2Recorded",
+        "ActivationConfirmatoryPlanV2Registered",
+        "ActivationStatisticalAnalysisV2Recorded",
         "ActivationReadinessV4Recorded",
     }
 )
@@ -996,6 +1014,9 @@ class ResearchEventStore:
             "ProductionActivationArmStartedV1Recorded": "arm_start_id",
             "ProductionActivationArmCompletedV1Recorded": "arm_completion_id",
             "ActivationPairEvidenceV2Recorded": "pair_evidence_id",
+            "ActivationPilotDispersionV2Recorded": "statistical_artifact_id",
+            "ActivationConfirmatoryPlanV2Registered": "statistical_artifact_id",
+            "ActivationStatisticalAnalysisV2Recorded": "statistical_artifact_id",
             "ActivationReadinessV4Recorded": "readiness_id",
             "ActivationPairExecutionScheduled": "schedule_id",
             "ActivationPairExecutionClaimed": "claim_id",

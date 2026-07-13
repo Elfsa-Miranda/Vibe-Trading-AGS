@@ -32,6 +32,7 @@ from src.alpha_foundry.activation.statistical_v2 import (
     ActivationStatisticalAnalyzerV2,
     PilotDispersionEvidenceV2,
     PreregisteredConfirmatoryActivationPlanV2,
+    RecordedActivationStatisticalArtifactV2,
 )
 from src.alpha_foundry.activation.model import (
     ActivationAnalysisPolicy,
@@ -79,6 +80,7 @@ __all__ = [
     "ActivationStatisticalAnalysisV2", "ActivationStatisticalAnalyzerV2",
     "ActivationGovernanceDecisionV2", "ActivationGovernanceService",
     "PilotDispersionEvidenceV2", "PreregisteredConfirmatoryActivationPlanV2",
+    "RecordedActivationStatisticalArtifactV2",
     "RetrieverActivationPolicy", "RetrieverModeResolution", "TrainValidActivationScope",
     "holm_adjust",
     "activation_arm_execution_run_id",
