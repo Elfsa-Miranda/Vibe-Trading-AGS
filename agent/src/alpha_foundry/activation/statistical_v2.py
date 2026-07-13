@@ -14,7 +14,9 @@ from src.alpha_foundry.activation.protocol_v2 import (
     DEFAULT_ACTIVATION_HASH_SPEC,
     CanonicalHashSpecV1,
     PreregisteredActivationStatisticalProtocolV2,
+    RecordedActivationProtocolV2,
 )
+from src.research_ledger.events import ResearchEventStore
 
 
 _ANALYSIS_AUTHORITY = object()
@@ -82,6 +84,10 @@ class PreregisteredConfirmatoryActivationPlanV2:
     confidence_interval_method: str
     safety_resource_noninferiority_policy: str
     multiplicity_gatekeeping_policy: str
+    conservative_variance_upper_bound: float
+    power_simulation_seed: int
+    power_simulation_count: int
+    estimated_power: float
     power_engine_hash: str
     canonical_hash_spec: CanonicalHashSpecV1
     plan_hash: str
@@ -100,6 +106,13 @@ class PreregisteredConfirmatoryActivationPlanV2:
             for order in self.arm_orders
         ):
             raise ValueError("confirmatory arm order is not fully counterbalanced")
+        if (
+            not math.isfinite(self.conservative_variance_upper_bound)
+            or self.conservative_variance_upper_bound < 0.0
+            or not 0.0 <= self.estimated_power <= 1.0
+            or self.power_simulation_count < 1000
+        ):
+            raise ValueError("confirmatory power evidence is invalid")
         expected = self.canonical_hash_spec.hash_payload(
             "confirmatory-activation-plan.v2", self._content_dict()
         )
@@ -186,13 +199,19 @@ class ActivationStatisticalAnalysisV2:
 
 
 class ActivationStatisticalAnalyzerV2:
+    def __init__(self, store: ResearchEventStore) -> None:
+        if not isinstance(store, ResearchEventStore):
+            raise TypeError("Activation analyzer requires ResearchEventStore")
+        self.store = store
+
     def summarize_pilot(
         self,
         *,
-        protocol: PreregisteredActivationStatisticalProtocolV2,
+        registered_protocol: RecordedActivationProtocolV2,
         pairs: Sequence[ActivationPairEvidenceV2],
         preregistered_variance_floor: float,
     ) -> PilotDispersionEvidenceV2:
+        protocol = self._protocol(registered_protocol)
         self._require_pairs(protocol, pairs)
         if not math.isfinite(preregistered_variance_floor) or preregistered_variance_floor < 0:
             raise ValueError("variance floor must be frozen and non-negative")
@@ -236,20 +255,19 @@ class ActivationStatisticalAnalyzerV2:
     def mint_confirmatory_plan(
         self,
         *,
-        protocol: PreregisteredActivationStatisticalProtocolV2,
+        registered_protocol: RecordedActivationProtocolV2,
         pilot: PilotDispersionEvidenceV2,
         strata: tuple[str, ...],
     ) -> PreregisteredConfirmatoryActivationPlanV2:
+        protocol = self._protocol(registered_protocol)
         if pilot.pilot_protocol_hash != protocol.protocol_hash:
             raise ValueError("pilot and protocol differ")
         if not strata or strata != tuple(sorted(set(strata))):
             raise ValueError("confirmatory strata must be frozen and unique")
         variance = pilot.conservative_variance_upper_bound
-        z_alpha = NormalDist().inv_cdf(1.0 - protocol.alpha_level)
-        z_power = NormalDist().inv_cdf(protocol.target_power)
-        required = max(
-            protocol.minimum_pairs,
-            math.ceil(((z_alpha + z_power) ** 2 * variance) / (protocol.sesoi**2)),
+        required, estimated_power, power_curve_hash = self._simulate_required_pairs(
+            protocol=protocol,
+            conservative_variance=variance,
         )
         feasible = required <= protocol.maximum_pairs
         seeds = tuple(protocol.power_simulation_seed + index for index in range(required)) if feasible else ()
@@ -265,6 +283,11 @@ class ActivationStatisticalAnalyzerV2:
                 "simulation_count": protocol.power_simulation_count,
                 "fixed_sesoi": protocol.sesoi,
                 "variance_upper_bound": variance,
+                "alpha_level": protocol.alpha_level,
+                "target_power": protocol.target_power,
+                "minimum_pairs": protocol.minimum_pairs,
+                "maximum_pairs": protocol.maximum_pairs,
+                "power_curve_hash": power_curve_hash,
             },
         )
         values: dict[str, Any] = {
@@ -288,6 +311,10 @@ class ActivationStatisticalAnalyzerV2:
             "confidence_interval_method": protocol.confidence_interval_method,
             "safety_resource_noninferiority_policy": "closed_gate_from_protocol.v2",
             "multiplicity_gatekeeping_policy": protocol.multiplicity_or_gatekeeping_policy,
+            "conservative_variance_upper_bound": variance,
+            "power_simulation_seed": protocol.power_simulation_seed,
+            "power_simulation_count": protocol.power_simulation_count,
+            "estimated_power": estimated_power,
             "power_engine_hash": engine,
             "canonical_hash_spec": protocol.canonical_hash_spec,
         }
@@ -308,13 +335,11 @@ class ActivationStatisticalAnalyzerV2:
     def analyze(
         self,
         *,
-        protocol: PreregisteredActivationStatisticalProtocolV2,
-        registered_protocol_event_hash: str,
+        registered_protocol: RecordedActivationProtocolV2,
         pairs: Sequence[ActivationPairEvidenceV2],
         required_pairs: int,
     ) -> ActivationStatisticalAnalysisV2:
-        if registered_protocol_event_hash != protocol.registration_event_hash:
-            raise ValueError("analyzer requires the registered frozen protocol")
+        protocol = self._protocol(registered_protocol)
         self._require_pairs(protocol, pairs)
         complete = [pair for pair in pairs if pair.source_complete]
         values = [pair.normalized_yield_difference for pair in complete]
@@ -390,6 +415,98 @@ class ActivationStatisticalAnalyzerV2:
                 ),
             },
         )
+
+    def _protocol(
+        self,
+        registered: RecordedActivationProtocolV2,
+    ) -> PreregisteredActivationStatisticalProtocolV2:
+        if not isinstance(registered, RecordedActivationProtocolV2):
+            raise TypeError("analyzer requires a registry-minted frozen protocol")
+        registered.verify_in(self.store)
+        return registered.protocol
+
+    @staticmethod
+    def _simulate_required_pairs(
+        *,
+        protocol: PreregisteredActivationStatisticalProtocolV2,
+        conservative_variance: float,
+    ) -> tuple[int, float, str]:
+        """Frozen-seed Monte Carlo power under the conservative variance model.
+
+        The simulation uses the fixed SESOI as the alternative mean and a
+        one-sided Gaussian working-model critical value for the preregistered
+        paired location test.  A Wilson lower bound, rather than the raw Monte
+        Carlo proportion, must reach target power.  Pilot observed uplift is
+        neither accepted nor used by this engine.
+        """
+
+        if conservative_variance < 0.0 or not math.isfinite(conservative_variance):
+            raise ValueError("conservative power variance is invalid")
+        count = protocol.power_simulation_count
+        rng = random.Random(protocol.power_simulation_seed)
+        standard_deviation = math.sqrt(conservative_variance)
+        critical_z = NormalDist().inv_cdf(1.0 - protocol.alpha_level)
+        rejections = [0] * (protocol.maximum_pairs + 1)
+        for _ in range(count):
+            cumulative = 0.0
+            for pair_count in range(1, protocol.maximum_pairs + 1):
+                cumulative += rng.gauss(protocol.sesoi, standard_deviation)
+                if pair_count >= protocol.minimum_pairs:
+                    critical_mean = critical_z * standard_deviation / math.sqrt(
+                        pair_count
+                    )
+                    if cumulative / pair_count > critical_mean:
+                        rejections[pair_count] += 1
+        curve: list[dict[str, float | int]] = []
+        required = protocol.maximum_pairs + 1
+        selected_power = rejections[protocol.maximum_pairs] / count
+        for pair_count in range(protocol.minimum_pairs, protocol.maximum_pairs + 1):
+            raw_power = rejections[pair_count] / count
+            lower = ActivationStatisticalAnalyzerV2._wilson_lower_bound(
+                successes=rejections[pair_count],
+                trials=count,
+                confidence=0.95,
+            )
+            curve.append(
+                {
+                    "pairs": pair_count,
+                    "estimated_power": raw_power,
+                    "power_lower_bound": lower,
+                }
+            )
+            if required > protocol.maximum_pairs and lower >= protocol.target_power:
+                required = pair_count
+                selected_power = raw_power
+        curve_hash = protocol.canonical_hash_spec.hash_payload(
+            "activation-power-curve.v2",
+            {
+                "method": protocol.power_method,
+                "fixed_sesoi": protocol.sesoi,
+                "conservative_variance": conservative_variance,
+                "alpha_level": protocol.alpha_level,
+                "target_power": protocol.target_power,
+                "simulation_seed": protocol.power_simulation_seed,
+                "simulation_count": count,
+                "curve": curve,
+            },
+        )
+        return required, selected_power, curve_hash
+
+    @staticmethod
+    def _wilson_lower_bound(
+        *, successes: int, trials: int, confidence: float
+    ) -> float:
+        if trials < 1 or not 0.5 < confidence < 1.0:
+            raise ValueError("power interval configuration is invalid")
+        proportion = successes / trials
+        z_value = NormalDist().inv_cdf(confidence)
+        denominator = 1.0 + z_value**2 / trials
+        center = proportion + z_value**2 / (2.0 * trials)
+        radius = z_value * math.sqrt(
+            proportion * (1.0 - proportion) / trials
+            + z_value**2 / (4.0 * trials**2)
+        )
+        return max(0.0, (center - radius) / denominator)
 
     @staticmethod
     def _require_pairs(

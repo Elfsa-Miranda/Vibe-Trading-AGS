@@ -34,6 +34,14 @@ def _require_hash(value: str, name: str) -> None:
         raise ValueError(f"{name} must be a canonical sha256 hash")
 
 
+def _plain(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _plain(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_plain(item) for item in value]
+    return value
+
+
 def _domain_hash(domain: str, payload: Mapping[str, Any]) -> str:
     if _DOMAIN_RE.fullmatch(domain) is None:
         raise ValueError("hash domain is invalid")
@@ -230,7 +238,7 @@ class PreregisteredActivationStatisticalProtocolV2:
             "pilot_use_policy": (
                 "variance_dispersion_completion_resource_fidelity_only; observed uplift forbidden"
             ),
-            "power_method": "paired_sign_flip_simulation.v1",
+            "power_method": "paired_gaussian_working_model_simulation.v2",
             "power_simulation_seed": 732452,
             "power_simulation_count": 20000,
             "variance_upper_bound_rule": "max(pilot_upper_95_variance,preregistered_variance_floor)",
@@ -455,10 +463,55 @@ class ActivationApplicabilityMatrixV1:
         return {**self._content_dict(), "matrix_hash": self.matrix_hash}
 
 
-@dataclass(frozen=True)
+_RECORDED_PROTOCOL_AUTHORITY = object()
+
+
+@dataclass(frozen=True, init=False)
 class RecordedActivationProtocolV2:
     protocol: PreregisteredActivationStatisticalProtocolV2
     event: ResearchEventEnvelope
+    _authority: object
+
+    def __init__(
+        self,
+        *,
+        protocol: PreregisteredActivationStatisticalProtocolV2,
+        event: ResearchEventEnvelope,
+        _authority: object,
+    ) -> None:
+        if _authority is not _RECORDED_PROTOCOL_AUTHORITY:
+            raise TypeError("registered Activation protocols are registry-minted")
+        object.__setattr__(self, "protocol", protocol)
+        object.__setattr__(self, "event", event)
+        object.__setattr__(self, "_authority", _authority)
+        if event.event_type != "ActivationStatisticalProtocolV2Registered":
+            raise ValueError("registered Activation protocol event type differs")
+        if (
+            event.payload.get("protocol_hash") != protocol.protocol_hash
+            or event.payload.get("research_cycle_id") != protocol.research_cycle_id
+            or canonical_json(_plain(event.payload.get("protocol")))
+            != canonical_json(protocol.to_dict())
+        ):
+            raise ValueError("registered Activation protocol payload differs")
+
+    def verify_in(self, store: ResearchEventStore) -> None:
+        """Prove this registry-minted protocol still belongs to the exact chain."""
+
+        if not isinstance(store, ResearchEventStore) or not store.verify_chain():
+            raise EventTransitionError("registered protocol requires a valid event chain")
+        matches = [
+            event
+            for event in store.query_events(
+                event_type="ActivationStatisticalProtocolV2Registered"
+            )
+            if event.event_hash == self.event.event_hash
+        ]
+        if len(matches) != 1 or canonical_json(_plain(matches[0].to_dict())) != canonical_json(
+            _plain(self.event.to_dict())
+        ):
+            raise EventTransitionError(
+                "registered Activation protocol is not in the analyzer event store"
+            )
 
 
 @dataclass(frozen=True)
@@ -508,7 +561,11 @@ class ActivationProtocolRegistryV2:
                 },
             )
         )
-        return RecordedActivationProtocolV2(protocol, event)
+        return RecordedActivationProtocolV2(
+            protocol=protocol,
+            event=event,
+            _authority=_RECORDED_PROTOCOL_AUTHORITY,
+        )
 
     def register_applicability_matrix(
         self,
