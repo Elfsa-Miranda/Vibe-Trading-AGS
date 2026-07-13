@@ -52,6 +52,8 @@ _SPECIALIZED_EVENT_TYPES = {
     "RetrieverDecisionV7Recorded",
     "OfficialSearchControlRecorded",
     "PreArmFlatScheduleFrozen",
+    "ActivationStatisticalProtocolV2Registered",
+    "ActivationApplicabilityMatrixV1Registered",
     "ActivationPairExecutionScheduled",
     "ActivationPairExecutionClaimed",
     "ActivationPlanRegistered",

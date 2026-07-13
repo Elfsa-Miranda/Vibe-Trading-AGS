@@ -1473,6 +1473,30 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ActivationStatisticalProtocolV2Registered": PayloadSpec(
+        "activation_statistical_protocol_registered.v2",
+        {
+            "protocol_id": _string,
+            "research_cycle_id": _string,
+            "protocol_hash": _hash,
+            "registration_event_hash": _hash,
+            "code_manifest_hash": _hash,
+            "canonical_hash_spec": _mapping,
+            "protocol": _mapping,
+        },
+    ),
+    "ActivationApplicabilityMatrixV1Registered": PayloadSpec(
+        "activation_applicability_matrix_registered.v1",
+        {
+            "matrix_id": _string,
+            "research_cycle_id": _string,
+            "matrix_hash": _hash,
+            "frozen_before_event_hash": _hash,
+            "code_manifest_hash": _hash,
+            "canonical_hash_spec": _mapping,
+            "matrix": _mapping,
+        },
+    ),
     "ActivationPairExecutionScheduled": PayloadSpec(
         "activation_pair_execution_scheduled.v1",
         {

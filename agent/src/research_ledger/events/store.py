@@ -292,6 +292,16 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "ActivationStatisticalProtocolV2Registered": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
+    "ActivationApplicabilityMatrixV1Registered": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ActivationPairExecutionScheduled": (
         "VIBE_TRADING_ALPHA_FOUNDRY",
         "VIBE_TRADING_RESEARCH_EVENTS",
@@ -448,6 +458,8 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "ForwardSourceArtifactV3Recorded",
         "ForwardObservationV3Recorded",
         "DataRevisionRecorded",
+        "ActivationStatisticalProtocolV2Registered",
+        "ActivationApplicabilityMatrixV1Registered",
     }
 )
 
@@ -906,6 +918,8 @@ class ResearchEventStore:
             "RetrieverDecisionV7Recorded": "decision_id",
             "OfficialSearchControlRecorded": "control_id",
             "PreArmFlatScheduleFrozen": "schedule_id",
+            "ActivationStatisticalProtocolV2Registered": "protocol_id",
+            "ActivationApplicabilityMatrixV1Registered": "matrix_id",
             "ActivationPairExecutionScheduled": "schedule_id",
             "ActivationPairExecutionClaimed": "claim_id",
             "ActivationPlanRegistered": "experiment_id",
