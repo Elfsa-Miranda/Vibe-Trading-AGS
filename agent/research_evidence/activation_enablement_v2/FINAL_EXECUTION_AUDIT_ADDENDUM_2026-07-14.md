@@ -114,11 +114,12 @@ Therefore no outcome access was legal:
 - Resource-source Candidate Factory / Run Source / cycle focus: `63 passed`.
 - Resource-source Activation selection: `141 passed, 5835 deselected`, five
   existing FastAPI/Starlette deprecation warnings.
-- Exact-NI statistical/governance focus: `41 passed`.
-- Exact-NI Activation selection: `146 passed, 5835 deselected`, five existing
+- Final statistical/governance focus after the explicitly named positive
+  governance acceptance test: `42 passed`.
+- Final Activation selection: `147 passed, 5835 deselected`, five existing
   FastAPI/Starlette deprecation warnings.
 - Research-event schema/capability/concurrency: `137 passed`.
-- Alpha Foundry full after final exact-NI change: `369 passed, 1 failed`. The
+- Alpha Foundry full after final acceptance closure: `370 passed, 1 failed`. The
   sole failure is the accepted-baseline release-manifest mismatch caused by
   the user-owned `D:\Vibe-Trading\problem.md`; neither that file nor
   `agent/research_evidence/release_manifest.json` was modified.
