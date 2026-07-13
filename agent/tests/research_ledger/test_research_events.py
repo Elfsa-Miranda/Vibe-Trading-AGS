@@ -230,6 +230,11 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "OutcomeDataAccessed",
         "FalsificationResultRecorded",
         "MechanismEvidenceIndexRecorded",
+        "FalsificationCatalogV2Registered",
+        "FalsificationContractV2Registered",
+        "FalsificationOutcomeAccessV2Recorded",
+        "FalsificationSourceArtifactV2Recorded",
+        "FalsificationResultV2Recorded",
         "ComplementEvidenceRecorded",
         "QualityDecisionRecorded",
         "DecisionEvidenceV3Recorded",
@@ -1937,6 +1942,139 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
         }
 
     add_research_dossier_samples()
+
+    def add_falsification_v2_samples() -> None:
+        producer_schema = "falsification_authority.v2"
+        catalog = {
+            "schema_version": "falsification_test_catalog.v2",
+            "catalog_version": "fixture-v2",
+            "capabilities": [
+                {
+                    "capability_id": "dated_mean",
+                    "capability_version": "v2",
+                    "predictions": ["positive"],
+                    "statistics": ["mean"],
+                    "dependence_methods": ["hac"],
+                    "maximum_observations": 100,
+                }
+            ],
+        }
+        catalog_hash = canonical_json_hash(catalog)
+        contract_event_hash = canonical_json_hash({"event": "contract"})
+        access_event_hash = canonical_json_hash({"event": "access"})
+        source_event_hash = canonical_json_hash({"event": "source"})
+        contract = {
+            "schema_version": "falsification_contract.v2",
+            "factor_spec_id": "factor-1",
+            "mechanism_claim": "fixture mechanism",
+            "null_hypothesis": "effect is non-positive",
+            "alternative_hypothesis": "effect is positive",
+            "observable_implication": "dated mean is positive",
+            "family_id": "family-v2",
+            "multiplicity_method": "holm",
+            "error_target": 0.05,
+            "conditioning_hash": digest,
+            "regime_hash": digest,
+            "data_scope_hash": digest,
+            "catalog_hash": catalog_hash,
+            "policy_hash": digest,
+            "data_access_cutoff": timestamp,
+            "tests": [{"test_id": "primary"}],
+        }
+        contract_hash = canonical_json_hash(contract)
+        samples["FalsificationCatalogV2Registered"] = {
+            "catalog_hash": catalog_hash,
+            "catalog": catalog,
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [],
+        }
+        samples["FalsificationContractV2Registered"] = {
+            "contract_id": "falsification-v2-contract-fixture",
+            "contract_hash": contract_hash,
+            "factor_spec_id": "factor-1",
+            "family_id": "family-v2",
+            "catalog_event_hash": digest,
+            "catalog_hash": catalog_hash,
+            "contract": contract,
+            "registered_at": timestamp,
+            "source_event_hashes": [digest],
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [],
+        }
+        access_content = {
+            "contract_event_hash": contract_event_hash,
+            "contract_hash": contract_hash,
+            "factor_spec_id": "factor-1",
+            "test_ids": ["primary"],
+        }
+        samples["FalsificationOutcomeAccessV2Recorded"] = {
+            "access_id": "falsification-v2-access-fixture",
+            "access_hash": canonical_json_hash(access_content),
+            **access_content,
+            "accessed_at": timestamp,
+            "source_event_hashes": [contract_event_hash],
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [],
+        }
+        samples["FalsificationSourceArtifactV2Recorded"] = {
+            "source_id": "falsification-v2-source-fixture",
+            "source_hash": digest,
+            "contract_event_hash": contract_event_hash,
+            "contract_hash": contract_hash,
+            "factor_spec_id": "factor-1",
+            "access_event_hash": access_event_hash,
+            "test_ids": ["primary"],
+            "source_event_hashes": sorted([contract_event_hash, access_event_hash]),
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": "falsification-v2/source.json",
+                    "artifact_hash": digest,
+                    "media_type": "application/vnd.vibe.falsification-source-v2+json",
+                }
+            ],
+        }
+        test_results = [{"test_id": "primary", "status": "support"}]
+        family_result = {"family_id": "family-v2", "outcome": "supported"}
+        result_content = {
+            "schema_version": "falsification_result.v2",
+            "contract_hash": contract_hash,
+            "source_hash": digest,
+            "executor_policy_hash": digest,
+            "test_results": test_results,
+            "family_result": family_result,
+        }
+        samples["FalsificationResultV2Recorded"] = {
+            "result_id": "falsification-v2-result-fixture",
+            "result_hash": canonical_json_hash(result_content),
+            "contract_event_hash": contract_event_hash,
+            "contract_hash": contract_hash,
+            "source_event_hash": source_event_hash,
+            "source_hash": digest,
+            "outcome_access_event_hash": access_event_hash,
+            "factor_spec_id": "factor-1",
+            "family_id": "family-v2",
+            "outcome": "supported",
+            "test_results": test_results,
+            "family_result": family_result,
+            "legacy_promotion_cap": None,
+            "source_event_hashes": sorted([contract_event_hash, access_event_hash, source_event_hash]),
+            "producer_schema_version": producer_schema,
+            "producer_policy_hash": digest,
+            "artifact_refs": [
+                {
+                    "relative_path": "falsification-v2/result.json",
+                    "artifact_hash": digest,
+                    "media_type": "application/vnd.vibe.falsification-result-v2+json",
+                }
+            ],
+        }
+
+    add_falsification_v2_samples()
 
     def add_final_v2_samples() -> None:
         producer_schema = "final_test_authority.v2"

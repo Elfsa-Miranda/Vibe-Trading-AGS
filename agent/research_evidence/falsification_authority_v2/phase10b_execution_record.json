@@ -1,0 +1,77 @@
+{
+  "schema_version": "phase_execution_record.v1",
+  "phase": "Phase 10B - falsification production authority v2",
+  "base_commit": "b2a5c846",
+  "branch": "codex/ags-v32-falsification-authority-v2",
+  "pre_phase_dirty_state": "clean",
+  "remote_operations": [],
+  "dependency_installs": [
+    {
+      "package": "scipy-stubs",
+      "version": "1.16.3.3",
+      "source": "official PyPI",
+      "compatibility": "pinned with numpy 2.3.5; pip check reports no broken requirements"
+    }
+  ],
+  "authority_model": {
+    "contract": "closed, sorted, unique TestSpec v2 collection validated against a frozen catalog",
+    "source": "protected producer event plus content-addressed dated raw-observation artifact",
+    "outcome_access": "recorded after contract registration and before source artifact production",
+    "executor": "accepts only exact contract and protected source event references",
+    "statistics": "effect, dependence-aware standard error, p-value, TOST confidence interval, multiplicity and family outcome rebuilt internally",
+    "append_replay": "append preflight and replay use the same deterministic recomputation path"
+  },
+  "statistical_controls": [
+    "direction, SESOI, decisive status, minimum effective sample, statistic and dependence configuration are frozen in each TestSpec",
+    "family, multiplicity method and error target are frozen in the contract",
+    "equivalence requires TOST confidence-interval evidence; non-significance is not equivalence",
+    "underpowered decisive tests yield inconclusive and a research_only cap",
+    "BH is rejected without an explicit PRDS justification",
+    "fixed-horizon TestSpec cannot be changed into a sequential protocol"
+  ],
+  "validation": [
+    {
+      "command": "python -m pytest -q agent/tests/alpha_quality agent/tests/research_ledger",
+      "result": "599 passed, 1 warning in 866.46s"
+    },
+    {
+      "command": "python -m pytest -q agent/tests/contracts agent/tests/security agent/tests/acceptance agent/tests/performance/test_ags_acceptance_budget.py agent/tests/alpha_quality/test_feature_off_identity.py",
+      "result": "95 passed, 21 warnings in 14.49s"
+    },
+    {
+      "command": "python -m pytest -q Phase 10B focused and ledger closure tests after formatting",
+      "result": "142 passed in 9.22s"
+    },
+    {
+      "command": "python -m ruff format --check and python -m ruff check for Phase 10B files",
+      "result": "passed"
+    },
+    {
+      "command": "python -m mypy --strict --follow-imports=skip agent/src/alpha_quality/falsification/authority_v2.py",
+      "result": "passed"
+    },
+    {
+      "command": "python import/version smoke and python -m pip check",
+      "result": "numpy 2.3.5, scipy 1.16.3, numba 0.62.1; no broken requirements"
+    }
+  ],
+  "red_team": [
+    "post-registration direction, SESOI, family and multiplicity changes produce a different contract hash",
+    "executor exposes no p-value, effect, outcome or multiplicity input",
+    "generic result and source artifact events are rejected",
+    "result without exact contract, outcome access and producer source cannot append",
+    "source retry is idempotent while a changed source variant cannot reopen the family",
+    "source artifact tampering breaks replay and chain verification",
+    "legacy v1 support is viewed only as inconclusive with a research_only cap",
+    "inconclusive report narrative cannot claim support",
+    "mechanism outcome does not rewrite predictive claims"
+  ],
+  "known_unrelated_baseline_failure": "test_tracked_release_manifest_matches_deterministic_rebuild reads user-owned problem.md and was reproduced before Phase 1",
+  "outcome": "ACCEPTED",
+  "limitations": [
+    "v2 implements the fixed-horizon authority; sequential e-process execution remains on its separate legacy-compatible protocol surface",
+    "mechanism evidence remains ordinal and is not described as a calibrated probability",
+    "legacy v1 remains readable but cannot establish v2 support or promotion above research_only",
+    "no result has live-trading, broker, order, or production-readiness meaning"
+  ]
+}

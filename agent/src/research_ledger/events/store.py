@@ -376,6 +376,11 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "OutcomeDataAccessed": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
     "FalsificationResultRecorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
     "MechanismEvidenceIndexRecorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationCatalogV2Registered": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationContractV2Registered": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationOutcomeAccessV2Recorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationSourceArtifactV2Recorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationResultV2Recorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
     "ComplementEvidenceRecorded": ("VIBE_TRADING_COMPLEMENT_V2",),
     "QualityDecisionRecorded": ("VIBE_TRADING_ADMISSION_GATE",),
     "DecisionEvidenceV3Recorded": ("VIBE_TRADING_DECISION_V2",),
@@ -428,6 +433,11 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "FinalTestArtifactV2Recorded",
         "FinalTestFailedV2Recorded",
         "FinalSelectionAssessmentV2Recorded",
+        "FalsificationCatalogV2Registered",
+        "FalsificationContractV2Registered",
+        "FalsificationOutcomeAccessV2Recorded",
+        "FalsificationSourceArtifactV2Recorded",
+        "FalsificationResultV2Recorded",
     }
 )
 
@@ -602,6 +612,7 @@ class ResearchEventStore:
         )
         self._validate_payload_entity(draft, payload)
         self._validate_artifacts(payload)
+        self._validate_external_falsification_v2(draft.event_type, draft.run_id, payload)
         self._validate_external_process_evidence(draft.event_type, payload)
         self._validate_external_retriever_action_template(draft.event_type, payload)
         self._validate_external_train_valid_snapshot(draft.event_type, payload)
@@ -870,6 +881,11 @@ class ResearchEventStore:
             "FinalTestArtifactV2Recorded": "artifact_id",
             "FinalTestFailedV2Recorded": "failure_id",
             "FinalSelectionAssessmentV2Recorded": "assessment_id",
+            "FalsificationCatalogV2Registered": "catalog_hash",
+            "FalsificationContractV2Registered": "contract_id",
+            "FalsificationOutcomeAccessV2Recorded": "factor_spec_id",
+            "FalsificationSourceArtifactV2Recorded": "source_id",
+            "FalsificationResultV2Recorded": "result_id",
             "RetrieverFeatureSourceRecorded": "feature_source_id",
             "RetrieverDecisionV2Recorded": "decision_id",
             "RetrieverDecisionV3Recorded": "decision_id",
@@ -927,6 +943,28 @@ class ResearchEventStore:
                 self.artifact_root,
                 references,
             )
+
+    def _validate_external_falsification_v2(
+        self,
+        event_type: str,
+        run_id: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "FalsificationResultV2Recorded":
+            return
+        from src.alpha_quality.falsification.authority_v2 import FalsificationExecutorV2
+
+        rebuilt = FalsificationExecutorV2(store=self).recompute(
+            str(payload["contract_event_hash"]),
+            str(payload["source_event_hash"]),
+            run_id=run_id,
+        )
+        if (
+            canonical_json_hash(rebuilt) != payload["result_hash"]
+            or rebuilt["test_results"] != payload["test_results"]
+            or rebuilt["family_result"] != payload["family_result"]
+        ):
+            raise EventValidationError("falsification v2 result is not producer-recomputable")
 
     def _validate_external_process_evidence(
         self,
@@ -5582,6 +5620,15 @@ class ResearchEventStore:
                 raise EventTransitionError("Decision v2 has no prior factor definition")
             return
         if event_type in {
+            "FalsificationCatalogV2Registered",
+            "FalsificationContractV2Registered",
+            "FalsificationOutcomeAccessV2Recorded",
+            "FalsificationSourceArtifactV2Recorded",
+            "FalsificationResultV2Recorded",
+        }:
+            self._validate_falsification_v2_transition(conn, event_type, draft.run_id, payload)
+            return
+        if event_type in {
             "FinalRawProviderV2Registered",
             "FinalEvaluationEligibilityRecorded",
             "FinalTestCapabilityV2Issued",
@@ -6144,6 +6191,105 @@ class ResearchEventStore:
             terminal["evaluation_event_hash"] != payload["source_evaluation_event_hash"]
         ):
             raise EventTransitionError("successful terminal does not reference complement evaluation")
+
+    @staticmethod
+    def _validate_falsification_v2_transition(
+        conn: sqlite3.Connection,
+        event_type: str,
+        run_id: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type == "FalsificationCatalogV2Registered":
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.catalog_hash') = ?",
+                (event_type, payload["catalog_hash"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("falsification v2 catalog is already registered")
+            return
+        if event_type == "FalsificationContractV2Registered":
+            catalog = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationCatalogV2Registered' AND event_hash = ?",
+                (payload["catalog_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.contract_hash') = ?",
+                (event_type, payload["contract_hash"]),
+            ).fetchone()
+            if (
+                catalog is None
+                or str(catalog["run_id"]) != run_id
+                or json.loads(str(catalog["payload"]))["catalog_hash"] != payload["catalog_hash"]
+                or prior is not None
+            ):
+                raise EventTransitionError("falsification v2 contract lacks its exact catalog")
+            return
+        contract = conn.execute(
+            "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationContractV2Registered' AND event_hash = ?",
+            (payload["contract_event_hash"],),
+        ).fetchone()
+        if contract is None or str(contract["run_id"]) != run_id:
+            raise EventTransitionError("falsification v2 event lacks its exact contract")
+        contract_payload = json.loads(str(contract["payload"]))
+        if (
+            contract_payload["contract_hash"] != payload["contract_hash"]
+            or contract_payload["factor_spec_id"] != payload["factor_spec_id"]
+        ):
+            raise EventTransitionError("falsification v2 contract binding differs")
+        expected_test_ids = [item["test_id"] for item in contract_payload["contract"]["tests"]]
+        if event_type == "FalsificationOutcomeAccessV2Recorded":
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.contract_hash') = ?",
+                (event_type, payload["contract_hash"]),
+            ).fetchone()
+            if prior is not None or payload["test_ids"] != expected_test_ids:
+                raise EventTransitionError("falsification v2 outcome access differs or repeats")
+            return
+        if event_type == "FalsificationSourceArtifactV2Recorded":
+            access = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationOutcomeAccessV2Recorded' AND event_hash = ?",
+                (payload["access_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.contract_hash') = ?",
+                (event_type, payload["contract_hash"]),
+            ).fetchone()
+            if (
+                access is None
+                or str(access["run_id"]) != run_id
+                or json.loads(str(access["payload"]))["contract_event_hash"] != payload["contract_event_hash"]
+                or payload["test_ids"] != expected_test_ids
+                or prior is not None
+            ):
+                raise EventTransitionError("falsification v2 source authority differs")
+            return
+        if event_type == "FalsificationResultV2Recorded":
+            source = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationSourceArtifactV2Recorded' AND event_hash = ?",
+                (payload["source_event_hash"],),
+            ).fetchone()
+            access = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationOutcomeAccessV2Recorded' AND event_hash = ?",
+                (payload["outcome_access_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.contract_hash') = ?",
+                (event_type, payload["contract_hash"]),
+            ).fetchone()
+            result_ids = [item["test_id"] for item in payload["test_results"]]
+            if (
+                source is None
+                or access is None
+                or str(source["run_id"]) != run_id
+                or str(access["run_id"]) != run_id
+                or json.loads(str(source["payload"]))["access_event_hash"] != payload["outcome_access_event_hash"]
+                or json.loads(str(source["payload"]))["source_hash"] != payload["source_hash"]
+                or payload["family_id"] != contract_payload["family_id"]
+                or result_ids != expected_test_ids
+                or prior is not None
+            ):
+                raise EventTransitionError("falsification v2 result authority differs")
+            return
 
     @staticmethod
     def _validate_final_v2_transition(
