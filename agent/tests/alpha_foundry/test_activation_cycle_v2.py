@@ -8,7 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 from src.alpha_foundry.activation.coordinator_v2 import ActivationPairCoordinatorV2
-from src.alpha_foundry.activation.governance_v2 import ActivationGovernanceService
+from src.alpha_foundry.activation.governance_v2 import (
+    ActivationGovernanceService,
+    ActivationReadinessServiceV4,
+)
 from src.alpha_foundry.activation.isolated_worker_v3 import IsolatedWorkerTaskV3
 from src.alpha_foundry.activation.pair_projector_v2 import (
     ActivationArmEventRefsV2,
@@ -569,6 +572,27 @@ def test_orchestrator_cannot_mint_activation_decision() -> None:
     coordinator = object.__new__(ActivationPairCoordinatorV2)
     with pytest.raises(PermissionError, match="no Activation decision authority"):
         coordinator.mint_activation_decision()
+
+
+def test_readiness_does_not_treat_valid_chain_as_complete_source_replay(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+
+    readiness, event = ActivationReadinessServiceV4(store).assess(
+        run_id="readiness-run",
+        research_cycle_id="readiness-cycle",
+    )
+
+    assert store.verify_chain()
+    assert readiness.source_replay_complete is False
+    assert readiness.resource_isolation_verified is False
+    assert readiness.quality_decision_v3_producer_bound is False
+    assert readiness.governance_roles_separated is True
+    assert readiness.ready_for_pilot_outcome_access is False
+    assert "SOURCE_REPLAY_COMPLETE" in readiness.blocker_codes
+    assert "QUALITY_DECISION_V3_PRODUCER_BOUND" in readiness.blocker_codes
+    assert event.payload["readiness_hash"] == readiness.readiness_hash
 
 
 def test_applicability_matrix_is_frozen_before_candidate_execution() -> None:

@@ -761,12 +761,21 @@ class ProductionActivationCandidateFactoryV1:
 
     @staticmethod
     def _compatibility_blockers() -> tuple[str, ...]:
-        # This is a repository fact, not a speculative runtime failure.
+        # These are repository facts, not speculative runtime failures.
         # Duplicate/invalid identity terminals are emitted before a production
         # factor definition exists, while TrialTerminalDossierV1 requires a
         # non-null factor_spec_id.  Fabricating one would violate identity
         # authority, so formal arm execution remains blocked on that schema.
-        return ("IDENTITY_TERMINAL_DOSSIER_PRODUCER_UNAVAILABLE",)
+        # QualityDecisionV3Service still routes DecisionEvidenceRecord.v2
+        # through QualityDecisionAuthorityGateV1.  That gate intentionally caps
+        # every non-reject result at research_only because execution,
+        # mechanism, complement, and snapshot authority are not yet fully
+        # producer-bound.  Activation's endpoint counts candidate_zoo+, so the
+        # factory must not advertise an authoritative effective-yield path.
+        return (
+            "IDENTITY_TERMINAL_DOSSIER_PRODUCER_UNAVAILABLE",
+            "QUALITY_DECISION_V3_PRODUCER_AUTHORITY_INCOMPLETE",
+        )
 
 
 __all__ = [
