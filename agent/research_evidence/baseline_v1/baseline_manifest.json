@@ -1,0 +1,75 @@
+{
+  "authority_grade": "external_unverified_bundled_historical_fixture",
+  "baseline_manifest_hash": "sha256:3eb9d14d9422e5188e29583d7c1b0c436015bfe3f1682adad9a2d5e37914e3b9",
+  "baseline_status": "COMPLETED_RESEARCH_ONLY",
+  "candidate_dossier_hash": "sha256:41f5456a7a33906e378705eef352a69834d374a2893f82c9aaa8bf543f4f68c9",
+  "chain_verified": true,
+  "completion_status": "completed",
+  "dataset_vintage": "bundled-fixture-20241210",
+  "dates": {"count": 72, "end": "2024-12-10", "start": "2024-09-02"},
+  "decision": "research_only",
+  "decision_hash": "sha256:539d2deccd1ae2772fa7574e976d5549b2f687cac764401b3b84078624681644",
+  "effective_sample": 21,
+  "event_count": 34,
+  "execution": {
+    "entry_price_time": "open_t_plus_1",
+    "horizon": 5,
+    "order_time": "close_t_plus_1",
+    "rebalance_cadence": 5,
+    "signal_time": "close_t"
+  },
+  "factor_spec_id": "sha256:cbf518d73ce09f15f7489ae2f877bc70325b7d1a0d8ce8922c24fedbd838af7b",
+  "formula": "neg(delta(close,5))",
+  "forward_observation_count": 0,
+  "limitations": [
+    "BUNDLED_FIXTURE_NOT_PRODUCTION_MARKET_DATA_AUTHORITY",
+    "RESEARCH_ONLY_NO_LIVE_TRADING_MEANING",
+    "FINAL_TEST_NOT_OPENED",
+    "FORWARD_MONITORING_NOT_STARTED",
+    "BASELINE_PROVES_PIPELINE_EXECUTION_NOT_PROFITABILITY"
+  ],
+  "preregistered_policy": {
+    "capacity": "frozen_execution_policy_reference",
+    "comparison_pool_hash": "sha256:26c8288941a1241bcaa94a5bd5637fc38af8ef0f0da901090b66614b662c1aaa",
+    "cost": "frozen_execution_policy_reference",
+    "inference": "resolved_contract_producer_manifest",
+    "missing_outcome": "drop_only_when_policy_declares_unavailable",
+    "multiplicity": "resolved_contract_producer_manifest",
+    "portfolio": "long_only_benchmark_relative",
+    "resource_budget": {"calendar_dates": 72, "candidate_count": 1, "symbols": 8, "worker_count": 1},
+    "stopping_rule": "one_candidate_one_serial_retry",
+    "universe": "daily_pit_csi300_like_fixture_membership",
+    "weighting": "frozen_execution_policy_reference"
+  },
+  "provider": "bundled-historical-fixture",
+  "release_manifest_hash": "sha256:98ca4f8ef9ff287b3beae1b3998d898a2aa0acdb0f0962dd7287ca43b1302be6",
+  "run_id": "ags-v32-baseline-reversal-5d-v1",
+  "run_report_hash": "sha256:dcc46a89d0481439a35806f479d6e46d982fbfb0d94c60af3229be8e7bf49954",
+  "schema_version": "first_real_baseline_manifest.v1",
+  "scientific_evidence": {
+    "contract_hash": "sha256:a0011881188e9ff28ee2cb92fdfb3f291378d761a6bb11838e1aae12188e9dda",
+    "evaluation_policy_bundle_hash": "sha256:31612499422a5751253ee441fc2f305dd7869193bf9cfcb2c5ba18ad771a2ca4",
+    "execution_artifact_hash": "sha256:05ffa3399f56b67697511aac12cae0353839237c983f27eed8692989c7e6940d",
+    "factor_spec_id": "sha256:cbf518d73ce09f15f7489ae2f877bc70325b7d1a0d8ce8922c24fedbd838af7b",
+    "formula": "neg(delta(close,5))",
+    "observed_evidence_hash": "sha256:866329a28c571e86d104ce069b44b474fc56f825d132bc4628a24122a0496c54",
+    "pit_evidence_hash": "sha256:e07e268b8507318a73012b82821cf64772ab3dc43054463cda3ba0a21809c8b6",
+    "snapshot_hash": "sha256:3e9c18c6215e653a6eccf08af6b6d6053763dfa0dbdbb599141b2c8ee66189fa"
+  },
+  "scientific_replay_hash": "sha256:694514093182fb53e2a95dc6ff485565c363d6656d4f04c0acdfa3a143bf04c6",
+  "scientific_runtime": {
+    "numpy": "2.3.5",
+    "pandas": "2.3.3",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.9"
+  },
+  "serial_retry_equal": true,
+  "source_as_of": "2024-12-11T00:00:00+08:00",
+  "splits": {
+    "test": ["2024-11-11", "2024-12-10"],
+    "train": ["2024-09-02", "2024-09-26"],
+    "valid": ["2024-10-07", "2024-10-31"]
+  },
+  "test_access_count": 0,
+  "trial_id": "ags-v32-baseline-trial-1"
+}

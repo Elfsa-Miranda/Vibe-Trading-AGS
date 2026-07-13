@@ -1,5 +1,22 @@
 """One-shot frozen final-test evaluation."""
 
+from src.alpha_quality.final_test.authority_v2 import (
+    FinalDependenceConfigV2,
+    FinalEvaluationEligibilityServiceV2,
+    FinalEvaluationEligibilityV2,
+    FinalRawPartitionBundleV2,
+    FinalRawPartitionProviderV2,
+    FinalRawPartitionRefV2,
+    FinalRawProviderDescriptorV2,
+    FinalRawProviderRegistrationServiceV2,
+    FinalRawProviderRegistryV2,
+    FinalScopeAuthorityV2,
+    FinalScopeCapabilityV2,
+    FinalScopeConfigV2,
+    FinalTestArtifactV2,
+    FinalTestMetricsV2,
+    FinalTestRunnerV2,
+)
 from src.alpha_quality.final_test.model import (
     FinalDecisionEvidenceView,
     FinalTestAccessAudit,
@@ -11,11 +28,26 @@ from src.alpha_quality.final_test.model import (
 )
 
 __all__ = [
+    "FinalDependenceConfigV2",
     "FinalDecisionEvidenceView",
+    "FinalEvaluationEligibilityServiceV2",
+    "FinalEvaluationEligibilityV2",
+    "FinalRawPartitionBundleV2",
+    "FinalRawPartitionProviderV2",
+    "FinalRawPartitionRefV2",
+    "FinalRawProviderDescriptorV2",
+    "FinalRawProviderRegistrationServiceV2",
+    "FinalRawProviderRegistryV2",
+    "FinalScopeAuthorityV2",
+    "FinalScopeCapabilityV2",
+    "FinalScopeConfigV2",
     "FinalTestAccessAudit",
     "FinalTestArtifact",
     "FinalTestDataRequest",
     "FinalTestDataset",
     "FinalTestPolicy",
+    "FinalTestArtifactV2",
+    "FinalTestMetricsV2",
+    "FinalTestRunnerV2",
     "FrozenFinalCandidate",
 ]

@@ -49,117 +49,326 @@ DurabilityProfile = Literal["authoritative", "balanced"]
 
 _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "RegistryBootstrapRecordedV2": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
     ),
     "ProcessActionFrozenV2": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY",
     ),
     "ProcessOutcomeRecordedV2": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_PROCESS_MEMORY",
     ),
     "RetrieverDecisionV2Recorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "RetrieverActionTemplateFrozen": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "TrainValidDataSnapshotFrozen": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
-        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "EvaluationPolicyRegistered": ("VIBE_TRADING_ALPHA_SCORECARD",),
+    "ResolvedEvaluationContractRegistered": (
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+    ),
+    "ApplicabilityAssessmentRecorded": (
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+    ),
+    "AsharePITAdapterRegistered": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+    ),
+    "AsharePITSnapshotRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+    ),
+    "FactorOutputRecordedV3": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "ObservedPanelPredictiveEvidenceRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "PITPredictiveEvidenceRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "ScorecardDecisionEvidenceV4Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "ExecutionEvidenceRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "ComparisonPoolFrozen": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "SecondaryEvidenceRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "SelectionAssessmentRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "ClaimMatrixRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "QualityDecisionV4Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "ResearchDossierRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_ALPHA_REPORT_API",
+    ),
+    "ExperimentRunReportRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_ALPHA_REPORT_API",
+    ),
+    "ResearchReleaseManifestRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_ALPHA_REPORT_API",
+    ),
+    "ResearchDossierMaterializationFailed": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_ALPHA_REPORT_API",
+    ),
+    "ProductionEvaluationNodeRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "TrialTerminalDossierRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "ReportMaterializationFailed": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "FinalRawProviderV2Registered": (
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "FinalEvaluationEligibilityRecorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "FinalTestCapabilityV2Issued": (
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "FinalOutcomeAccessV2Recorded": (
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "FinalContaminationV2Recorded": (
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "FinalTestArtifactV2Recorded": (
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "FinalTestFailedV2Recorded": (
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_DECISION_V2",
+    ),
+    "FinalSelectionAssessmentV2Recorded": (
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_DECISION_V2",
+    ),
     "RetrieverFeatureSourceRecorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
-        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "RetrieverDecisionV3Recorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "RetrieverDecisionV4Recorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "RetrieverDecisionV5Recorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "RetrieverDecisionV6Recorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
-        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "RetrieverDecisionV7Recorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
-        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "OfficialSearchControlRecorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
     ),
     "PreArmFlatScheduleFrozen": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationPairExecutionScheduled": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationPairExecutionClaimed": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationPlanRegistered": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationRunRecorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationRunSourceAudited": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationResourceMeasured": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationResourceMeasuredV2": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationGenerationConsumptionRecorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationGenerationConsumptionV2Recorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationGenerationConsumptionV3Recorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
-        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationGenerationConsumptionV4Recorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_RESEARCH_EVENTS",
-        "VIBE_TRADING_FACTOR_DAG", "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "ActivationResultRecorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "RetrieverActivationDecisionRecorded": (
-        "VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_FACTOR_DAG",
-        "VIBE_TRADING_PROCESS_MEMORY", "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_PROCESS_MEMORY",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
     "FalsificationContractRegistered": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
     "SequentialProtocolRegistered": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
@@ -167,6 +376,11 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "OutcomeDataAccessed": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
     "FalsificationResultRecorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
     "MechanismEvidenceIndexRecorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationCatalogV2Registered": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationContractV2Registered": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationOutcomeAccessV2Recorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationSourceArtifactV2Recorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
+    "FalsificationResultV2Recorded": ("VIBE_TRADING_FALSIFICATION_CONTRACT",),
     "ComplementEvidenceRecorded": ("VIBE_TRADING_COMPLEMENT_V2",),
     "QualityDecisionRecorded": ("VIBE_TRADING_ADMISSION_GATE",),
     "DecisionEvidenceV3Recorded": ("VIBE_TRADING_DECISION_V2",),
@@ -188,8 +402,42 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
     {
         "DecisionEvidenceV3Recorded",
         "EvaluationPolicyRegistered",
+        "ResolvedEvaluationContractRegistered",
+        "ApplicabilityAssessmentRecorded",
         "ScorecardDecisionEvidenceV3Recorded",
         "SnapshotDecisionEvidenceV3Recorded",
+        "AsharePITAdapterRegistered",
+        "AsharePITSnapshotRecorded",
+        "FactorOutputRecordedV3",
+        "ObservedPanelPredictiveEvidenceRecorded",
+        "PITPredictiveEvidenceRecorded",
+        "ScorecardDecisionEvidenceV4Recorded",
+        "ExecutionEvidenceRecorded",
+        "ComparisonPoolFrozen",
+        "SecondaryEvidenceRecorded",
+        "SelectionAssessmentRecorded",
+        "ClaimMatrixRecorded",
+        "QualityDecisionV4Recorded",
+        "ResearchDossierRecorded",
+        "ExperimentRunReportRecorded",
+        "ResearchReleaseManifestRecorded",
+        "ResearchDossierMaterializationFailed",
+        "ProductionEvaluationNodeRecorded",
+        "TrialTerminalDossierRecorded",
+        "ReportMaterializationFailed",
+        "FinalRawProviderV2Registered",
+        "FinalEvaluationEligibilityRecorded",
+        "FinalTestCapabilityV2Issued",
+        "FinalOutcomeAccessV2Recorded",
+        "FinalContaminationV2Recorded",
+        "FinalTestArtifactV2Recorded",
+        "FinalTestFailedV2Recorded",
+        "FinalSelectionAssessmentV2Recorded",
+        "FalsificationCatalogV2Registered",
+        "FalsificationContractV2Registered",
+        "FalsificationOutcomeAccessV2Recorded",
+        "FalsificationSourceArtifactV2Recorded",
+        "FalsificationResultV2Recorded",
     }
 )
 
@@ -274,13 +522,9 @@ class ResearchEventStore:
             except sqlite3.OperationalError as exc:
                 last_error = exc
                 if not self._is_retryable_lock(exc) or attempt + 1 >= self.max_retries:
-                    raise ResearchEventAppendError(
-                        f"research-event schema initialization failed: {exc}"
-                    ) from exc
+                    raise ResearchEventAppendError(f"research-event schema initialization failed: {exc}") from exc
                 self._retry_delay(attempt)
-        raise ResearchEventAppendError(
-            f"research-event schema initialization failed after retries: {last_error}"
-        )
+        raise ResearchEventAppendError(f"research-event schema initialization failed after retries: {last_error}")
 
     def _initialize_schema_once(self) -> None:
         with self._connect() as conn:
@@ -324,10 +568,7 @@ class ResearchEventStore:
                 END;
                 """
             )
-            columns = {
-                str(row["name"])
-                for row in conn.execute("PRAGMA table_info(research_events)").fetchall()
-            }
+            columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(research_events)").fetchall()}
             expected = {
                 "seq",
                 "schema_version",
@@ -348,16 +589,12 @@ class ResearchEventStore:
                 "hard_failures",
             }
             if columns != expected:
-                raise ResearchEventAppendError(
-                    "incompatible research_events schema; additive migration required"
-                )
+                raise ResearchEventAppendError("incompatible research_events schema; additive migration required")
 
     def append_event(self, draft: EventDraft) -> ResearchEventEnvelope:
         self._validate_event_capability(draft.event_type)
         if draft.event_type in _PRODUCER_SCOPED_EVENT_TYPES:
-            raise EventValidationError(
-                f"{draft.event_type} can only be minted by its deterministic producer"
-            )
+            raise EventValidationError(f"{draft.event_type} can only be minted by its deterministic producer")
         return self._append_event(draft)
 
     def _append_producer_event(self, draft: EventDraft) -> ResearchEventEnvelope:
@@ -375,14 +612,11 @@ class ResearchEventStore:
         )
         self._validate_payload_entity(draft, payload)
         self._validate_artifacts(payload)
+        self._validate_external_falsification_v2(draft.event_type, draft.run_id, payload)
         self._validate_external_process_evidence(draft.event_type, payload)
-        self._validate_external_retriever_action_template(
-            draft.event_type, payload
-        )
+        self._validate_external_retriever_action_template(draft.event_type, payload)
         self._validate_external_train_valid_snapshot(draft.event_type, payload)
-        self._validate_external_retriever_feature_source(
-            draft.event_type, payload
-        )
+        self._validate_external_retriever_feature_source(draft.event_type, payload)
         self._validate_external_retriever_evidence(draft.event_type, payload)
         self._validate_external_retriever_v4_evidence(draft.event_type, payload)
         self._validate_external_retriever_v5_evidence(draft.event_type, payload)
@@ -391,8 +625,18 @@ class ResearchEventStore:
         self._validate_external_quality_decision_evidence(draft.event_type, payload)
         self._validate_external_decision_evidence_v3(draft.event_type, payload)
         self._validate_external_evaluation_policy(draft.event_type, payload)
+        self._validate_external_resolved_evaluation_contract(draft.event_type, payload)
+        self._validate_external_applicability_assessment(draft.event_type, payload)
         self._validate_external_scorecard_evidence_v3(draft.event_type, payload)
         self._validate_external_snapshot_evidence_v3(draft.event_type, payload)
+        self._validate_external_pit_adapter_registration(draft.event_type, payload)
+        self._validate_external_pit_snapshot(draft.event_type, payload)
+        self._validate_external_predictive_v4(draft.event_type, payload)
+        self._validate_external_execution_evidence(draft.event_type, payload)
+        self._validate_external_secondary_evidence(draft.event_type, payload)
+        self._validate_external_claim_decision(draft.event_type, payload)
+        self._validate_external_research_dossier(draft.event_type, payload)
+        self._validate_external_production_evaluator(draft.event_type, payload)
         self._validate_external_activation_source_audit(draft.event_type, payload)
         self._validate_external_official_control_evidence(draft.event_type, payload)
         self._validate_external_prearm_flat_schedule(draft.event_type, payload)
@@ -400,15 +644,9 @@ class ResearchEventStore:
         self._validate_external_activation_resource(draft.event_type, payload)
         self._validate_external_activation_resource_v2(draft.event_type, payload)
         self._validate_external_generation_consumption(draft.event_type, payload)
-        self._validate_external_generation_consumption_v2(
-            draft.event_type, payload
-        )
-        self._validate_external_generation_consumption_v3(
-            draft.event_type, payload
-        )
-        self._validate_external_generation_consumption_v4(
-            draft.event_type, payload
-        )
+        self._validate_external_generation_consumption_v2(draft.event_type, payload)
+        self._validate_external_generation_consumption_v3(draft.event_type, payload)
+        self._validate_external_generation_consumption_v4(draft.event_type, payload)
         self._validate_factor_definition_identity(draft.event_type, payload)
         self._validate_registry_bootstrap_identity(draft.event_type, payload)
         payload_hash = canonical_json_hash(payload)
@@ -459,14 +697,9 @@ class ResearchEventStore:
         raise ResearchEventAppendError(f"append failed after retries: {last_error}")
 
     def _validate_event_capability(self, event_type: str) -> None:
-        missing = [
-            name for name in _EVENT_CAPABILITY_REQUIREMENTS.get(event_type, ())
-            if not self.flags.enabled(name)
-        ]
+        missing = [name for name in _EVENT_CAPABILITY_REQUIREMENTS.get(event_type, ()) if not self.flags.enabled(name)]
         if missing:
-            raise EventValidationError(
-                f"event capability is disabled for {event_type}: {sorted(missing)}"
-            )
+            raise EventValidationError(f"event capability is disabled for {event_type}: {sorted(missing)}")
 
     def _build_event(
         self,
@@ -580,9 +813,7 @@ class ResearchEventStore:
             requested_hard_failures,
         )
         if business_identity != requested_identity:
-            raise EventIdempotencyConflict(
-                f"idempotency key conflicts with existing event: {draft.idempotency_key}"
-            )
+            raise EventIdempotencyConflict(f"idempotency key conflicts with existing event: {draft.idempotency_key}")
         return existing
 
     def _validate_draft_identity(self, draft: EventDraft) -> None:
@@ -621,6 +852,40 @@ class ResearchEventStore:
             "RetrieverActionTemplateFrozen": "action_id",
             "TrainValidDataSnapshotFrozen": "snapshot_id",
             "EvaluationPolicyRegistered": "registration_id",
+            "ResolvedEvaluationContractRegistered": "contract_id",
+            "ApplicabilityAssessmentRecorded": "assessment_id",
+            "AsharePITAdapterRegistered": "registration_id",
+            "AsharePITSnapshotRecorded": "snapshot_id",
+            "FactorOutputRecordedV3": "factor_output_id",
+            "ObservedPanelPredictiveEvidenceRecorded": "evidence_id",
+            "PITPredictiveEvidenceRecorded": "evidence_id",
+            "ScorecardDecisionEvidenceV4Recorded": "evidence_id",
+            "ExecutionEvidenceRecorded": "evidence_id",
+            "ComparisonPoolFrozen": "pool_id",
+            "SecondaryEvidenceRecorded": "evidence_id",
+            "SelectionAssessmentRecorded": "assessment_id",
+            "ClaimMatrixRecorded": "matrix_id",
+            "QualityDecisionV4Recorded": "decision_id",
+            "ResearchDossierRecorded": "dossier_id",
+            "ExperimentRunReportRecorded": "report_id",
+            "ResearchReleaseManifestRecorded": "manifest_id",
+            "ResearchDossierMaterializationFailed": "failure_id",
+            "ProductionEvaluationNodeRecorded": "node_id",
+            "TrialTerminalDossierRecorded": "dossier_id",
+            "ReportMaterializationFailed": "failure_id",
+            "FinalRawProviderV2Registered": "registration_id",
+            "FinalEvaluationEligibilityRecorded": "eligibility_id",
+            "FinalTestCapabilityV2Issued": "capability_id",
+            "FinalOutcomeAccessV2Recorded": "access_id",
+            "FinalContaminationV2Recorded": "taint_id",
+            "FinalTestArtifactV2Recorded": "artifact_id",
+            "FinalTestFailedV2Recorded": "failure_id",
+            "FinalSelectionAssessmentV2Recorded": "assessment_id",
+            "FalsificationCatalogV2Registered": "catalog_hash",
+            "FalsificationContractV2Registered": "contract_id",
+            "FalsificationOutcomeAccessV2Recorded": "factor_spec_id",
+            "FalsificationSourceArtifactV2Recorded": "source_id",
+            "FalsificationResultV2Recorded": "result_id",
             "RetrieverFeatureSourceRecorded": "feature_source_id",
             "RetrieverDecisionV2Recorded": "decision_id",
             "RetrieverDecisionV3Recorded": "decision_id",
@@ -667,18 +932,39 @@ class ResearchEventStore:
         }
         field = identity_fields[draft.event_type]
         if draft.entity_id != payload[field]:
-            raise EventValidationError(
-                f"entity_id must equal payload {field} for {draft.event_type}"
-            )
+            raise EventValidationError(f"entity_id must equal payload {field} for {draft.event_type}")
 
     def _validate_artifacts(self, payload: dict[str, Any]) -> None:
-        references = payload.get("artifact_refs")
-        if references is None:
+        for field in ("artifact_refs", "raw_partition_refs"):
+            references = payload.get(field)
+            if references is None:
+                continue
+            payload[field] = validate_artifact_references(
+                self.artifact_root,
+                references,
+            )
+
+    def _validate_external_falsification_v2(
+        self,
+        event_type: str,
+        run_id: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "FalsificationResultV2Recorded":
             return
-        payload["artifact_refs"] = validate_artifact_references(
-            self.artifact_root,
-            references,
+        from src.alpha_quality.falsification.authority_v2 import FalsificationExecutorV2
+
+        rebuilt = FalsificationExecutorV2(store=self).recompute(
+            str(payload["contract_event_hash"]),
+            str(payload["source_event_hash"]),
+            run_id=run_id,
         )
+        if (
+            canonical_json_hash(rebuilt) != payload["result_hash"]
+            or rebuilt["test_results"] != payload["test_results"]
+            or rebuilt["family_result"] != payload["family_result"]
+        ):
+            raise EventValidationError("falsification v2 result is not producer-recomputable")
 
     def _validate_external_process_evidence(
         self,
@@ -688,9 +974,7 @@ class ResearchEventStore:
         """Rebuild utility before the write transaction; never do file IO under lock."""
         if event_type != "ProcessOutcomeRecordedV2":
             return
-        actions = self.query_events(
-            event_type="ProcessActionFrozenV2", entity_id=str(payload["action_id"])
-        )
+        actions = self.query_events(event_type="ProcessActionFrozenV2", entity_id=str(payload["action_id"]))
         evaluations = [
             event
             for event in self.query_events(event_type="EvaluationRecorded")
@@ -740,9 +1024,7 @@ class ResearchEventStore:
             if event.event_hash == payload["parent_definition_event_hash"]
         ]
         if len(definitions) != 1:
-            raise EventValidationError(
-                "Retriever action lacks its authoritative parent definition"
-            )
+            raise EventValidationError("Retriever action lacks its authoritative parent definition")
         try:
             from src.alpha_foundry.retrieval.action_template_v1 import (
                 FrozenRetrieverActionTemplateV1,
@@ -751,22 +1033,16 @@ class ResearchEventStore:
             rebuilt = FrozenRetrieverActionTemplateV1.build(
                 execution_run_id=str(payload["execution_run_id"]),
                 parent_definition=definitions[0].payload,
-                parent_definition_event_hash=str(
-                    payload["parent_definition_event_hash"]
-                ),
+                parent_definition_event_hash=str(payload["parent_definition_event_hash"]),
                 eligible_event_watermark=str(payload["eligible_event_watermark"]),
                 data_snapshot_hash=str(payload["data_snapshot_hash"]),
                 retrieval_policy_hash=str(payload["retrieval_policy_hash"]),
                 template_id=str(payload["template_id"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
-            raise EventValidationError(
-                "Retriever action template cannot be deterministically rebuilt"
-            ) from exc
+            raise EventValidationError("Retriever action template cannot be deterministically rebuilt") from exc
         if rebuilt.to_dict() != dict(payload):
-            raise EventValidationError(
-                "Retriever action differs from its deterministic template rebuild"
-            )
+            raise EventValidationError("Retriever action differs from its deterministic template rebuild")
 
     def _validate_external_train_valid_snapshot(
         self,
@@ -778,21 +1054,16 @@ class ResearchEventStore:
         references = [
             reference
             for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.frozen-train-valid-snapshot-v1+json"
+            if reference["media_type"] == "application/vnd.vibe.frozen-train-valid-snapshot-v1+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "train/valid snapshot requires one source artifact"
-            )
+            raise EventValidationError("train/valid snapshot requires one source artifact")
         try:
             from src.alpha_foundry.retrieval.feature_source_v1 import (
                 FrozenTrainValidSnapshotArtifactStoreV1,
             )
 
-            snapshot = FrozenTrainValidSnapshotArtifactStoreV1(
-                self.artifact_root
-            ).read(
+            snapshot = FrozenTrainValidSnapshotArtifactStoreV1(self.artifact_root).read(
                 str(references[0]["relative_path"]),
                 str(payload["snapshot_hash"]),
             )
@@ -801,9 +1072,7 @@ class ResearchEventStore:
             if not isinstance(base, Mapping):
                 raise ValueError("train/valid snapshot base contract is invalid")
         except (KeyError, OSError, TypeError, ValueError) as exc:
-            raise EventValidationError(
-                "train/valid snapshot source cannot be rebuilt"
-            ) from exc
+            raise EventValidationError("train/valid snapshot source cannot be rebuilt") from exc
         expected = {
             "snapshot_hash": snapshot.snapshot_hash,
             "data_scope": snapshot.data_scope,
@@ -815,9 +1084,7 @@ class ResearchEventStore:
             "survivorship_bias": base["survivorship_bias"],
         }
         if any(payload[name] != value for name, value in expected.items()):
-            raise EventValidationError(
-                "train/valid snapshot event differs from source artifact"
-            )
+            raise EventValidationError("train/valid snapshot event differs from source artifact")
 
     def _validate_external_retriever_feature_source(
         self,
@@ -829,13 +1096,10 @@ class ResearchEventStore:
         references = [
             reference
             for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.retriever-feature-source-v1+json"
+            if reference["media_type"] == "application/vnd.vibe.retriever-feature-source-v1+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "Retriever feature source requires one artifact"
-            )
+            raise EventValidationError("Retriever feature source requires one artifact")
         try:
             from src.alpha_foundry.retrieval.evidence_v3 import (
                 _candidate_to_dict,
@@ -849,35 +1113,25 @@ class ResearchEventStore:
                 ActivationRetrieverPolicy,
             )
 
-            source = RetrieverFeatureSourceArtifactStoreV1(
-                self.artifact_root
-            ).read(
+            source = RetrieverFeatureSourceArtifactStoreV1(self.artifact_root).read(
                 str(references[0]["relative_path"]),
                 str(payload["source_hash"]),
             )
             rebuilt = RetrieverFeatureSourceServiceV1(
                 self,
                 flags=self.flags,
-                feature_policy=RetrieverFeaturePolicyV1(
-                    **dict(source.feature_policy)
-                ),
+                feature_policy=RetrieverFeaturePolicyV1(**dict(source.feature_policy)),
             ).rebuild(
                 execution_run_id=source.execution_run_id,
                 snapshot_event_hash=source.snapshot_event_hash,
                 action_event_hashes=source.action_event_hashes,
                 eligible_event_watermark=source.eligible_event_watermark,
-                retrieval_policy=ActivationRetrieverPolicy(
-                    **dict(source.retrieval_policy)
-                ),
+                retrieval_policy=ActivationRetrieverPolicy(**dict(source.retrieval_policy)),
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "Retriever feature source cannot be independently rebuilt"
-            ) from exc
+            raise EventValidationError("Retriever feature source cannot be independently rebuilt") from exc
         if rebuilt != source:
-            raise EventValidationError(
-                "Retriever feature source differs from deterministic rebuild"
-            )
+            raise EventValidationError("Retriever feature source differs from deterministic rebuild")
         expected = {
             "source_hash": source.source_hash,
             "execution_run_id": source.execution_run_id,
@@ -889,16 +1143,11 @@ class ResearchEventStore:
             "action_event_hashes": list(source.action_event_hashes),
             "scorecard_event_hashes": list(source.scorecard_event_hashes),
             "candidate_count": len(source.candidates),
-            "candidate_hashes": [
-                canonical_json_hash(_candidate_to_dict(candidate))
-                for candidate in source.candidates
-            ],
+            "candidate_hashes": [canonical_json_hash(_candidate_to_dict(candidate)) for candidate in source.candidates],
             "semantic_state": "unavailable",
         }
         if any(payload[name] != value for name, value in expected.items()):
-            raise EventValidationError(
-                "Retriever feature event differs from source artifact"
-            )
+            raise EventValidationError("Retriever feature event differs from source artifact")
 
     def _validate_external_retriever_evidence(
         self,
@@ -909,9 +1158,9 @@ class ResearchEventStore:
         if event_type != "RetrieverDecisionV3Recorded":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.retriever-input-bundle-v3+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.retriever-input-bundle-v3+json"
         ]
         if len(references) != 1:
             raise EventValidationError("retriever v3 requires one source input bundle")
@@ -954,9 +1203,7 @@ class ResearchEventStore:
                 candidate_budget=bundle.candidate_budget,
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "retriever v3 source evidence cannot rebuild the decision"
-            ) from exc
+            raise EventValidationError("retriever v3 source evidence cannot rebuild the decision") from exc
         expected = {
             "shadow_decision_hash": decision.decision_hash,
             "selected_factor_spec_ids": list(decision.selected_factor_spec_ids),
@@ -973,9 +1220,7 @@ class ResearchEventStore:
             "shadow_only": decision.shadow_only,
         }
         if any(payload[name] != value for name, value in expected.items()):
-            raise EventValidationError(
-                "retriever v3 event differs from its deterministically rebuilt decision"
-            )
+            raise EventValidationError("retriever v3 event differs from its deterministically rebuilt decision")
 
     def _validate_external_retriever_v4_evidence(
         self,
@@ -985,9 +1230,9 @@ class ResearchEventStore:
         if event_type != "RetrieverDecisionV4Recorded":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.retriever-input-bundle-v4+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.retriever-input-bundle-v4+json"
         ]
         if len(references) != 1:
             raise EventValidationError("retriever v4 requires one source input bundle")
@@ -1009,18 +1254,17 @@ class ResearchEventStore:
             )
             source = bundle.retriever_input
             controls = [
-                event for event in self.query_events(
-                    event_type="OfficialSearchControlRecorded"
-                )
+                event
+                for event in self.query_events(event_type="OfficialSearchControlRecorded")
                 if event.event_hash == bundle.control_evidence_event_hash
             ]
             if len(controls) != 1:
                 raise ValueError("retriever v4 control event is missing")
             control_event = controls[0]
             control_refs = [
-                reference for reference in control_event.payload["artifact_refs"]
-                if reference["media_type"]
-                == OfficialSearchControlArtifactStoreV1.media_type
+                reference
+                for reference in control_event.payload["artifact_refs"]
+                if reference["media_type"] == OfficialSearchControlArtifactStoreV1.media_type
             ]
             if len(control_refs) != 1:
                 raise ValueError("retriever v4 control artifact is missing")
@@ -1029,28 +1273,21 @@ class ResearchEventStore:
                 bundle.control_evidence_hash,
             )
             all_events = self.query_events()
-            event_order = {
-                event.event_hash: index for index, event in enumerate(all_events)
-            }
+            event_order = {event.event_hash: index for index, event in enumerate(all_events)}
             watermark_order = event_order.get(source.eligible_event_watermark, -1)
             if (
                 watermark_order < 0
                 or event_order.get(control_event.event_hash, -1) <= watermark_order
                 or any(
-                    event_order.get(event_hash, -1) <= watermark_order
-                    for event_hash in control.terminal_event_hashes
+                    event_order.get(event_hash, -1) <= watermark_order for event_hash in control.terminal_event_hashes
                 )
             ):
-                raise ValueError(
-                    "retriever v4 discovery watermark includes control evidence"
-                )
+                raise ValueError("retriever v4 discovery watermark includes control evidence")
             official_ids = tuple(str(item["candidate_id"]) for item in control.candidates)
             if (
                 official_ids != source.official_candidate_ids
-                or control_event.payload["evidence_hash"]
-                != bundle.control_evidence_hash
-                or control_event.payload["policy_hash"]
-                != control.policy.policy_hash
+                or control_event.payload["evidence_hash"] != bundle.control_evidence_hash
+                or control_event.payload["policy_hash"] != control.policy.policy_hash
                 or control_event.payload["output_hash"] != control.output_hash
                 or control.output_hash != payload["official_output_hash"]
                 or control.policy.policy_hash != payload["control_policy_hash"]
@@ -1058,9 +1295,7 @@ class ResearchEventStore:
                 or control_event.run_id != control.run_id
             ):
                 raise ValueError("retriever v4 control binding differs")
-            discovery = DiscoveryEvidenceProjector(
-                flags=self.flags
-            ).project_at_watermark(
+            discovery = DiscoveryEvidenceProjector(flags=self.flags).project_at_watermark(
                 self,
                 data_snapshot_hash=source.data_snapshot_hash,
                 watermark_event_hash=source.eligible_event_watermark,
@@ -1077,9 +1312,7 @@ class ResearchEventStore:
                 candidate_budget=source.candidate_budget,
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "retriever v4 source evidence cannot rebuild the decision"
-            ) from exc
+            raise EventValidationError("retriever v4 source evidence cannot rebuild the decision") from exc
         expected = {
             "shadow_decision_hash": decision.decision_hash,
             "input_bundle_hash": bundle.bundle_hash,
@@ -1113,8 +1346,7 @@ class ResearchEventStore:
         references = [
             reference
             for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.retriever-input-bundle-v5+json"
+            if reference["media_type"] == "application/vnd.vibe.retriever-input-bundle-v5+json"
         ]
         if len(references) != 1:
             raise EventValidationError("retriever v5 requires one source input bundle")
@@ -1142,9 +1374,7 @@ class ResearchEventStore:
             source = bundle.retriever_input
             controls = [
                 event
-                for event in self.query_events(
-                    event_type="OfficialSearchControlRecorded"
-                )
+                for event in self.query_events(event_type="OfficialSearchControlRecorded")
                 if event.event_hash == bundle.control_evidence_event_hash
             ]
             if len(controls) != 1:
@@ -1153,8 +1383,7 @@ class ResearchEventStore:
             control_refs = [
                 reference
                 for reference in control_event.payload["artifact_refs"]
-                if reference["media_type"]
-                == OfficialSearchControlArtifactStoreV1.media_type
+                if reference["media_type"] == OfficialSearchControlArtifactStoreV1.media_type
             ]
             if len(control_refs) != 1:
                 raise ValueError("retriever v5 control artifact is missing")
@@ -1167,10 +1396,7 @@ class ResearchEventStore:
             order = {event.event_hash: index for index, event in enumerate(all_events)}
             watermark_order = order.get(source.eligible_event_watermark, -1)
             control_order = order.get(control_event.event_hash, -1)
-            action_events = [
-                by_hash.get(event_hash)
-                for event_hash in bundle.action_template_event_hashes
-            ]
+            action_events = [by_hash.get(event_hash) for event_hash in bundle.action_template_event_hashes]
             if (
                 watermark_order < 0
                 or control_order <= watermark_order
@@ -1181,16 +1407,11 @@ class ResearchEventStore:
                     or not watermark_order < order[event.event_hash] < control_order
                     for event in action_events
                 )
-                or any(
-                    order.get(event_hash, -1) <= watermark_order
-                    for event_hash in control.terminal_event_hashes
-                )
+                or any(order.get(event_hash, -1) <= watermark_order for event_hash in control.terminal_event_hashes)
             ):
                 raise ValueError("retriever v5 source ordering is invalid")
             actions = tuple(
-                FrozenRetrieverActionTemplateV1.from_dict(event.payload)
-                for event in action_events
-                if event is not None
+                FrozenRetrieverActionTemplateV1.from_dict(event.payload) for event in action_events if event is not None
             )
             policy = ActivationRetrieverPolicy(**dict(source.policy_config))
             if any(
@@ -1200,15 +1421,11 @@ class ResearchEventStore:
                 for action in actions
             ):
                 raise ValueError("retriever v5 action scope or policy differs")
-            official_ids = tuple(
-                str(item["candidate_id"]) for item in control.candidates
-            )
+            official_ids = tuple(str(item["candidate_id"]) for item in control.candidates)
             if (
                 official_ids != source.official_candidate_ids
-                or control_event.payload["evidence_hash"]
-                != bundle.control_evidence_hash
-                or control_event.payload["policy_hash"]
-                != control.policy.policy_hash
+                or control_event.payload["evidence_hash"] != bundle.control_evidence_hash
+                or control_event.payload["policy_hash"] != control.policy.policy_hash
                 or control_event.payload["output_hash"] != control.output_hash
                 or control.output_hash != payload["official_output_hash"]
                 or control.policy.policy_hash != payload["control_policy_hash"]
@@ -1216,9 +1433,7 @@ class ResearchEventStore:
                 or control_event.run_id != control.run_id
             ):
                 raise ValueError("retriever v5 control binding differs")
-            discovery = DiscoveryEvidenceProjector(
-                flags=self.flags
-            ).project_at_watermark(
+            discovery = DiscoveryEvidenceProjector(flags=self.flags).project_at_watermark(
                 self,
                 data_snapshot_hash=source.data_snapshot_hash,
                 watermark_event_hash=source.eligible_event_watermark,
@@ -1237,9 +1452,7 @@ class ResearchEventStore:
                 candidate_budget=source.candidate_budget,
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "retriever v5 source evidence cannot rebuild the action decision"
-            ) from exc
+            raise EventValidationError("retriever v5 source evidence cannot rebuild the action decision") from exc
         expected = {
             "shadow_decision_hash": decision.decision_hash,
             "input_bundle_hash": bundle.bundle_hash,
@@ -1247,12 +1460,8 @@ class ResearchEventStore:
             "control_evidence_hash": bundle.control_evidence_hash,
             "control_policy_hash": control.policy.policy_hash,
             "selected_action_ids": list(decision.selected_action_ids),
-            "selected_parent_factor_spec_ids": list(
-                decision.selected_parent_factor_spec_ids
-            ),
-            "action_template_event_hashes": list(
-                decision.action_template_event_hashes
-            ),
+            "selected_parent_factor_spec_ids": list(decision.selected_parent_factor_spec_ids),
+            "action_template_event_hashes": list(decision.action_template_event_hashes),
             "seed": decision.seed,
             "policy_version": decision.policy_version,
             "policy_hash": decision.policy_hash,
@@ -1262,9 +1471,7 @@ class ResearchEventStore:
             "candidate_budget": decision.candidate_budget,
             "official_output_hash": decision.official_output_hash,
             "propensity_semantics": decision.propensity_semantics,
-            "components": [
-                component.to_dict() for component in decision.components
-            ],
+            "components": [component.to_dict() for component in decision.components],
             "shadow_only": decision.shadow_only,
         }
         if any(payload[name] != value for name, value in expected.items()):
@@ -1281,8 +1488,7 @@ class ResearchEventStore:
         references = [
             reference
             for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.retriever-decision-input-v6+json"
+            if reference["media_type"] == "application/vnd.vibe.retriever-decision-input-v6+json"
         ]
         if len(references) != 1:
             raise EventValidationError("retriever v6 requires one minimal input bundle")
@@ -1323,20 +1529,16 @@ class ResearchEventStore:
                 or order[source_event.event_hash] >= order[control_event.event_hash]
             ):
                 raise ValueError("retriever v6 feature/control ordering is invalid")
-            self._validate_external_retriever_feature_source(
-                source_event.event_type, source_event.to_dict()["payload"]
-            )
+            self._validate_external_retriever_feature_source(source_event.event_type, source_event.to_dict()["payload"])
             source_refs = [
                 reference
                 for reference in source_event.payload["artifact_refs"]
-                if reference["media_type"]
-                == RetrieverFeatureSourceArtifactStoreV1.media_type
+                if reference["media_type"] == RetrieverFeatureSourceArtifactStoreV1.media_type
             ]
             control_refs = [
                 reference
                 for reference in control_event.payload["artifact_refs"]
-                if reference["media_type"]
-                == OfficialSearchControlArtifactStoreV1.media_type
+                if reference["media_type"] == OfficialSearchControlArtifactStoreV1.media_type
             ]
             if len(source_refs) != 1 or len(control_refs) != 1:
                 raise ValueError("retriever v6 authoritative source artifact is missing")
@@ -1346,9 +1548,7 @@ class ResearchEventStore:
             control = OfficialSearchControlArtifactStoreV1(self.artifact_root).read(
                 str(control_refs[0]["relative_path"]), bundle.control_evidence_hash
             )
-            action_events = tuple(
-                by_hash.get(event_hash) for event_hash in source.action_event_hashes
-            )
+            action_events = tuple(by_hash.get(event_hash) for event_hash in source.action_event_hashes)
             if any(
                 event is None
                 or event.event_type != "RetrieverActionTemplateFrozen"
@@ -1358,21 +1558,14 @@ class ResearchEventStore:
             ):
                 raise ValueError("retriever v6 frozen action source is invalid")
             actions = tuple(
-                FrozenRetrieverActionTemplateV1.from_dict(event.payload)
-                for event in action_events
-                if event is not None
+                FrozenRetrieverActionTemplateV1.from_dict(event.payload) for event in action_events if event is not None
             )
             policy = ActivationRetrieverPolicy(**dict(source.retrieval_policy))
-            official_ids = tuple(
-                str(item["candidate_id"]) for item in control.candidates
-            )
+            official_ids = tuple(str(item["candidate_id"]) for item in control.candidates)
             watermark_order = order.get(source.eligible_event_watermark, -1)
             if (
                 watermark_order < 0
-                or any(
-                    order.get(event_hash, -1) <= watermark_order
-                    for event_hash in control.terminal_event_hashes
-                )
+                or any(order.get(event_hash, -1) <= watermark_order for event_hash in control.terminal_event_hashes)
                 or source_event.payload["source_hash"] != source.source_hash
                 or source_event.run_id != source.execution_run_id
                 or source.snapshot_hash != control.data_snapshot_hash
@@ -1380,13 +1573,10 @@ class ResearchEventStore:
                 or control_event.payload["policy_hash"] != control.policy.policy_hash
                 or control_event.payload["output_hash"] != control.output_hash
                 or control_event.run_id != control.run_id
-                or source.action_event_hashes
-                != tuple(payload["action_template_event_hashes"])
+                or source.action_event_hashes != tuple(payload["action_template_event_hashes"])
             ):
                 raise ValueError("retriever v6 authoritative source binding differs")
-            discovery = DiscoveryEvidenceProjector(
-                flags=self.flags
-            ).project_at_watermark(
+            discovery = DiscoveryEvidenceProjector(flags=self.flags).project_at_watermark(
                 self,
                 data_snapshot_hash=source.snapshot_hash,
                 watermark_event_hash=source.eligible_event_watermark,
@@ -1405,9 +1595,7 @@ class ResearchEventStore:
                 candidate_budget=bundle.candidate_budget,
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "retriever v6 evidence cannot rebuild the source-bound action decision"
-            ) from exc
+            raise EventValidationError("retriever v6 evidence cannot rebuild the source-bound action decision") from exc
         expected = {
             "shadow_decision_hash": decision.decision_hash,
             "input_bundle_hash": bundle.bundle_hash,
@@ -1417,12 +1605,8 @@ class ResearchEventStore:
             "feature_source_event_hash": bundle.feature_source_event_hash,
             "feature_source_hash": bundle.feature_source_hash,
             "selected_action_ids": list(decision.selected_action_ids),
-            "selected_parent_factor_spec_ids": list(
-                decision.selected_parent_factor_spec_ids
-            ),
-            "action_template_event_hashes": list(
-                decision.action_template_event_hashes
-            ),
+            "selected_parent_factor_spec_ids": list(decision.selected_parent_factor_spec_ids),
+            "action_template_event_hashes": list(decision.action_template_event_hashes),
             "seed": decision.seed,
             "policy_version": decision.policy_version,
             "policy_hash": decision.policy_hash,
@@ -1438,15 +1622,13 @@ class ResearchEventStore:
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("retriever v6 differs from deterministic rebuild")
 
-    def _validate_external_retriever_v7_evidence(
-        self, event_type: str, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_external_retriever_v7_evidence(self, event_type: str, payload: Mapping[str, Any]) -> None:
         if event_type != "RetrieverDecisionV7Recorded":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.retriever-decision-input-v7+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.retriever-decision-input-v7+json"
         ]
         if len(references) != 1:
             raise EventValidationError("retriever v7 requires one minimal input bundle")
@@ -1467,34 +1649,23 @@ class ResearchEventStore:
             source_event = by_hash.get(bundle.feature_source_event_hash)
             if schedule_event is None or source_event is None:
                 raise ValueError("retriever v7 upstream event is missing")
-            self._validate_external_prearm_flat_schedule(
-                schedule_event.event_type, schedule_event.to_dict()["payload"]
-            )
-            self._validate_external_retriever_feature_source(
-                source_event.event_type, source_event.to_dict()["payload"]
-            )
+            self._validate_external_prearm_flat_schedule(schedule_event.event_type, schedule_event.to_dict()["payload"])
+            self._validate_external_retriever_feature_source(source_event.event_type, source_event.to_dict()["payload"])
             historical = [
-                event for event in self.query_events(
-                    event_type="RetrieverDecisionV7Recorded"
-                )
+                event
+                for event in self.query_events(event_type="RetrieverDecisionV7Recorded")
                 if event.entity_id == payload["decision_id"]
                 and event.payload["decision_hash"] == payload["decision_hash"]
             ]
             if len(historical) > 1:
                 raise ValueError("retriever v7 historical identity is ambiguous")
-            decision, rebuilt_bundle, schedule, source, _ = (
-                RetrieverDecisionV7Service(self).rebuild(
-                    schedule_event_hash=bundle.schedule_event_hash,
-                    feature_source_event_hash=bundle.feature_source_event_hash,
-                    decision_event_hash=(
-                        None if not historical else historical[0].event_hash
-                    ),
-                )
+            decision, rebuilt_bundle, schedule, source, _ = RetrieverDecisionV7Service(self).rebuild(
+                schedule_event_hash=bundle.schedule_event_hash,
+                feature_source_event_hash=bundle.feature_source_event_hash,
+                decision_event_hash=(None if not historical else historical[0].event_hash),
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "retriever v7 evidence cannot rebuild the pre-arm decision"
-            ) from exc
+            raise EventValidationError("retriever v7 evidence cannot rebuild the pre-arm decision") from exc
         expected = {
             "shadow_decision_hash": decision.decision_hash,
             "input_bundle_hash": rebuilt_bundle.bundle_hash,
@@ -1505,9 +1676,7 @@ class ResearchEventStore:
             "feature_source_event_hash": bundle.feature_source_event_hash,
             "feature_source_hash": source.source_hash,
             "selected_action_ids": list(decision.selected_action_ids),
-            "selected_parent_factor_spec_ids": list(
-                decision.selected_parent_factor_spec_ids
-            ),
+            "selected_parent_factor_spec_ids": list(decision.selected_parent_factor_spec_ids),
             "action_template_event_hashes": list(decision.action_template_event_hashes),
             "seed": decision.seed,
             "policy_version": decision.policy_version,
@@ -1521,9 +1690,7 @@ class ResearchEventStore:
             "components": [component.to_dict() for component in decision.components],
             "shadow_only": decision.shadow_only,
         }
-        if bundle != rebuilt_bundle or any(
-            payload[name] != value for name, value in expected.items()
-        ):
+        if bundle != rebuilt_bundle or any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("retriever v7 differs from deterministic rebuild")
 
     def _validate_external_decision_evidence_v3(
@@ -1536,13 +1703,10 @@ class ResearchEventStore:
         references = [
             reference
             for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.decision-evidence-v3+json"
+            if reference["media_type"] == "application/vnd.vibe.decision-evidence-v3+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "Decision evidence v3 requires one producer artifact"
-            )
+            raise EventValidationError("Decision evidence v3 requires one producer artifact")
         reference = references[0]
         try:
             from src.alpha_quality.decision_v2.evidence_v3 import (
@@ -1558,25 +1722,15 @@ class ResearchEventStore:
             rebuilt = DecisionLedgerEvidenceServiceV3.rebuild_record(
                 self,
                 factor_spec_id=record.factor_spec_id,
-                expected_evaluation_event_hash=str(
-                    record.evidence_payload["evaluation_event_hash"]
-                ),
-                expected_terminal_event_hash=str(
-                    record.evidence_payload["terminal_event_hash"]
-                ),
+                expected_evaluation_event_hash=str(record.evidence_payload["evaluation_event_hash"]),
+                expected_terminal_event_hash=str(record.evidence_payload["terminal_event_hash"]),
                 run_id=record.evidence_run_id,
-                ledger_watermark_event_hash=str(
-                    record.evidence_payload["ledger_watermark_event_hash"]
-                ),
+                ledger_watermark_event_hash=str(record.evidence_payload["ledger_watermark_event_hash"]),
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "Decision evidence v3 artifact or source replay is invalid"
-            ) from exc
+            raise EventValidationError("Decision evidence v3 artifact or source replay is invalid") from exc
         if rebuilt != record:
-            raise EventValidationError(
-                "Decision evidence v3 differs from deterministic source replay"
-            )
+            raise EventValidationError("Decision evidence v3 differs from deterministic source replay")
         digest = record.evidence_hash.removeprefix("sha256:")
         expected = DecisionLedgerEvidenceServiceV3.event_payload(
             "decision-evidence-v3-" + digest[:24],
@@ -1584,9 +1738,7 @@ class ResearchEventStore:
             reference,
         )
         if dict(payload) != expected:
-            raise EventValidationError(
-                "Decision evidence v3 event differs from its producer artifact"
-            )
+            raise EventValidationError("Decision evidence v3 event differs from its producer artifact")
 
     def _validate_external_evaluation_policy(
         self,
@@ -1598,13 +1750,10 @@ class ResearchEventStore:
         references = [
             reference
             for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.registered-evaluation-policy-v1+json"
+            if reference["media_type"] == "application/vnd.vibe.registered-evaluation-policy-v1+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "evaluation policy registration requires one producer artifact"
-            )
+            raise EventValidationError("evaluation policy registration requires one producer artifact")
         reference = references[0]
         try:
             from src.alpha_quality.evaluation_registry_v1 import (
@@ -1621,20 +1770,84 @@ class ResearchEventStore:
                 str(payload["registration_id"]),
                 bundle,
                 reference,
-                (
-                    None
-                    if payload["preregistration_watermark"] is None
-                    else str(payload["preregistration_watermark"])
-                ),
+                (None if payload["preregistration_watermark"] is None else str(payload["preregistration_watermark"])),
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "evaluation policy artifact cannot be independently rebuilt"
-            ) from exc
+            raise EventValidationError("evaluation policy artifact cannot be independently rebuilt") from exc
         if dict(payload) != expected:
-            raise EventValidationError(
-                "evaluation policy event differs from its producer artifact"
+            raise EventValidationError("evaluation policy event differs from its producer artifact")
+
+    def _validate_external_resolved_evaluation_contract(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "ResolvedEvaluationContractRegistered":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.resolved-evaluation-contract-v1+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError("resolved contract requires one producer artifact")
+        reference = references[0]
+        try:
+            from src.alpha_quality.evaluation_contract.contract import (
+                ResolvedEvaluationContractArtifactStoreV1,
+                ResolvedEvaluationContractServiceV1,
             )
+
+            contract = ResolvedEvaluationContractArtifactStoreV1(self.artifact_root).read(
+                str(reference["relative_path"]),
+                expected_contract_hash=str(payload["contract_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            expected = ResolvedEvaluationContractServiceV1.event_payload(contract, reference)
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("resolved contract artifact cannot be independently rebuilt") from exc
+        if dict(payload) != expected:
+            raise EventValidationError("resolved contract event differs from its producer artifact")
+
+    def _validate_external_applicability_assessment(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "ApplicabilityAssessmentRecorded":
+            return
+        try:
+            from src.alpha_quality.evaluation_contract.applicability import (
+                _contract_from_event,
+                build_assessment,
+            )
+
+            by_hash = {event.event_hash: event for event in self.query_events()}
+            source_hashes = set(str(item) for item in payload["source_event_hashes"])
+            factor_event = by_hash.get(str(payload["factor_definition_event_hash"]))
+            contract_events = [
+                event
+                for event in by_hash.values()
+                if event.event_type == "ResolvedEvaluationContractRegistered"
+                and event.event_hash in source_hashes
+                and event.payload["contract_hash"] == payload["resolved_contract_hash"]
+            ]
+            if factor_event is None or len(contract_events) != 1:
+                raise ValueError("applicability source events are incomplete")
+            contract_event = contract_events[0]
+            contract = _contract_from_event(self, contract_event)
+            rebuilt = build_assessment(
+                contract_event=contract_event,
+                contract=contract,
+                factor_event=factor_event,
+                claim_type=str(payload["claim_type"]),
+            )
+            identifier = "applicability-" + rebuilt.assessment_hash.removeprefix("sha256:")[:24]
+            expected = {"assessment_id": identifier, **rebuilt.to_dict()}
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("applicability assessment cannot be independently rebuilt") from exc
+        if dict(payload) != expected:
+            raise EventValidationError("applicability assessment differs from deterministic source replay")
 
     def _validate_external_scorecard_evidence_v3(
         self,
@@ -1646,13 +1859,10 @@ class ResearchEventStore:
         references = [
             reference
             for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.decision-evidence-v3+json"
+            if reference["media_type"] == "application/vnd.vibe.decision-evidence-v3+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "scorecard evidence requires one producer artifact"
-            )
+            raise EventValidationError("scorecard evidence requires one producer artifact")
         reference = references[0]
         try:
             from src.alpha_quality.decision_v2.evidence_v3 import (
@@ -1670,38 +1880,24 @@ class ResearchEventStore:
             rebuilt = DecisionScorecardEvidenceServiceV3.rebuild_record(
                 self,
                 factor_spec_id=record.factor_spec_id,
-                evaluation_policy_event_hash=str(
-                    record.evidence_payload["evaluation_policy_event_hash"]
-                ),
-                snapshot_event_hash=str(
-                    record.evidence_payload["snapshot_event_hash"]
-                ),
+                evaluation_policy_event_hash=str(record.evidence_payload["evaluation_policy_event_hash"]),
+                snapshot_event_hash=str(record.evidence_payload["snapshot_event_hash"]),
                 trial_id=str(payload["trial_id"]),
                 run_id=record.evidence_run_id,
-                source_watermark_event_hash=str(
-                    record.evidence_payload["source_watermark_event_hash"]
-                ),
+                source_watermark_event_hash=str(record.evidence_payload["source_watermark_event_hash"]),
             ).record
             expected = DecisionScorecardEvidenceServiceV3.event_payload(
-                DecisionScorecardEvidenceServiceV3.evidence_id(
-                    record.evidence_hash
-                ),
+                DecisionScorecardEvidenceServiceV3.evidence_id(record.evidence_hash),
                 str(payload["trial_id"]),
                 record,
                 reference,
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "scorecard evidence artifact or source replay is invalid"
-            ) from exc
+            raise EventValidationError("scorecard evidence artifact or source replay is invalid") from exc
         if record.evidence_kind != "scorecard" or rebuilt != record:
-            raise EventValidationError(
-                "scorecard evidence differs from deterministic source replay"
-            )
+            raise EventValidationError("scorecard evidence differs from deterministic source replay")
         if dict(payload) != expected:
-            raise EventValidationError(
-                "scorecard evidence event differs from producer artifact"
-            )
+            raise EventValidationError("scorecard evidence event differs from producer artifact")
 
     def _validate_external_snapshot_evidence_v3(
         self,
@@ -1713,13 +1909,10 @@ class ResearchEventStore:
         references = [
             reference
             for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.decision-evidence-v3+json"
+            if reference["media_type"] == "application/vnd.vibe.decision-evidence-v3+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "snapshot evidence requires one producer artifact"
-            )
+            raise EventValidationError("snapshot evidence requires one producer artifact")
         reference = references[0]
         try:
             from src.alpha_quality.decision_v2.evidence_v3 import (
@@ -1737,36 +1930,662 @@ class ResearchEventStore:
             rebuilt = DecisionSnapshotEvidenceServiceV3.rebuild_record(
                 self,
                 factor_spec_id=record.factor_spec_id,
-                evaluation_policy_event_hash=str(
-                    record.evidence_payload["evaluation_policy_event_hash"]
-                ),
-                snapshot_event_hash=str(
-                    record.evidence_payload["snapshot_event_hash"]
-                ),
+                evaluation_policy_event_hash=str(record.evidence_payload["evaluation_policy_event_hash"]),
+                snapshot_event_hash=str(record.evidence_payload["snapshot_event_hash"]),
                 run_id=record.evidence_run_id,
-                source_watermark_event_hash=str(
-                    record.evidence_payload["source_watermark_event_hash"]
-                ),
+                source_watermark_event_hash=str(record.evidence_payload["source_watermark_event_hash"]),
             ).record
             expected = DecisionSnapshotEvidenceServiceV3.event_payload(
-                DecisionSnapshotEvidenceServiceV3.evidence_id(
-                    record.evidence_hash
-                ),
+                DecisionSnapshotEvidenceServiceV3.evidence_id(record.evidence_hash),
                 record,
                 reference,
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "snapshot evidence artifact or source replay is invalid"
-            ) from exc
+            raise EventValidationError("snapshot evidence artifact or source replay is invalid") from exc
         if record.evidence_kind != "snapshot" or rebuilt != record:
-            raise EventValidationError(
-                "snapshot evidence differs from deterministic source replay"
-            )
+            raise EventValidationError("snapshot evidence differs from deterministic source replay")
         if dict(payload) != expected:
-            raise EventValidationError(
-                "snapshot evidence event differs from producer artifact"
+            raise EventValidationError("snapshot evidence event differs from producer artifact")
+
+    def _validate_external_pit_adapter_registration(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "AsharePITAdapterRegistered":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.registered-ashare-pit-adapter-v1+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError("PIT adapter registration requires one producer artifact")
+        reference = references[0]
+        try:
+            from src.alpha_quality.pit_service_v2 import (
+                AsharePITAdapterRegistrationArtifactStoreV1,
+                AsharePITAdapterRegistrationServiceV1,
             )
+
+            record = AsharePITAdapterRegistrationArtifactStoreV1(self.artifact_root).read(
+                str(reference["relative_path"]),
+                expected_artifact_hash=str(payload["registration_artifact_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            expected = AsharePITAdapterRegistrationServiceV1.event_payload(
+                AsharePITAdapterRegistrationServiceV1.registration_id(str(payload["registration_hash"])),
+                record,
+                (
+                    None
+                    if payload["source_watermark_event_hash"] is None
+                    else str(payload["source_watermark_event_hash"])
+                ),
+                reference,
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("PIT adapter registration cannot be rebuilt") from exc
+        if dict(payload) != expected:
+            raise EventValidationError("PIT adapter registration differs from producer artifact")
+
+    def _validate_external_pit_snapshot(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "AsharePITSnapshotRecorded":
+            return
+        references = [
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.ashare-pit-snapshot-v2+json"
+        ]
+        if len(references) != 1:
+            raise EventValidationError("PIT snapshot requires one producer manifest")
+        reference = references[0]
+        try:
+            from src.alpha_quality.pit_artifact_v2 import (
+                FrozenAsharePITSnapshotArtifactStoreV2,
+            )
+            from src.alpha_quality.pit_service_v2 import AsharePITSnapshotServiceV2
+
+            snapshot = FrozenAsharePITSnapshotArtifactStoreV2(self.artifact_root).read_manifest(
+                str(reference["relative_path"]),
+                expected_snapshot_hash=str(payload["snapshot_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            # The event run is the registered policy run; derive it from the source.
+            policy_events = [
+                event
+                for event in self.query_events(event_type="EvaluationPolicyRegistered")
+                if event.event_hash == payload["evaluation_policy_event_hash"]
+            ]
+            if len(policy_events) != 1:
+                raise ValueError("PIT snapshot policy event is missing")
+            rebuilt = AsharePITSnapshotServiceV2.rebuild_snapshot(
+                self,
+                snapshot=snapshot,
+                adapter_registration_event_hash=str(payload["adapter_registration_event_hash"]),
+                evaluation_policy_event_hash=str(payload["evaluation_policy_event_hash"]),
+                run_id=policy_events[0].run_id,
+            )
+            expected = AsharePITSnapshotServiceV2.event_payload(
+                AsharePITSnapshotServiceV2.snapshot_id(snapshot.snapshot_hash),
+                rebuilt,
+                str(payload["source_watermark_event_hash"]),
+                reference,
+                adapter_registration_event_hash=str(payload["adapter_registration_event_hash"]),
+            )
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("PIT snapshot manifest or source replay is invalid") from exc
+        if rebuilt != snapshot or dict(payload) != expected:
+            raise EventValidationError("PIT snapshot differs from deterministic source replay")
+
+    def _validate_external_predictive_v4(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        event_types = {
+            "FactorOutputRecordedV3",
+            "ObservedPanelPredictiveEvidenceRecorded",
+            "PITPredictiveEvidenceRecorded",
+            "ScorecardDecisionEvidenceV4Recorded",
+        }
+        if event_type not in event_types:
+            return
+        try:
+            from src.alpha_quality.predictive_evidence_v4 import (
+                FACTOR_OUTPUT_MEDIA_TYPE,
+                PREDICTIVE_EVIDENCE_MEDIA_TYPE,
+                SCORECARD_V4_MEDIA_TYPE,
+                FactorOutputArtifactStoreV3,
+                PITPredictiveEvidenceServiceV4,
+                PredictiveEvidenceV1,
+                ScorecardDecisionEvidenceV4,
+                _JsonEvidenceStore,
+                _PREDICTIVE_KEYS,
+                _SCORECARD_KEYS,
+            )
+
+            events = {event.event_hash: event for event in self.query_events()}
+            if event_type == "FactorOutputRecordedV3":
+                ref = next(
+                    reference
+                    for reference in payload["artifact_refs"]
+                    if reference["media_type"] == FACTOR_OUTPUT_MEDIA_TYPE
+                )
+                artifact = FactorOutputArtifactStoreV3(self.artifact_root).read_manifest(
+                    str(ref["relative_path"]),
+                    expected_hash=str(payload["factor_output_hash"]),
+                    expected_blob_hash=str(ref["artifact_hash"]),
+                )
+                source_events = [
+                    events[event_hash] for event_hash in payload["source_event_hashes"] if event_hash in events
+                ]
+                contract = next(
+                    event for event in source_events if event.event_type == "ResolvedEvaluationContractRegistered"
+                )
+                definition = next(event for event in source_events if event.event_type == "FactorDefinitionRecorded")
+                snapshot = next(event for event in source_events if event.event_type == "AsharePITSnapshotRecorded")
+                rebuilt, _, _ = PITPredictiveEvidenceServiceV4.rebuild(
+                    self,
+                    run_id=artifact.run_id,
+                    contract_event_hash=contract.event_hash,
+                    factor_definition_event_hash=definition.event_hash,
+                    pit_snapshot_event_hash=snapshot.event_hash,
+                    persist_factor=True,
+                )
+                expected = PITPredictiveEvidenceServiceV4.factor_event_payload(rebuilt, ref)
+                if rebuilt != artifact or dict(payload) != expected:
+                    raise ValueError("factor output differs from backend replay")
+                return
+
+            if event_type in {
+                "ObservedPanelPredictiveEvidenceRecorded",
+                "PITPredictiveEvidenceRecorded",
+            }:
+                ref = next(
+                    reference
+                    for reference in payload["artifact_refs"]
+                    if reference["media_type"] == PREDICTIVE_EVIDENCE_MEDIA_TYPE
+                )
+                raw = _JsonEvidenceStore(
+                    self.artifact_root,
+                    namespace="predictive-evidence-v1",
+                    media_type=PREDICTIVE_EVIDENCE_MEDIA_TYPE,
+                    keys=_PREDICTIVE_KEYS,
+                    semantic_field="evidence_hash",
+                ).read(
+                    str(ref["relative_path"]),
+                    expected_hash=str(payload["evidence_hash"]),
+                    expected_blob_hash=str(ref["artifact_hash"]),
+                )
+                predictive_artifact = PredictiveEvidenceV1.from_dict(raw)
+                factor_event = events[str(payload["factor_output_event_hash"])]
+                factor_ref = factor_event.payload["artifact_refs"][0]
+                factor_artifact = FactorOutputArtifactStoreV3(self.artifact_root).read_manifest(
+                    str(factor_ref["relative_path"]),
+                    expected_hash=str(factor_event.payload["factor_output_hash"]),
+                    expected_blob_hash=str(factor_ref["artifact_hash"]),
+                )
+                source_events = [events[item] for item in factor_artifact.source_event_hashes]
+                contract = next(
+                    event for event in source_events if event.event_type == "ResolvedEvaluationContractRegistered"
+                )
+                definition = next(event for event in source_events if event.event_type == "FactorDefinitionRecorded")
+                snapshot = next(event for event in source_events if event.event_type == "AsharePITSnapshotRecorded")
+                _, observed, pit = PITPredictiveEvidenceServiceV4.rebuild(
+                    self,
+                    run_id=factor_artifact.run_id,
+                    contract_event_hash=contract.event_hash,
+                    factor_definition_event_hash=definition.event_hash,
+                    pit_snapshot_event_hash=snapshot.event_hash,
+                    persist_factor=True,
+                )
+                expected_artifact = PITPredictiveEvidenceServiceV4._with_factor_event(
+                    observed if event_type == "ObservedPanelPredictiveEvidenceRecorded" else pit,
+                    factor_event.event_hash,
+                )
+                expected = PITPredictiveEvidenceServiceV4.predictive_event_payload(expected_artifact, ref)
+                if expected_artifact != predictive_artifact or dict(payload) != expected:
+                    raise ValueError("predictive evidence differs from source replay")
+                return
+
+            ref = next(
+                reference
+                for reference in payload["artifact_refs"]
+                if reference["media_type"] == SCORECARD_V4_MEDIA_TYPE
+            )
+            raw = _JsonEvidenceStore(
+                self.artifact_root,
+                namespace="scorecard-evidence-v4",
+                media_type=SCORECARD_V4_MEDIA_TYPE,
+                keys=_SCORECARD_KEYS,
+                semantic_field="scorecard_evidence_hash",
+            ).read(
+                str(ref["relative_path"]),
+                expected_hash=str(payload["scorecard_evidence_hash"]),
+                expected_blob_hash=str(ref["artifact_hash"]),
+            )
+            scorecard_artifact = ScorecardDecisionEvidenceV4.from_dict(raw)
+            factor_event = events[str(payload["factor_output_event_hash"])]
+            observed_event = events[str(payload["observed_event_hash"])]
+            pit_event = events[str(payload["pit_event_hash"])]
+            factor_ref = factor_event.payload["artifact_refs"][0]
+            factor_artifact = FactorOutputArtifactStoreV3(self.artifact_root).read_manifest(
+                str(factor_ref["relative_path"]),
+                expected_hash=str(factor_event.payload["factor_output_hash"]),
+                expected_blob_hash=str(factor_ref["artifact_hash"]),
+            )
+            service = PITPredictiveEvidenceServiceV4(self)
+            observed = service._read_predictive_event(observed_event)
+            pit = service._read_predictive_event(pit_event)
+            rebuilt_scorecard = service._scorecard(
+                factor=factor_artifact,
+                observed=observed,
+                pit=pit,
+                factor_event_hash=factor_event.event_hash,
+                observed_event_hash=observed_event.event_hash,
+                pit_event_hash=pit_event.event_hash,
+            )
+            expected = service.scorecard_event_payload(rebuilt_scorecard, ref)
+            if rebuilt_scorecard != scorecard_artifact or dict(payload) != expected:
+                raise ValueError("scorecard v4 differs from source replay")
+        except (KeyError, StopIteration, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("predictive v4 artifact or source replay is invalid") from exc
+
+    def _validate_external_production_evaluator(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        event_types = {
+            "ProductionEvaluationNodeRecorded",
+            "TrialTerminalDossierRecorded",
+            "ReportMaterializationFailed",
+        }
+        if event_type not in event_types:
+            return
+        try:
+            from src.alpha_quality.production_evaluator_v1 import (
+                DOSSIER_MEDIA_TYPE,
+                PRODUCER_POLICY_HASH,
+                PRODUCER_SCHEMA_VERSION,
+                ProductionCandidateEvaluatorV1,
+                ProductionEvaluationNodeV1,
+                TrialTerminalDossierArtifactStoreV1,
+            )
+
+            if (
+                payload["producer_schema_version"] != PRODUCER_SCHEMA_VERSION
+                or payload["producer_policy_hash"] != PRODUCER_POLICY_HASH
+            ):
+                raise ValueError("production evaluator producer identity differs")
+            if event_type == "ProductionEvaluationNodeRecorded":
+                node = ProductionEvaluationNodeV1(
+                    run_id=str(payload["run_id"]),
+                    trial_id=str(payload["trial_id"]),
+                    factor_spec_id=str(payload["factor_spec_id"]),
+                    resolved_contract_hash=str(payload["resolved_contract_hash"]),
+                    node_name=str(payload["node_name"]),  # type: ignore[arg-type]
+                    status=str(payload["status"]),  # type: ignore[arg-type]
+                    reason_codes=tuple(str(item) for item in payload["reason_codes"]),
+                    source_event_hashes=tuple(str(item) for item in payload["source_event_hashes"]),
+                    producer_schema_version=str(payload["producer_schema_version"]),
+                    producer_policy_hash=str(payload["producer_policy_hash"]),
+                    node_hash=str(payload["node_hash"]),
+                )
+                expected_id = f"production-node-{node.trial_id}-{node.node_name}"
+                if payload["node_id"] != expected_id:
+                    raise ValueError("production node identity differs")
+                return
+            if event_type == "ReportMaterializationFailed":
+                if payload["failure_id"] != f"report-failure-{payload['trial_id']}":
+                    raise ValueError("report failure identity differs")
+                return
+            references = [item for item in payload["artifact_refs"] if item["media_type"] == DOSSIER_MEDIA_TYPE]
+            if len(references) != 1:
+                raise ValueError("terminal dossier artifact is ambiguous")
+            reference = references[0]
+            dossier = TrialTerminalDossierArtifactStoreV1(self.artifact_root).read(
+                str(reference["relative_path"]),
+                expected_hash=str(payload["terminal_dossier_hash"]),
+                expected_blob_hash=str(reference["artifact_hash"]),
+            )
+            expected = ProductionCandidateEvaluatorV1.dossier_event_payload(
+                dossier,
+                reference,
+            )
+            by_hash = {event.event_hash: event for event in self.query_events()}
+            evidence = [by_hash[item] for item in dossier.evidence_event_hashes]
+            nodes = [by_hash[item] for item in dossier.node_event_hashes]
+            terminal = by_hash[dossier.terminal_event_hash]
+            evaluation = None if dossier.evaluation_event_hash is None else by_hash[dossier.evaluation_event_hash]
+            expected_bundle_hash = canonical_json_hash(
+                {
+                    "schema_version": "production_evidence_bundle.v1",
+                    "evidence_payload_hashes": sorted(event.payload_hash for event in evidence),
+                    "node_hashes": sorted(str(event.payload["node_hash"]) for event in nodes),
+                }
+            )
+            contract_matches = [
+                event
+                for event in by_hash.values()
+                if event.event_type == "ResolvedEvaluationContractRegistered"
+                and event.payload["contract_hash"] == dossier.resolved_contract_hash
+                and event.run_id == dossier.run_id
+            ]
+            snapshot = by_hash[dossier.snapshot_event_hash]
+            watermark = by_hash[dossier.source_watermark_event_hash]
+            if (
+                dict(payload) != expected
+                or expected_bundle_hash != dossier.evidence_bundle_hash
+                or len(contract_matches) != 1
+                or snapshot.event_type != "AsharePITSnapshotRecorded"
+                or snapshot.run_id != dossier.run_id
+                or watermark.event_type != "FactorDefinitionRecorded"
+                or watermark.entity_id != dossier.factor_spec_id
+                or watermark.run_id != dossier.run_id
+                or terminal.event_type != "TrialTerminated"
+                or terminal.run_id != dossier.run_id
+                or terminal.payload["trial_id"] != dossier.trial_id
+                or (
+                    evaluation is not None
+                    and (
+                        evaluation.event_type != "EvaluationRecorded"
+                        or evaluation.run_id != dossier.run_id
+                        or evaluation.payload["trial_id"] != dossier.trial_id
+                        or evaluation.payload["factor_spec_id"] != dossier.factor_spec_id
+                        or evaluation.payload["metadata"].get("evidence_bundle_hash") != dossier.evidence_bundle_hash
+                    )
+                )
+            ):
+                raise ValueError("terminal dossier event differs from artifact")
+        except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("production evaluator artifact or source replay is invalid") from exc
+
+    def _validate_external_execution_evidence(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type != "ExecutionEvidenceRecorded":
+            return
+        try:
+            from src.alpha_quality.execution_evidence_v1 import (
+                EXECUTION_ARTIFACT_MEDIA_TYPE,
+                EXECUTION_DECISION_MEDIA_TYPE,
+                ExecutionEvidenceArtifactStoreV1,
+                ExecutionEvidenceServiceV1,
+            )
+
+            artifact_refs = [
+                item for item in payload["artifact_refs"] if item["media_type"] == EXECUTION_ARTIFACT_MEDIA_TYPE
+            ]
+            decision_refs = [
+                item for item in payload["artifact_refs"] if item["media_type"] == EXECUTION_DECISION_MEDIA_TYPE
+            ]
+            if len(artifact_refs) != 1 or len(decision_refs) != 1:
+                raise ValueError("execution evidence artifacts are ambiguous")
+            artifact_ref = artifact_refs[0]
+            decision_ref = decision_refs[0]
+            artifacts = ExecutionEvidenceArtifactStoreV1(self.artifact_root)
+            artifact = artifacts.read_artifact(
+                str(artifact_ref["relative_path"]),
+                expected_hash=str(payload["execution_artifact_hash"]),
+                expected_blob_hash=str(artifact_ref["artifact_hash"]),
+            )
+            decision = artifacts.read_decision(
+                str(decision_ref["relative_path"]),
+                expected_hash=str(payload["execution_decision_evidence_hash"]),
+                expected_blob_hash=str(decision_ref["artifact_hash"]),
+            )
+            rebuilt_artifact, rebuilt_decision, _ = ExecutionEvidenceServiceV1.rebuild(
+                self,
+                run_id=artifact.run_id,
+                factor_output_event_hash=artifact.factor_output_event_hash,
+                observed_predictive_event_hash=str(payload["observed_predictive_event_hash"]),
+                persist_tables=True,
+            )
+            expected = ExecutionEvidenceServiceV1.event_payload(
+                rebuilt_artifact,
+                rebuilt_decision,
+                artifact_ref,
+                decision_ref,
+            )
+            if rebuilt_artifact != artifact or rebuilt_decision != decision or dict(payload) != expected:
+                raise ValueError("execution evidence differs from source replay")
+        except (KeyError, StopIteration, OSError, TypeError, ValueError, RuntimeError) as exc:
+            raise EventValidationError("execution evidence artifact or source replay is invalid") from exc
+
+    def _validate_external_secondary_evidence(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type not in {"ComparisonPoolFrozen", "SecondaryEvidenceRecorded"}:
+            return
+        try:
+            from src.alpha_quality.secondary_evidence_v1 import (
+                PRODUCER_POLICY_HASH,
+                PRODUCER_SCHEMA_VERSION,
+                ComparisonPoolMemberV1,
+                FrozenComparisonPoolV1,
+                SecondaryEvidencePolicyV1,
+            )
+
+            if (
+                payload["producer_schema_version"] != PRODUCER_SCHEMA_VERSION
+                or payload["producer_policy_hash"] != PRODUCER_POLICY_HASH
+            ):
+                raise ValueError("secondary producer identity differs")
+            if event_type == "ComparisonPoolFrozen":
+                policy = SecondaryEvidencePolicyV1(**dict(payload["policy"]))
+                members = tuple(ComparisonPoolMemberV1(**dict(item)) for item in payload["members"])
+                rebuilt = FrozenComparisonPoolV1.build(
+                    source_watermark_event_hash=str(payload["source_watermark_event_hash"]),
+                    members=members,
+                    policy=policy,
+                    evidence_watermark=int(payload["evidence_watermark"]),
+                )
+                expected_id = "comparison-pool-" + rebuilt.comparison_pool_hash.removeprefix("sha256:")[:24]
+                if dict(payload) != {
+                    "pool_id": expected_id,
+                    **rebuilt.to_dict(),
+                    "producer_schema_version": PRODUCER_SCHEMA_VERSION,
+                    "producer_policy_hash": PRODUCER_POLICY_HASH,
+                }:
+                    raise ValueError("comparison pool does not replay")
+                return
+            bundle = payload["secondary_evidence_bundle"]
+            for name in (
+                "identity",
+                "residual_prediction",
+                "portfolio_marginal_value",
+                "mechanism",
+            ):
+                assessment = dict(bundle[name])
+                assessment_hash = assessment.pop("assessment_hash")
+                if assessment_hash != canonical_json_hash(assessment):
+                    raise ValueError("secondary subassessment does not replay")
+            bundle_hash = canonical_json_hash(bundle)
+            expected_id = "secondary-evidence-" + bundle_hash.removeprefix("sha256:")[:24]
+            if (
+                payload["secondary_evidence_bundle_hash"] != bundle_hash
+                or payload["evidence_id"] != expected_id
+                or payload["identity_assessment_hash"] != bundle["identity"]["assessment_hash"]
+                or payload["residual_assessment_hash"] != bundle["residual_prediction"]["assessment_hash"]
+                or payload["portfolio_assessment_hash"] != bundle["portfolio_marginal_value"]["assessment_hash"]
+                or payload["mechanism_assessment_hash"] != bundle["mechanism"]["assessment_hash"]
+                or payload["novelty_claim"] != bundle["identity"]["novelty_claim"]
+                or payload["replication_claim"] != bundle["identity"]["replication_claim"]
+                or payload["residual_status"] != bundle["residual_prediction"]["status"]
+                or payload["portfolio_status"] != bundle["portfolio_marginal_value"]["status"]
+                or payload["mechanism_status"] != bundle["mechanism"]["status"]
+                or payload["promotion_effect"] != "none"
+            ):
+                raise ValueError("secondary evidence envelope differs")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise EventValidationError("secondary evidence replay is invalid") from exc
+
+    def _validate_external_claim_decision(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type not in {
+            "SelectionAssessmentRecorded",
+            "ClaimMatrixRecorded",
+            "QualityDecisionV4Recorded",
+        }:
+            return
+        try:
+            from src.alpha_quality.claim_decision_v1 import (
+                PRODUCER_POLICY_HASH,
+                PRODUCER_SCHEMA_VERSION,
+                TIER_INVARIANT_MANIFEST_HASH,
+            )
+
+            if (
+                payload["producer_schema_version"] != PRODUCER_SCHEMA_VERSION
+                or payload["producer_policy_hash"] != PRODUCER_POLICY_HASH
+            ):
+                raise ValueError("claim decision producer identity differs")
+            identity = {
+                "SelectionAssessmentRecorded": ("assessment_id", "selection-", "assessment_hash"),
+                "ClaimMatrixRecorded": ("matrix_id", "claim-matrix-", "claim_matrix_hash"),
+                "QualityDecisionV4Recorded": ("decision_id", "quality-decision-v4-", "decision_hash"),
+            }[event_type]
+            expected = identity[1] + str(payload[identity[2]]).removeprefix("sha256:")[:24]
+            if payload[identity[0]] != expected:
+                raise ValueError("claim decision event identity differs")
+            if (
+                event_type == "QualityDecisionV4Recorded"
+                and payload["tier_invariant_manifest_hash"] != TIER_INVARIANT_MANIFEST_HASH
+            ):
+                raise ValueError("narrow decision invariant manifest differs")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise EventValidationError("claim decision replay is invalid") from exc
+
+    def _validate_external_research_dossier(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type not in {
+            "ResearchDossierRecorded",
+            "ExperimentRunReportRecorded",
+            "ResearchReleaseManifestRecorded",
+            "ResearchDossierMaterializationFailed",
+        }:
+            return
+        try:
+            from src.alpha_quality.research_dossier_v1 import (
+                AUDIENCE_VIEW_MEDIA_TYPE,
+                CANDIDATE_DOSSIER_MEDIA_TYPE,
+                PRODUCER_POLICY_HASH,
+                PRODUCER_SCHEMA_VERSION,
+                RELEASE_MANIFEST_MEDIA_TYPE,
+                RUN_REPORT_MEDIA_TYPE,
+                CandidateResearchDossierV1,
+                ExperimentRunReportV1,
+                ResearchDossierArtifactStoreV1,
+                ResearchReleaseManifestV1,
+                _strict_json,
+            )
+
+            if (
+                payload["producer_schema_version"] != PRODUCER_SCHEMA_VERSION
+                or payload["producer_policy_hash"] != PRODUCER_POLICY_HASH
+            ):
+                raise ValueError("research dossier producer identity differs")
+            if event_type == "ResearchDossierMaterializationFailed":
+                expected_id = "research-dossier-failure-" + str(payload["trial_id"])
+                if payload["failure_id"] != expected_id or payload["decision_effect"] != "none":
+                    raise ValueError("research dossier failure identity differs")
+                return
+            artifacts = ResearchDossierArtifactStoreV1(self.artifact_root)
+            if event_type == "ResearchDossierRecorded":
+                candidate_refs = [
+                    ref for ref in payload["artifact_refs"] if ref["media_type"] == CANDIDATE_DOSSIER_MEDIA_TYPE
+                ]
+                view_refs = [ref for ref in payload["artifact_refs"] if ref["media_type"] == AUDIENCE_VIEW_MEDIA_TYPE]
+                if len(candidate_refs) != 1 or len(view_refs) != 5:
+                    raise ValueError("research dossier artifact inventory differs")
+                dossier_raw = artifacts.read(
+                    candidate_refs[0],
+                    semantic_hash=str(payload["dossier_hash"]),
+                    namespace="candidate-research-dossier-v1",
+                    media_type=CANDIDATE_DOSSIER_MEDIA_TYPE,
+                    semantic_field="dossier_hash",
+                )
+                dossier = CandidateResearchDossierV1(dossier_raw)
+                views = [
+                    artifacts.read(
+                        ref,
+                        semantic_hash=str(
+                            _strict_json(self.artifact_root.joinpath(*str(ref["relative_path"]).split("/")))[
+                                "view_hash"
+                            ]
+                        ),
+                        namespace="research-audience-view-v1",
+                        media_type=AUDIENCE_VIEW_MEDIA_TYPE,
+                        semantic_field="view_hash",
+                    )
+                    for ref in view_refs
+                ]
+                for view in views:
+                    content = {key: value for key, value in view.items() if key != "view_hash"}
+                    if canonical_json_hash(content) != view["view_hash"]:
+                        raise ValueError("research audience view hash differs")
+                expected_id = "research-dossier-" + dossier.dossier_hash.removeprefix("sha256:")[:24]
+                if (
+                    payload["dossier_id"] != expected_id
+                    or payload["factor_spec_id"] != dossier.payload["factor_spec_id"]
+                    or payload["source_event_hashes"] != dossier.payload["source_event_hashes"]
+                    or payload["view_hashes"] != sorted(str(view["view_hash"]) for view in views)
+                ):
+                    raise ValueError("research dossier event differs from artifacts")
+                return
+            if event_type == "ExperimentRunReportRecorded":
+                ref = payload["artifact_refs"][0]
+                raw = artifacts.read(
+                    ref,
+                    semantic_hash=str(payload["run_report_hash"]),
+                    namespace="experiment-run-report-v1",
+                    media_type=RUN_REPORT_MEDIA_TYPE,
+                    semantic_field="run_report_hash",
+                )
+                report = ExperimentRunReportV1(raw)
+                expected_id = "run-report-" + report.report_hash.removeprefix("sha256:")[:24]
+                if (
+                    payload["report_id"] != expected_id
+                    or payload["trial_count"] != report.payload["trial_count"]
+                    or payload["candidate_dossier_hashes"] != report.payload["candidate_dossier_hashes"]
+                    or payload["source_event_hashes"] != report.payload["source_event_hashes"]
+                ):
+                    raise ValueError("run report event differs from artifact")
+                return
+            ref = payload["artifact_refs"][0]
+            raw = artifacts.read(
+                ref,
+                semantic_hash=str(payload["manifest_hash"]),
+                namespace="research-release-manifest-v1",
+                media_type=RELEASE_MANIFEST_MEDIA_TYPE,
+                semantic_field="manifest_hash",
+            )
+            manifest = ResearchReleaseManifestV1(raw)
+            expected_id = "research-release-" + manifest.manifest_hash.removeprefix("sha256:")[:24]
+            if (
+                payload["manifest_id"] != expected_id
+                or payload["engineering_status"] != manifest.payload["engineering_status"]
+                or payload["empirical_status"] != manifest.payload["empirical_status"]
+                or payload["source_event_hashes"] != manifest.payload["source_event_hashes"]
+            ):
+                raise ValueError("release manifest event differs from artifact")
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            raise EventValidationError("research dossier artifact replay is invalid") from exc
 
     def _validate_external_quality_decision_evidence(
         self,
@@ -1777,9 +2596,9 @@ class ResearchEventStore:
         if event_type != "QualityDecisionV3Recorded":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.quality-decision-input-v3+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.quality-decision-input-v3+json"
         ]
         if len(references) != 1:
             raise EventValidationError("Decision v3 requires one source input bundle")
@@ -1813,9 +2632,7 @@ class ResearchEventStore:
                 input_bundle_hash=bundle.bundle_hash,
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "Decision v3 source evidence cannot rebuild the decision"
-            ) from exc
+            raise EventValidationError("Decision v3 source evidence cannot rebuild the decision") from exc
         expected = {
             "decision_hash": canonical_json_hash(content),
             **{key: value for key, value in content.items() if key != "schema_version"},
@@ -1831,9 +2648,9 @@ class ResearchEventStore:
         if event_type != "ActivationRunSourceAudited":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.activation-run-source-v2+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.activation-run-source-v2+json"
         ]
         if len(references) != 1:
             raise EventValidationError("Activation source audit requires one v2 artifact")
@@ -1843,12 +2660,8 @@ class ResearchEventStore:
                 ActivationRunSourceAuditV2,
             )
 
-            raw = ActivationArtifactStore(self.artifact_root).get(
-                "run_source", str(payload["audit_hash"])
-            )
-            expected_relative = ActivationArtifactStore.relative_path(
-                "run_source", str(payload["audit_hash"])
-            )
+            raw = ActivationArtifactStore(self.artifact_root).get("run_source", str(payload["audit_hash"]))
+            expected_relative = ActivationArtifactStore.relative_path("run_source", str(payload["audit_hash"]))
             if str(references[0]["relative_path"]).replace("\\", "/") != expected_relative:
                 raise ValueError("Activation source audit reference path is not canonical")
             audit = ActivationRunSourceAuditV2.from_dict(raw)
@@ -1859,14 +2672,10 @@ class ResearchEventStore:
             "summary_manifest_hash": audit.summary_manifest_hash,
             "source_watermark_event_hash": audit.source_watermark_event_hash,
             "audit_hash": audit.audit_hash,
-            "retriever_decision_event_hashes": list(
-                audit.retriever_decision_event_hashes
-            ),
+            "retriever_decision_event_hashes": list(audit.retriever_decision_event_hashes),
             "terminal_event_hashes": list(audit.terminal_event_hashes),
             "evaluation_event_hashes": list(audit.evaluation_event_hashes),
-            "quality_decision_event_hashes": list(
-                audit.quality_decision_event_hashes
-            ),
+            "quality_decision_event_hashes": list(audit.quality_decision_event_hashes),
             "source_failure_codes": list(audit.source_failure_codes),
             "source_complete": audit.source_complete,
         }
@@ -1882,12 +2691,12 @@ class ResearchEventStore:
             + audit.quality_decision_event_hashes
         )
         if watermark_index is None or any(
-            indexes.get(event_hash, watermark_index + 1) > watermark_index
-            for event_hash in source_hashes
+            indexes.get(event_hash, watermark_index + 1) > watermark_index for event_hash in source_hashes
         ):
             raise EventValidationError("Activation source audit cites an invalid watermark")
         summaries = [
-            event for event in events
+            event
+            for event in events
             if event.event_type == "ActivationRunRecorded"
             and event.payload["manifest_hash"] == audit.summary_manifest_hash
             and event.payload["plan_hash"] == audit.plan_hash
@@ -1903,9 +2712,9 @@ class ResearchEventStore:
         if event_type != "OfficialSearchControlRecorded":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.official-search-control-v1+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.official-search-control-v1+json"
         ]
         if len(references) != 1:
             raise EventValidationError("official control requires one source artifact")
@@ -1937,7 +2746,8 @@ class ResearchEventStore:
         terminals: list[ResearchEventEnvelope] = []
         for event_hash in evidence.terminal_event_hashes:
             matches = [
-                event for event in events
+                event
+                for event in events
                 if event.event_hash == event_hash
                 and event.event_type == "TrialTerminated"
                 and event.run_id == evidence.run_id
@@ -1964,9 +2774,7 @@ class ResearchEventStore:
                     "data_snapshot_hash": evidence.data_snapshot_hash,
                 }
             )
-            expected_trial_id = (
-                "trial-search-" + expected_trial_hash.removeprefix("sha256:")[:24]
-            )
+            expected_trial_id = "trial-search-" + expected_trial_hash.removeprefix("sha256:")[:24]
             trial_id = str(terminal.payload["trial_id"])
             start = starts.get(trial_id)
             if (
@@ -1974,19 +2782,15 @@ class ResearchEventStore:
                 or start is None
                 or start.payload["candidate_id"] != candidate["candidate_id"]
             ):
-                raise EventValidationError(
-                    "official control trial order or snapshot binding is invalid"
-                )
+                raise EventValidationError("official control trial order or snapshot binding is invalid")
 
-    def _validate_external_prearm_flat_schedule(
-        self, event_type: str, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_external_prearm_flat_schedule(self, event_type: str, payload: Mapping[str, Any]) -> None:
         if event_type != "PreArmFlatScheduleFrozen":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.prearm-flat-schedule-v1+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.prearm-flat-schedule-v1+json"
         ]
         if len(references) != 1:
             raise EventValidationError("pre-arm flat schedule requires one artifact")
@@ -2002,14 +2806,13 @@ class ResearchEventStore:
             from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
 
             plans = [
-                event for event in self.query_events(event_type="ActivationPlanRegistered")
+                event
+                for event in self.query_events(event_type="ActivationPlanRegistered")
                 if event.payload["plan_hash"] == schedule.plan_hash
             ]
             if len(plans) != 1:
                 raise ValueError("pre-arm flat schedule lacks a registered plan")
-            plan = ActivationArtifactStore(self.artifact_root).get(
-                "plan", schedule.plan_hash
-            )
+            plan = ActivationArtifactStore(self.artifact_root).get("plan", schedule.plan_hash)
             design = plan.get("design")
             provenance = plan.get("provenance")
             if not isinstance(design, Mapping) or not isinstance(provenance, Mapping):
@@ -2021,12 +2824,9 @@ class ResearchEventStore:
                 or schedule.run_group_id not in design.get("run_group_ids", [])
                 or parts[1] not in design.get("mechanism_families", [])
                 or parts[2] not in design.get("dag_regions", [])
-                or provenance.get("train_snapshot_hash")
-                != schedule.data_snapshot_hash
-                or provenance.get("control_policy_hash")
-                != schedule.policy.policy_hash
-                or design.get("candidate_budget")
-                != schedule.policy.max_candidates
+                or provenance.get("train_snapshot_hash") != schedule.data_snapshot_hash
+                or provenance.get("control_policy_hash") != schedule.policy.policy_hash
+                or design.get("candidate_budget") != schedule.policy.max_candidates
                 or design.get("compute_budget") != schedule.policy.trial_budget
             ):
                 raise ValueError("pre-arm flat schedule differs from registered plan")
@@ -2044,15 +2844,13 @@ class ResearchEventStore:
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("pre-arm flat schedule event differs from artifact")
 
-    def _validate_external_pair_execution_schedule(
-        self, event_type: str, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_external_pair_execution_schedule(self, event_type: str, payload: Mapping[str, Any]) -> None:
         if event_type != "ActivationPairExecutionScheduled":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.activation-pair-execution-schedule-v1+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.activation-pair-execution-schedule-v1+json"
         ]
         if len(references) != 1:
             raise EventValidationError("Activation pair schedule requires one artifact")
@@ -2063,9 +2861,7 @@ class ResearchEventStore:
             )
 
             artifacts = ActivationArtifactStore(self.artifact_root)
-            expected_path = artifacts.relative_path(
-                "pair_schedule", str(payload["schedule_hash"])
-            )
+            expected_path = artifacts.relative_path("pair_schedule", str(payload["schedule_hash"]))
             if str(references[0]["relative_path"]).replace("\\", "/") != expected_path:
                 raise ValueError("Activation pair schedule path is not canonical")
             schedule = ActivationPairExecutionScheduleV1.from_dict(
@@ -2084,14 +2880,9 @@ class ResearchEventStore:
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
             raise EventValidationError("Activation pair schedule cannot replay") from exc
         raw = schedule.to_dict()
-        expected = {
-            key: raw[key] for key in payload
-            if key not in {"schedule_id", "artifact_refs"}
-        }
+        expected = {key: raw[key] for key in payload if key not in {"schedule_id", "artifact_refs"}}
         if any(payload[name] != value for name, value in expected.items()):
-            raise EventValidationError(
-                "Activation pair schedule event differs from artifact"
-            )
+            raise EventValidationError("Activation pair schedule event differs from artifact")
 
     def _validate_external_activation_resource(
         self,
@@ -2101,9 +2892,9 @@ class ResearchEventStore:
         if event_type != "ActivationResourceMeasured":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.activation-resource-v1+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.activation-resource-v1+json"
         ]
         if len(references) != 1:
             raise EventValidationError("Activation resource requires one evidence artifact")
@@ -2114,19 +2905,14 @@ class ResearchEventStore:
             )
 
             artifacts = ActivationArtifactStore(self.artifact_root)
-            expected_relative = artifacts.relative_path(
-                "resource", str(payload["evidence_hash"])
-            )
+            expected_relative = artifacts.relative_path("resource", str(payload["evidence_hash"]))
             if str(references[0]["relative_path"]).replace("\\", "/") != expected_relative:
                 raise ValueError("Activation resource artifact path is not canonical")
             raw = artifacts.get("resource", str(payload["evidence_hash"]))
             evidence = validate_resource_evidence_mapping(raw)
         except (KeyError, OSError, TypeError, ValueError) as exc:
             raise EventValidationError("Activation resource artifact is invalid") from exc
-        expected = {
-            key: value for key, value in evidence.items()
-            if key != "schema_version"
-        }
+        expected = {key: value for key, value in evidence.items() if key != "schema_version"}
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("Activation resource event differs from artifact")
 
@@ -2138,14 +2924,12 @@ class ResearchEventStore:
         if event_type != "ActivationResourceMeasuredV2":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.activation-resource-v2+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.activation-resource-v2+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "Activation resource v2 requires one evidence artifact"
-            )
+            raise EventValidationError("Activation resource v2 requires one evidence artifact")
         try:
             from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
             from src.alpha_foundry.activation.pair_schedule_v1 import (
@@ -2156,14 +2940,10 @@ class ResearchEventStore:
             )
 
             artifacts = ActivationArtifactStore(self.artifact_root)
-            expected_relative = artifacts.relative_path(
-                "resource", str(payload["evidence_hash"])
-            )
+            expected_relative = artifacts.relative_path("resource", str(payload["evidence_hash"]))
             if str(references[0]["relative_path"]).replace("\\", "/") != expected_relative:
                 raise ValueError("Activation resource v2 path is not canonical")
-            evidence = validate_resource_evidence_v2_mapping(
-                artifacts.get("resource", str(payload["evidence_hash"]))
-            )
+            evidence = validate_resource_evidence_v2_mapping(artifacts.get("resource", str(payload["evidence_hash"])))
             by_hash = {event.event_hash: event for event in self.query_events()}
             schedule_event = by_hash.get(str(evidence["pair_schedule_event_hash"]))
             claim_event = by_hash.get(str(evidence["execution_claim_event_hash"]))
@@ -2182,9 +2962,7 @@ class ResearchEventStore:
                     "schema_version": "activation_resource_measurement_policy.v2",
                     "wall_clock": "time.perf_counter.v1",
                     "cpu_clock": "time.process_time.v1",
-                    "measurement_boundary": (
-                        "immediately_around_scheduled_arm_executor.v1"
-                    ),
+                    "measurement_boundary": ("immediately_around_scheduled_arm_executor.v1"),
                     "arm_order_rule": schedule.order_rule,
                     "arm_order": list(schedule.arm_order),
                     "pair_schedule_event_hash": schedule_event.event_hash,
@@ -2192,35 +2970,26 @@ class ResearchEventStore:
                     "execution_claim_event_hash": claim_event.event_hash,
                     "timeout_limit_seconds": schedule.timeout_seconds,
                     "timeout_enforcement": "observed_not_enforced.v1",
-                    "peak_rss_method": (
-                        "unavailable_without_isolated_worker.v1"
-                    ),
+                    "peak_rss_method": ("unavailable_without_isolated_worker.v1"),
                 }
             )
             if (
                 schedule_event.payload["schedule_hash"] != schedule.schedule_hash
-                or claim_event.payload["schedule_event_hash"]
-                != schedule_event.event_hash
+                or claim_event.payload["schedule_event_hash"] != schedule_event.event_hash
                 or claim_event.payload["schedule_hash"] != schedule.schedule_hash
                 or schedule.plan_hash != evidence["plan_hash"]
                 or schedule.pair_id != evidence["pair_id"]
                 or schedule.run_group_id != evidence["run_group_id"]
-                or schedule.arm_order[int(evidence["arm_order_position"])]
-                != evidence["arm"]
+                or schedule.arm_order[int(evidence["arm_order_position"])] != evidence["arm"]
                 or schedule.timeout_seconds != evidence["timeout_limit_seconds"]
                 or expected_policy_hash != evidence["measurement_policy_hash"]
             ):
                 raise ValueError("Activation resource v2 schedule binding differs")
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
             raise EventValidationError("Activation resource v2 artifact is invalid") from exc
-        expected = {
-            key: value for key, value in evidence.items()
-            if key != "schema_version"
-        }
+        expected = {key: value for key, value in evidence.items() if key != "schema_version"}
         if any(payload[name] != value for name, value in expected.items()):
-            raise EventValidationError(
-                "Activation resource v2 event differs from artifact"
-            )
+            raise EventValidationError("Activation resource v2 event differs from artifact")
 
     def _validate_external_generation_consumption(
         self,
@@ -2230,14 +2999,12 @@ class ResearchEventStore:
         if event_type != "ActivationGenerationConsumptionRecorded":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.activation-generation-consumption-v1+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.activation-generation-consumption-v1+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "Activation generation requires one source artifact"
-            )
+            raise EventValidationError("Activation generation requires one source artifact")
         try:
             from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
             from src.alpha_foundry.activation.generation_consumption_v1 import (
@@ -2252,20 +3019,15 @@ class ResearchEventStore:
             from src.alpha_foundry.seed_bank import AlphaSeed, SeedBank
 
             artifacts = ActivationArtifactStore(self.artifact_root)
-            expected_relative = artifacts.relative_path(
-                "generation_consumption", str(payload["evidence_hash"])
-            )
+            expected_relative = artifacts.relative_path("generation_consumption", str(payload["evidence_hash"]))
             if str(references[0]["relative_path"]).replace("\\", "/") != expected_relative:
                 raise ValueError("generation-consumption artifact path is not canonical")
             evidence = ActivationGenerationConsumptionV1.from_dict(
-                artifacts.get(
-                    "generation_consumption", str(payload["evidence_hash"])
-                )
+                artifacts.get("generation_consumption", str(payload["evidence_hash"]))
             )
             plan_matches = [
-                event for event in self.query_events(
-                    event_type="ActivationPlanRegistered"
-                )
+                event
+                for event in self.query_events(event_type="ActivationPlanRegistered")
                 if event.payload["plan_hash"] == evidence.plan_hash
             ]
             if len(plan_matches) != 1:
@@ -2284,9 +3046,8 @@ class ResearchEventStore:
             ):
                 raise ValueError("generation-consumption differs from frozen plan")
             retriever_matches = [
-                event for event in self.query_events(
-                    event_type="RetrieverDecisionV4Recorded"
-                )
+                event
+                for event in self.query_events(event_type="RetrieverDecisionV4Recorded")
                 if event.event_hash == evidence.retriever_decision_event_hash
             ]
             if len(retriever_matches) != 1:
@@ -2294,22 +3055,18 @@ class ResearchEventStore:
             retriever_event = retriever_matches[0]
             if (
                 retriever_event.run_id != evidence.execution_run_id
-                or retriever_event.payload["decision_hash"]
-                != evidence.retriever_decision_hash
+                or retriever_event.payload["decision_hash"] != evidence.retriever_decision_hash
                 or tuple(retriever_event.payload["selected_factor_spec_ids"])
                 != evidence.selected_parent_factor_spec_ids
-                or retriever_event.payload["control_evidence_event_hash"]
-                != evidence.control_evidence_event_hash
-                or provenance.get("treatment_policy_hash")
-                != retriever_event.payload["policy_hash"]
-                or provenance.get("train_snapshot_hash")
-                != retriever_event.payload["data_snapshot_hash"]
+                or retriever_event.payload["control_evidence_event_hash"] != evidence.control_evidence_event_hash
+                or provenance.get("treatment_policy_hash") != retriever_event.payload["policy_hash"]
+                or provenance.get("train_snapshot_hash") != retriever_event.payload["data_snapshot_hash"]
             ):
                 raise ValueError("generation-consumption retriever binding differs")
             bundle_refs = [
-                reference for reference in retriever_event.payload["artifact_refs"]
-                if reference["media_type"]
-                == "application/vnd.vibe.retriever-input-bundle-v4+json"
+                reference
+                for reference in retriever_event.payload["artifact_refs"]
+                if reference["media_type"] == "application/vnd.vibe.retriever-input-bundle-v4+json"
             ]
             if len(bundle_refs) != 1:
                 raise ValueError("generation-consumption retriever bundle is missing")
@@ -2317,21 +3074,16 @@ class ResearchEventStore:
                 str(bundle_refs[0]["relative_path"]),
                 str(retriever_event.payload["input_bundle_hash"]),
             )
-            candidate_inputs = {
-                item.factor_spec_id: item
-                for item in bundle.retriever_input.candidates
-            }
+            candidate_inputs = {item.factor_spec_id: item for item in bundle.retriever_input.candidates}
             for parent in evidence.selected_parents:
                 source = candidate_inputs.get(str(parent["factor_spec_id"]))
                 if source is None or (
-                    build_expression_identity(str(parent["formula"])).canonical_ast
-                    != source.canonical_ast
+                    build_expression_identity(str(parent["formula"])).canonical_ast != source.canonical_ast
                 ):
                     raise ValueError("generation-consumption parent AST differs")
             control_matches = [
-                event for event in self.query_events(
-                    event_type="OfficialSearchControlRecorded"
-                )
+                event
+                for event in self.query_events(event_type="OfficialSearchControlRecorded")
                 if event.event_hash == evidence.control_evidence_event_hash
             ]
             if len(control_matches) != 1:
@@ -2342,9 +3094,9 @@ class ResearchEventStore:
 
             control_event = control_matches[0]
             control_refs = [
-                reference for reference in control_event.payload["artifact_refs"]
-                if reference["media_type"]
-                == OfficialSearchControlArtifactStoreV1.media_type
+                reference
+                for reference in control_event.payload["artifact_refs"]
+                if reference["media_type"] == OfficialSearchControlArtifactStoreV1.media_type
             ]
             if len(control_refs) != 1:
                 raise ValueError("generation-consumption control artifact is missing")
@@ -2368,17 +3120,17 @@ class ResearchEventStore:
             if expected_policy_hash != evidence.generator_policy_hash:
                 raise ValueError("generation-consumption generator policy differs")
             replay = AlphaFoundrySearch(
-                seed_bank=SeedBank([
-                    AlphaSeed(
-                        seed_id=str(parent["factor_spec_id"]),
-                        formula=str(parent["formula"]),
-                        source="content-addressed:" + str(parent["source_hash"]),
-                    )
-                    for parent in evidence.selected_parents
-                ]),
-                mutator=SeedMutator(
-                    max_candidates_per_seed=policy.max_candidates_per_seed
+                seed_bank=SeedBank(
+                    [
+                        AlphaSeed(
+                            seed_id=str(parent["factor_spec_id"]),
+                            formula=str(parent["formula"]),
+                            source="content-addressed:" + str(parent["source_hash"]),
+                        )
+                        for parent in evidence.selected_parents
+                    ]
                 ),
+                mutator=SeedMutator(max_candidates_per_seed=policy.max_candidates_per_seed),
                 max_candidates=evidence.candidate_budget,
                 trial_budget=evidence.compute_budget,
             ).generate()
@@ -2403,9 +3155,7 @@ class ResearchEventStore:
             all_events = self.query_events()
             by_hash = {event.event_hash: event for event in all_events}
             starts = {
-                str(event.payload["trial_id"]): event
-                for event in all_events
-                if event.event_type == "TrialStarted"
+                str(event.payload["trial_id"]): event for event in all_events if event.event_type == "TrialStarted"
             }
             for record in evidence.generated_candidates:
                 terminal = by_hash.get(str(record["terminal_event_hash"]))
@@ -2420,9 +3170,7 @@ class ResearchEventStore:
                 ):
                     raise ValueError("generation-consumption trial binding differs")
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "Activation generation-consumption evidence is invalid"
-            ) from exc
+            raise EventValidationError("Activation generation-consumption evidence is invalid") from exc
         expected = {
             "plan_hash": evidence.plan_hash,
             "pair_id": evidence.pair_id,
@@ -2434,12 +3182,8 @@ class ResearchEventStore:
             "retriever_decision_hash": evidence.retriever_decision_hash,
             "control_evidence_event_hash": evidence.control_evidence_event_hash,
             "generator_policy_hash": evidence.generator_policy_hash,
-            "selected_parent_factor_spec_ids": list(
-                evidence.selected_parent_factor_spec_ids
-            ),
-            "consumed_parent_factor_spec_ids": list(
-                evidence.consumed_parent_factor_spec_ids
-            ),
+            "selected_parent_factor_spec_ids": list(evidence.selected_parent_factor_spec_ids),
+            "consumed_parent_factor_spec_ids": list(evidence.consumed_parent_factor_spec_ids),
             "generated_candidate_count": len(evidence.generated_candidates),
             "candidate_budget": evidence.candidate_budget,
             "compute_budget": evidence.compute_budget,
@@ -2448,9 +3192,7 @@ class ResearchEventStore:
             "evidence_hash": evidence.evidence_hash,
         }
         if any(payload[name] != value for name, value in expected.items()):
-            raise EventValidationError(
-                "Activation generation event differs from its source artifact"
-            )
+            raise EventValidationError("Activation generation event differs from its source artifact")
 
     def _validate_external_generation_consumption_v2(
         self,
@@ -2462,13 +3204,10 @@ class ResearchEventStore:
         references = [
             reference
             for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.activation-generation-consumption-v2+json"
+            if reference["media_type"] == "application/vnd.vibe.activation-generation-consumption-v2+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "Activation exact generation requires one source artifact"
-            )
+            raise EventValidationError("Activation exact generation requires one source artifact")
         try:
             from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
             from src.alpha_foundry.activation.generation_consumption_v2 import (
@@ -2489,20 +3228,11 @@ class ResearchEventStore:
             from src.alpha_foundry.seed_bank import AlphaSeed, SeedBank
 
             artifacts = ActivationArtifactStore(self.artifact_root)
-            kind: Literal["generation_consumption_v2"] = (
-                "generation_consumption_v2"
-            )
-            expected_relative = artifacts.relative_path(
-                kind, str(payload["evidence_hash"])
-            )
-            if (
-                str(references[0]["relative_path"]).replace("\\", "/")
-                != expected_relative
-            ):
+            kind: Literal["generation_consumption_v2"] = "generation_consumption_v2"
+            expected_relative = artifacts.relative_path(kind, str(payload["evidence_hash"]))
+            if str(references[0]["relative_path"]).replace("\\", "/") != expected_relative:
                 raise ValueError("exact generation artifact path is not canonical")
-            evidence = ActivationGenerationConsumptionV2.from_dict(
-                artifacts.get(kind, str(payload["evidence_hash"]))
-            )
+            evidence = ActivationGenerationConsumptionV2.from_dict(artifacts.get(kind, str(payload["evidence_hash"])))
             plans = [
                 event
                 for event in self.query_events(event_type="ActivationPlanRegistered")
@@ -2517,8 +3247,7 @@ class ResearchEventStore:
                 raise ValueError("exact generation plan is invalid")
             if (
                 evidence.run_group_id not in design.get("run_group_ids", [])
-                or evidence.mechanism_family
-                not in design.get("mechanism_families", [])
+                or evidence.mechanism_family not in design.get("mechanism_families", [])
                 or evidence.dag_region not in design.get("dag_regions", [])
                 or design.get("candidate_budget") != evidence.candidate_budget
                 or design.get("compute_budget") != evidence.compute_budget
@@ -2541,32 +3270,24 @@ class ResearchEventStore:
                 )
             }
             expected_selected_hashes = tuple(
-                action_hash_by_id[action_id]
-                for action_id in retriever.payload["selected_action_ids"]
+                action_hash_by_id[action_id] for action_id in retriever.payload["selected_action_ids"]
             )
             if (
                 retriever.run_id != evidence.execution_run_id
-                or retriever.payload["decision_hash"]
-                != evidence.retriever_decision_hash
-                or tuple(retriever.payload["selected_action_ids"])
-                != evidence.selected_action_ids
+                or retriever.payload["decision_hash"] != evidence.retriever_decision_hash
+                or tuple(retriever.payload["selected_action_ids"]) != evidence.selected_action_ids
                 or tuple(retriever.payload["selected_parent_factor_spec_ids"])
                 != evidence.selected_parent_factor_spec_ids
-                or expected_selected_hashes
-                != evidence.selected_action_event_hashes
-                or retriever.payload["control_evidence_event_hash"]
-                != evidence.control_evidence_event_hash
-                or provenance.get("treatment_policy_hash")
-                != retriever.payload["policy_hash"]
-                or provenance.get("train_snapshot_hash")
-                != retriever.payload["data_snapshot_hash"]
+                or expected_selected_hashes != evidence.selected_action_event_hashes
+                or retriever.payload["control_evidence_event_hash"] != evidence.control_evidence_event_hash
+                or provenance.get("treatment_policy_hash") != retriever.payload["policy_hash"]
+                or provenance.get("train_snapshot_hash") != retriever.payload["data_snapshot_hash"]
             ):
                 raise ValueError("exact generation Retriever binding differs")
             bundle_refs = [
                 reference
                 for reference in retriever.payload["artifact_refs"]
-                if reference["media_type"]
-                == "application/vnd.vibe.retriever-input-bundle-v5+json"
+                if reference["media_type"] == "application/vnd.vibe.retriever-input-bundle-v5+json"
             ]
             if len(bundle_refs) != 1:
                 raise ValueError("exact generation v5 input bundle is missing")
@@ -2574,10 +3295,7 @@ class ResearchEventStore:
                 str(bundle_refs[0]["relative_path"]),
                 str(retriever.payload["input_bundle_hash"]),
             )
-            source_by_action = {
-                candidate.action_id: candidate
-                for candidate in bundle.retriever_input.candidates
-            }
+            source_by_action = {candidate.action_id: candidate for candidate in bundle.retriever_input.candidates}
             all_events = self.query_events()
             by_hash = {event.event_hash: event for event in all_events}
             for bound, parent in zip(
@@ -2594,8 +3312,7 @@ class ResearchEventStore:
                     or action_event.payload != bound.action.to_dict()
                     or source is None
                     or source.factor_spec_id != parent["factor_spec_id"]
-                    or build_expression_identity(str(parent["formula"])).canonical_ast
-                    != source.canonical_ast
+                    or build_expression_identity(str(parent["formula"])).canonical_ast != source.canonical_ast
                 ):
                     raise ValueError("exact generation action or parent source differs")
             controls = [
@@ -2610,14 +3327,11 @@ class ResearchEventStore:
             control_refs = [
                 reference
                 for reference in control_event.payload["artifact_refs"]
-                if reference["media_type"]
-                == OfficialSearchControlArtifactStoreV1.media_type
+                if reference["media_type"] == OfficialSearchControlArtifactStoreV1.media_type
             ]
             if len(control_refs) != 1:
                 raise ValueError("exact generation control artifact is missing")
-            control = OfficialSearchControlArtifactStoreV1(
-                self.artifact_root
-            ).read(
+            control = OfficialSearchControlArtifactStoreV1(self.artifact_root).read(
                 str(control_refs[0]["relative_path"]),
                 str(control_event.payload["evidence_hash"]),
             )
@@ -2628,14 +3342,10 @@ class ResearchEventStore:
                     "schema_version": "activation_exact_action_generator_policy.v2",
                     "generator_version": control.policy.generator_version,
                     "mutator_version": "exact_selected_action_mutator.v2",
-                    "template_registry_hash": (
-                        SEED_MUTATION_TEMPLATE_REGISTRY_V1.registry_hash
-                    ),
+                    "template_registry_hash": (SEED_MUTATION_TEMPLATE_REGISTRY_V1.registry_hash),
                     "selection_order": "retriever_v5_selected_action_order.v1",
                     "selected_action_ids": list(evidence.selected_action_ids),
-                    "selected_action_event_hashes": list(
-                        evidence.selected_action_event_hashes
-                    ),
+                    "selected_action_event_hashes": list(evidence.selected_action_event_hashes),
                     "max_candidates": evidence.candidate_budget,
                     "trial_budget": evidence.compute_budget,
                 }
@@ -2682,9 +3392,7 @@ class ResearchEventStore:
             if replay_records != evidence_records:
                 raise ValueError("exact generation search does not replay")
             starts = {
-                str(event.payload["trial_id"]): event
-                for event in all_events
-                if event.event_type == "TrialStarted"
+                str(event.payload["trial_id"]): event for event in all_events if event.event_type == "TrialStarted"
             }
             for record in evidence.generated_candidates:
                 terminal = by_hash.get(str(record["terminal_event_hash"]))
@@ -2699,9 +3407,7 @@ class ResearchEventStore:
                 ):
                     raise ValueError("exact generation trial binding differs")
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "Activation exact generation-consumption evidence is invalid"
-            ) from exc
+            raise EventValidationError("Activation exact generation-consumption evidence is invalid") from exc
         expected = {
             "plan_hash": evidence.plan_hash,
             "pair_id": evidence.pair_id,
@@ -2714,16 +3420,10 @@ class ResearchEventStore:
             "control_evidence_event_hash": evidence.control_evidence_event_hash,
             "generator_policy_hash": evidence.generator_policy_hash,
             "selected_action_ids": list(evidence.selected_action_ids),
-            "selected_action_event_hashes": list(
-                evidence.selected_action_event_hashes
-            ),
-            "selected_parent_factor_spec_ids": list(
-                evidence.selected_parent_factor_spec_ids
-            ),
+            "selected_action_event_hashes": list(evidence.selected_action_event_hashes),
+            "selected_parent_factor_spec_ids": list(evidence.selected_parent_factor_spec_ids),
             "consumed_action_ids": list(evidence.consumed_action_ids),
-            "consumed_parent_factor_spec_ids": list(
-                evidence.consumed_parent_factor_spec_ids
-            ),
+            "consumed_parent_factor_spec_ids": list(evidence.consumed_parent_factor_spec_ids),
             "generated_candidate_count": len(evidence.generated_candidates),
             "candidate_budget": evidence.candidate_budget,
             "compute_budget": evidence.compute_budget,
@@ -2732,9 +3432,7 @@ class ResearchEventStore:
             "evidence_hash": evidence.evidence_hash,
         }
         if any(payload[name] != value for name, value in expected.items()):
-            raise EventValidationError(
-                "Activation exact generation event differs from source artifact"
-            )
+            raise EventValidationError("Activation exact generation event differs from source artifact")
 
     def _validate_external_generation_consumption_v3(
         self,
@@ -2744,14 +3442,12 @@ class ResearchEventStore:
         if event_type != "ActivationGenerationConsumptionV3Recorded":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.activation-generation-consumption-v3+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.activation-generation-consumption-v3+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "Activation source-bound generation requires one artifact"
-            )
+            raise EventValidationError("Activation source-bound generation requires one artifact")
         try:
             from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
             from src.alpha_foundry.activation.generation_consumption_v2 import (
@@ -2777,9 +3473,7 @@ class ResearchEventStore:
                 artifacts.relative_path(kind, str(payload["evidence_hash"]))
             ):
                 raise ValueError("source-bound generation path is not canonical")
-            evidence = ActivationGenerationConsumptionV3.from_dict(
-                artifacts.get(kind, str(payload["evidence_hash"]))
-            )
+            evidence = ActivationGenerationConsumptionV3.from_dict(artifacts.get(kind, str(payload["evidence_hash"])))
             all_events = self.query_events()
             by_hash = {event.event_hash: event for event in all_events}
             retriever = by_hash.get(evidence.base.retriever_decision_event_hash)
@@ -2794,18 +3488,16 @@ class ResearchEventStore:
                 or control_event.event_type != "OfficialSearchControlRecorded"
             ):
                 raise ValueError("source-bound generation authority is missing")
-            self._validate_external_retriever_v6_evidence(
-                retriever.event_type, retriever.to_dict()["payload"]
-            )
+            self._validate_external_retriever_v6_evidence(retriever.event_type, retriever.to_dict()["payload"])
             source_refs = [
-                reference for reference in source_event.payload["artifact_refs"]
-                if reference["media_type"]
-                == RetrieverFeatureSourceArtifactStoreV1.media_type
+                reference
+                for reference in source_event.payload["artifact_refs"]
+                if reference["media_type"] == RetrieverFeatureSourceArtifactStoreV1.media_type
             ]
             control_refs = [
-                reference for reference in control_event.payload["artifact_refs"]
-                if reference["media_type"]
-                == OfficialSearchControlArtifactStoreV1.media_type
+                reference
+                for reference in control_event.payload["artifact_refs"]
+                if reference["media_type"] == OfficialSearchControlArtifactStoreV1.media_type
             ]
             if len(source_refs) != 1 or len(control_refs) != 1:
                 raise ValueError("source-bound generation source artifact is missing")
@@ -2817,7 +3509,8 @@ class ResearchEventStore:
                 str(control_event.payload["evidence_hash"]),
             )
             plans = [
-                event for event in all_events
+                event
+                for event in all_events
                 if event.event_type == "ActivationPlanRegistered"
                 and event.payload["plan_hash"] == evidence.base.plan_hash
             ]
@@ -2830,46 +3523,33 @@ class ResearchEventStore:
                 raise ValueError("source-bound generation plan is invalid")
             action_hash_by_id = {
                 candidate.action_id: event_hash
-                for candidate, event_hash in zip(
-                    source.candidates, source.action_event_hashes, strict=True
-                )
+                for candidate, event_hash in zip(source.candidates, source.action_event_hashes, strict=True)
             }
             expected_selected_hashes = tuple(
-                action_hash_by_id[action_id]
-                for action_id in retriever.payload["selected_action_ids"]
+                action_hash_by_id[action_id] for action_id in retriever.payload["selected_action_ids"]
             )
             if (
                 retriever.run_id != evidence.base.execution_run_id
-                or retriever.payload["decision_hash"]
-                != evidence.base.retriever_decision_hash
-                or retriever.payload["input_bundle_hash"]
-                != evidence.retriever_input_bundle_hash
-                or retriever.payload["feature_source_event_hash"]
-                != evidence.feature_source_event_hash
-                or retriever.payload["feature_source_hash"]
-                != evidence.feature_source_hash
-                or tuple(retriever.payload["selected_action_ids"])
-                != evidence.base.selected_action_ids
+                or retriever.payload["decision_hash"] != evidence.base.retriever_decision_hash
+                or retriever.payload["input_bundle_hash"] != evidence.retriever_input_bundle_hash
+                or retriever.payload["feature_source_event_hash"] != evidence.feature_source_event_hash
+                or retriever.payload["feature_source_hash"] != evidence.feature_source_hash
+                or tuple(retriever.payload["selected_action_ids"]) != evidence.base.selected_action_ids
                 or tuple(retriever.payload["selected_parent_factor_spec_ids"])
                 != evidence.base.selected_parent_factor_spec_ids
                 or expected_selected_hashes != evidence.base.selected_action_event_hashes
                 or source.snapshot_event_hash != evidence.feature_snapshot_event_hash
                 or source.snapshot_hash != evidence.feature_snapshot_hash
                 or source.feature_policy_hash != evidence.feature_policy_hash
-                or source.scorecard_event_hashes
-                != evidence.feature_scorecard_event_hashes
-                or provenance.get("treatment_policy_hash")
-                != retriever.payload["policy_hash"]
+                or source.scorecard_event_hashes != evidence.feature_scorecard_event_hashes
+                or provenance.get("treatment_policy_hash") != retriever.payload["policy_hash"]
                 or provenance.get("train_snapshot_hash") != source.snapshot_hash
-                or provenance.get("control_policy_hash")
-                != control.policy.policy_hash
+                or provenance.get("control_policy_hash") != control.policy.policy_hash
                 or design.get("candidate_budget") != evidence.base.candidate_budget
                 or design.get("compute_budget") != evidence.base.compute_budget
             ):
                 raise ValueError("source-bound generation authority differs")
-            source_by_action = {
-                candidate.action_id: candidate for candidate in source.candidates
-            }
+            source_by_action = {candidate.action_id: candidate for candidate in source.candidates}
             for bound, parent in zip(
                 evidence.base.selected_actions,
                 evidence.base.selected_parents,
@@ -2883,8 +3563,7 @@ class ResearchEventStore:
                     or action_event.payload != bound.action.to_dict()
                     or candidate is None
                     or candidate.factor_spec_id != parent["factor_spec_id"]
-                    or build_expression_identity(str(parent["formula"])).canonical_ast
-                    != candidate.canonical_ast
+                    or build_expression_identity(str(parent["formula"])).canonical_ast != candidate.canonical_ast
                 ):
                     raise ValueError("source-bound generation action differs")
             expected_policy_hash = canonical_json_hash(
@@ -2893,16 +3572,12 @@ class ResearchEventStore:
                     "generator_version": control.policy.generator_version,
                     "mutator_version": "exact_selected_action_mutator.v2",
                     "template_registry_hash": SEED_MUTATION_TEMPLATE_REGISTRY_V1.registry_hash,
-                    "selection_order": (
-                        "retriever_v6_source_bound_selected_action_order.v1"
-                    ),
+                    "selection_order": ("retriever_v6_source_bound_selected_action_order.v1"),
                     "retriever_input_bundle_hash": evidence.retriever_input_bundle_hash,
                     "feature_source_event_hash": evidence.feature_source_event_hash,
                     "feature_source_hash": evidence.feature_source_hash,
                     "selected_action_ids": list(evidence.base.selected_action_ids),
-                    "selected_action_event_hashes": list(
-                        evidence.base.selected_action_event_hashes
-                    ),
+                    "selected_action_event_hashes": list(evidence.base.selected_action_event_hashes),
                     "max_candidates": evidence.base.candidate_budget,
                     "trial_budget": evidence.base.compute_budget,
                 }
@@ -2937,24 +3612,23 @@ class ResearchEventStore:
             )
             evidence_records = tuple(
                 (
-                    str(record["action_id"]), str(record["action_event_hash"]),
+                    str(record["action_id"]),
+                    str(record["action_event_hash"]),
                     str(record["candidate_id"]),
                     str(record["parent_factor_spec_id"]),
-                    str(record["template_id"]), str(record["formula_hash"]),
+                    str(record["template_id"]),
+                    str(record["formula_hash"]),
                 )
                 for record in evidence.base.generated_candidates
             )
             if replay_records != evidence_records:
                 raise ValueError("source-bound generation search does not replay")
             starts = {
-                str(event.payload["trial_id"]): event for event in all_events
-                if event.event_type == "TrialStarted"
+                str(event.payload["trial_id"]): event for event in all_events if event.event_type == "TrialStarted"
             }
             for record in evidence.base.generated_candidates:
                 terminal = by_hash.get(str(record["terminal_event_hash"]))
-                start = None if terminal is None else starts.get(
-                    str(terminal.payload["trial_id"])
-                )
+                start = None if terminal is None else starts.get(str(terminal.payload["trial_id"]))
                 if (
                     terminal is None
                     or terminal.event_type != "TrialTerminated"
@@ -2964,37 +3638,28 @@ class ResearchEventStore:
                 ):
                     raise ValueError("source-bound generation terminal differs")
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "Activation source-bound generation evidence is invalid"
-            ) from exc
+            raise EventValidationError("Activation source-bound generation evidence is invalid") from exc
         raw = evidence.to_dict()
         expected = {
-            key: raw[key] for key in payload
+            key: raw[key]
+            for key in payload
             if key not in {"generation_id", "generated_candidate_count", "artifact_refs"}
         }
-        if (
-            any(payload[name] != value for name, value in expected.items())
-            or payload["generated_candidate_count"]
-            != len(evidence.base.generated_candidates)
-        ):
-            raise EventValidationError(
-                "Activation source-bound generation event differs from artifact"
-            )
+        if any(payload[name] != value for name, value in expected.items()) or payload[
+            "generated_candidate_count"
+        ] != len(evidence.base.generated_candidates):
+            raise EventValidationError("Activation source-bound generation event differs from artifact")
 
-    def _validate_external_generation_consumption_v4(
-        self, event_type: str, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_external_generation_consumption_v4(self, event_type: str, payload: Mapping[str, Any]) -> None:
         if event_type != "ActivationGenerationConsumptionV4Recorded":
             return
         references = [
-            reference for reference in payload["artifact_refs"]
-            if reference["media_type"]
-            == "application/vnd.vibe.activation-generation-consumption-v4+json"
+            reference
+            for reference in payload["artifact_refs"]
+            if reference["media_type"] == "application/vnd.vibe.activation-generation-consumption-v4+json"
         ]
         if len(references) != 1:
-            raise EventValidationError(
-                "Activation schedule-bound generation requires one artifact"
-            )
+            raise EventValidationError("Activation schedule-bound generation requires one artifact")
         try:
             from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
             from src.alpha_foundry.activation.generation_consumption_v2 import (
@@ -3013,23 +3678,22 @@ class ResearchEventStore:
                 artifacts.relative_path(kind, str(payload["evidence_hash"]))
             ):
                 raise ValueError("schedule-bound generation path is not canonical")
-            evidence = ActivationGenerationConsumptionV4.from_dict(
-                artifacts.get(kind, str(payload["evidence_hash"]))
-            )
+            evidence = ActivationGenerationConsumptionV4.from_dict(artifacts.get(kind, str(payload["evidence_hash"])))
             events = self.query_events()
             by_hash = {event.event_hash: event for event in events}
             retriever = by_hash.get(evidence.base.retriever_decision_event_hash)
             schedule = by_hash.get(evidence.schedule_event_hash)
             source = by_hash.get(evidence.feature_source_event_hash)
             if (
-                retriever is None or retriever.event_type != "RetrieverDecisionV7Recorded"
-                or schedule is None or schedule.event_type != "PreArmFlatScheduleFrozen"
-                or source is None or source.event_type != "RetrieverFeatureSourceRecorded"
+                retriever is None
+                or retriever.event_type != "RetrieverDecisionV7Recorded"
+                or schedule is None
+                or schedule.event_type != "PreArmFlatScheduleFrozen"
+                or source is None
+                or source.event_type != "RetrieverFeatureSourceRecorded"
             ):
                 raise ValueError("schedule-bound generation authority is missing")
-            self._validate_external_retriever_v7_evidence(
-                retriever.event_type, retriever.to_dict()["payload"]
-            )
+            self._validate_external_retriever_v7_evidence(retriever.event_type, retriever.to_dict()["payload"])
             plan = artifacts.get("plan", evidence.base.plan_hash)
             design = plan.get("design")
             provenance = plan.get("provenance")
@@ -3037,35 +3701,26 @@ class ResearchEventStore:
                 raise ValueError("schedule-bound generation plan is invalid")
             if (
                 retriever.run_id != evidence.base.execution_run_id
-                or retriever.payload["decision_hash"]
-                != evidence.base.retriever_decision_hash
-                or retriever.payload["input_bundle_hash"]
-                != evidence.retriever_input_bundle_hash
-                or retriever.payload["schedule_event_hash"]
-                != evidence.schedule_event_hash
+                or retriever.payload["decision_hash"] != evidence.base.retriever_decision_hash
+                or retriever.payload["input_bundle_hash"] != evidence.retriever_input_bundle_hash
+                or retriever.payload["schedule_event_hash"] != evidence.schedule_event_hash
                 or retriever.payload["schedule_hash"] != evidence.schedule_hash
-                or retriever.payload["feature_source_event_hash"]
-                != evidence.feature_source_event_hash
-                or retriever.payload["feature_source_hash"]
-                != evidence.feature_source_hash
-                or tuple(retriever.payload["selected_action_ids"])
-                != evidence.base.selected_action_ids
+                or retriever.payload["feature_source_event_hash"] != evidence.feature_source_event_hash
+                or retriever.payload["feature_source_hash"] != evidence.feature_source_hash
+                or tuple(retriever.payload["selected_action_ids"]) != evidence.base.selected_action_ids
                 or tuple(retriever.payload["selected_parent_factor_spec_ids"])
                 != evidence.base.selected_parent_factor_spec_ids
                 or schedule.payload["plan_hash"] != evidence.base.plan_hash
                 or schedule.payload["pair_id"] != evidence.base.pair_id
                 or schedule.payload["schedule_hash"] != evidence.schedule_hash
                 or source.payload["source_hash"] != evidence.feature_source_hash
-                or source.payload["snapshot_event_hash"]
-                != evidence.feature_snapshot_event_hash
+                or source.payload["snapshot_event_hash"] != evidence.feature_snapshot_event_hash
                 or source.payload["snapshot_hash"] != evidence.feature_snapshot_hash
                 or source.payload["feature_policy_hash"] != evidence.feature_policy_hash
-                or tuple(source.payload["scorecard_event_hashes"])
-                != evidence.feature_scorecard_event_hashes
+                or tuple(source.payload["scorecard_event_hashes"]) != evidence.feature_scorecard_event_hashes
                 or design.get("candidate_budget") != evidence.base.candidate_budget
                 or design.get("compute_budget") != evidence.base.compute_budget
-                or provenance.get("train_snapshot_hash")
-                != evidence.feature_snapshot_hash
+                or provenance.get("train_snapshot_hash") != evidence.feature_snapshot_hash
             ):
                 raise ValueError("schedule-bound generation authority differs")
             expected_policy_hash = canonical_json_hash(
@@ -3074,18 +3729,14 @@ class ResearchEventStore:
                     "generator_version": "alpha_foundry_search.v1",
                     "mutator_version": "exact_selected_action_mutator.v2",
                     "template_registry_hash": SEED_MUTATION_TEMPLATE_REGISTRY_V1.registry_hash,
-                    "selection_order": (
-                        "retriever_v7_schedule_bound_selected_action_order.v1"
-                    ),
+                    "selection_order": ("retriever_v7_schedule_bound_selected_action_order.v1"),
                     "retriever_input_bundle_hash": evidence.retriever_input_bundle_hash,
                     "schedule_event_hash": evidence.schedule_event_hash,
                     "schedule_hash": evidence.schedule_hash,
                     "feature_source_event_hash": evidence.feature_source_event_hash,
                     "feature_source_hash": evidence.feature_source_hash,
                     "selected_action_ids": list(evidence.base.selected_action_ids),
-                    "selected_action_event_hashes": list(
-                        evidence.base.selected_action_event_hashes
-                    ),
+                    "selected_action_event_hashes": list(evidence.base.selected_action_event_hashes),
                     "max_candidates": evidence.base.candidate_budget,
                     "trial_budget": evidence.base.compute_budget,
                 }
@@ -3111,60 +3762,53 @@ class ResearchEventStore:
                 (
                     str(candidate.metadata["retriever_action_id"]),
                     str(candidate.metadata["retriever_action_event_hash"]),
-                    candidate.candidate_id, candidate.parent_seed_id,
-                    str(candidate.metadata["mutation"]), candidate.formula_hash,
+                    candidate.candidate_id,
+                    candidate.parent_seed_id,
+                    str(candidate.metadata["mutation"]),
+                    candidate.formula_hash,
                 )
                 for candidate in replay.candidates
             )
             evidence_records = tuple(
                 (
-                    str(record["action_id"]), str(record["action_event_hash"]),
+                    str(record["action_id"]),
+                    str(record["action_event_hash"]),
                     str(record["candidate_id"]),
                     str(record["parent_factor_spec_id"]),
-                    str(record["template_id"]), str(record["formula_hash"]),
+                    str(record["template_id"]),
+                    str(record["formula_hash"]),
                 )
                 for record in evidence.base.generated_candidates
             )
             if replay_records != evidence_records:
                 raise ValueError("schedule-bound generation search does not replay")
-            starts = {
-                str(event.payload["trial_id"]): event for event in events
-                if event.event_type == "TrialStarted"
-            }
+            starts = {str(event.payload["trial_id"]): event for event in events if event.event_type == "TrialStarted"}
             for record in evidence.base.generated_candidates:
                 terminal = by_hash.get(str(record["terminal_event_hash"]))
-                start = None if terminal is None else starts.get(
-                    str(terminal.payload["trial_id"])
-                )
+                start = None if terminal is None else starts.get(str(terminal.payload["trial_id"]))
                 if (
-                    terminal is None or terminal.event_type != "TrialTerminated"
+                    terminal is None
+                    or terminal.event_type != "TrialTerminated"
                     or terminal.run_id != evidence.base.execution_run_id
                     or start is None
                     or start.payload["candidate_id"] != record["candidate_id"]
                 ):
                     raise ValueError("schedule-bound generation terminal differs")
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
-            raise EventValidationError(
-                "Activation schedule-bound generation evidence is invalid"
-            ) from exc
+            raise EventValidationError("Activation schedule-bound generation evidence is invalid") from exc
         raw = evidence.to_dict()
         expected = {
-            key: raw[key] for key in payload
+            key: raw[key]
+            for key in payload
             if key not in {"generation_id", "generated_candidate_count", "artifact_refs"}
         }
-        if (
-            any(payload[name] != value for name, value in expected.items())
-            or payload["generated_candidate_count"]
-            != len(evidence.base.generated_candidates)
-        ):
-            raise EventValidationError(
-                "Activation schedule-bound generation event differs from artifact"
-            )
+        if any(payload[name] != value for name, value in expected.items()) or payload[
+            "generated_candidate_count"
+        ] != len(evidence.base.generated_candidates):
+            raise EventValidationError("Activation schedule-bound generation event differs from artifact")
 
     @staticmethod
-    def _validate_factor_definition_identity(
-        event_type: str, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_factor_definition_identity(event_type: str, payload: Mapping[str, Any]) -> None:
         metadata = payload.get("metadata")
         if (
             event_type != "FactorDefinitionRecorded"
@@ -3180,9 +3824,7 @@ class ResearchEventStore:
             raise EventValidationError("factor definition identity is not reproducible") from exc
 
     @staticmethod
-    def _validate_registry_bootstrap_identity(
-        event_type: str, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_registry_bootstrap_identity(event_type: str, payload: Mapping[str, Any]) -> None:
         if event_type != "RegistryBootstrapRecordedV2":
             return
         from src.alpha_foundry.dag.bootstrap import validate_registry_bootstrap_payload
@@ -3199,9 +3841,10 @@ class ResearchEventStore:
         payload: Mapping[str, Any],
     ) -> None:
         event_type = draft.event_type
-        if event_type == "FactorDefinitionRecorded" and payload.get("metadata", {}).get(
-            "identity_schema_version"
-        ) == "factor_spec.v1":
+        if (
+            event_type == "FactorDefinitionRecorded"
+            and payload.get("metadata", {}).get("identity_schema_version") == "factor_spec.v1"
+        ):
             prior = conn.execute(
                 "SELECT 1 FROM research_events WHERE event_type = ? AND entity_id = ?",
                 (event_type, payload["factor_spec_id"]),
@@ -3263,9 +3906,7 @@ class ResearchEventStore:
             assert definition_row is not None
             definition = json.loads(str(definition_row["payload"]))
             terminal_payload = json.loads(str(terminal["payload"]))
-            originating_trial_id = str(
-                definition.get("metadata", {}).get("originating_trial_id", "")
-            )
+            originating_trial_id = str(definition.get("metadata", {}).get("originating_trial_id", ""))
             if not originating_trial_id or terminal_payload["trial_id"] != originating_trial_id:
                 raise EventTransitionError("derivation terminal is not bound to the child trial")
             if terminal_payload["status"] not in {"success", "reject"}:
@@ -3316,9 +3957,7 @@ class ResearchEventStore:
             self._validate_process_outcome_v2_transition(conn, draft, payload)
             return
         if event_type == "RetrieverActionTemplateFrozen":
-            self._validate_retriever_action_template_transition(
-                conn, draft, payload
-            )
+            self._validate_retriever_action_template_transition(conn, draft, payload)
             return
         if event_type == "EvaluationPolicyRegistered":
             from src.alpha_quality.evaluation_registry_v1 import (
@@ -3330,21 +3969,751 @@ class ResearchEventStore:
                 str(payload["bundle_hash"]),
             )
             if draft.entity_id != expected_id:
-                raise EventTransitionError(
-                    "evaluation policy registration identity differs from run"
-                )
+                raise EventTransitionError("evaluation policy registration identity differs from run")
             if self._tail_hash(conn) != payload["preregistration_watermark"]:
-                raise EventTransitionError(
-                    "evaluation policy preregistration watermark is stale"
-                )
+                raise EventTransitionError("evaluation policy preregistration watermark is stale")
             prior_same_run = conn.execute(
                 "SELECT event_type FROM research_events WHERE run_id = ? LIMIT 1",
                 (draft.run_id,),
             ).fetchone()
             if prior_same_run is not None:
-                raise EventTransitionError(
-                    "evaluation policy must be the first event in its run"
+                raise EventTransitionError("evaluation policy must be the first event in its run")
+            return
+        if event_type == "ResolvedEvaluationContractRegistered":
+            policy = conn.execute(
+                """
+                SELECT seq, run_id, payload FROM research_events
+                WHERE event_type = 'EvaluationPolicyRegistered' AND event_hash = ?
+                """,
+                (payload["evaluation_policy_event_hash"],),
+            ).fetchone()
+            if policy is None or str(policy["run_id"]) != draft.run_id:
+                raise EventTransitionError("resolved contract lacks exact run policy")
+            policy_payload = json.loads(str(policy["payload"]))
+            if policy_payload["bundle_hash"] != payload["evaluation_policy_bundle_hash"]:
+                raise EventTransitionError("resolved contract policy bundle differs")
+            prior_run = conn.execute(
+                "SELECT event_type, event_hash FROM research_events WHERE run_id = ? ORDER BY seq",
+                (draft.run_id,),
+            ).fetchall()
+            if len(prior_run) != 1 or (
+                str(prior_run[0]["event_type"]) != "EvaluationPolicyRegistered"
+                or str(prior_run[0]["event_hash"]) != payload["evaluation_policy_event_hash"]
+            ):
+                raise EventTransitionError("resolved contract must be the second run event before trials")
+            duplicate = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ResolvedEvaluationContractRegistered'
+                  AND (run_id = ? OR json_extract(payload, '$.contract_hash') = ?)
+                """,
+                (draft.run_id, payload["contract_hash"]),
+            ).fetchone()
+            if duplicate is not None:
+                raise EventTransitionError("resolved contract is already registered")
+            return
+        if event_type == "ApplicabilityAssessmentRecorded":
+            contract = conn.execute(
+                """
+                SELECT event_hash, run_id, payload FROM research_events
+                WHERE event_type = 'ResolvedEvaluationContractRegistered'
+                  AND json_extract(payload, '$.contract_hash') = ?
+                """,
+                (payload["resolved_contract_hash"],),
+            ).fetchone()
+            definition = conn.execute(
+                """
+                SELECT event_hash, run_id, payload FROM research_events
+                WHERE event_type = 'FactorDefinitionRecorded' AND event_hash = ?
+                """,
+                (payload["factor_definition_event_hash"],),
+            ).fetchone()
+            if contract is None or definition is None:
+                raise EventTransitionError("applicability lacks contract or factor source")
+            if str(contract["run_id"]) != draft.run_id or str(definition["run_id"]) != draft.run_id:
+                raise EventTransitionError("applicability cannot mix runs")
+            if str(contract["event_hash"]) not in payload["source_event_hashes"]:
+                raise EventTransitionError("applicability sources omit contract event")
+            definition_payload = json.loads(str(definition["payload"]))
+            if definition_payload["factor_spec_id"] != payload["factor_spec_id"]:
+                raise EventTransitionError("applicability factor identity differs")
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ApplicabilityAssessmentRecorded'
+                  AND run_id = ?
+                  AND json_extract(payload, '$.resolved_contract_hash') = ?
+                  AND json_extract(payload, '$.factor_spec_id') = ?
+                  AND json_extract(payload, '$.claim_type') = ?
+                """,
+                (
+                    draft.run_id,
+                    payload["resolved_contract_hash"],
+                    payload["factor_spec_id"],
+                    payload["claim_type"],
+                ),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("applicability claim is already assessed")
+            return
+        if event_type == "AsharePITAdapterRegistered":
+            if self._tail_hash(conn) != payload["source_watermark_event_hash"]:
+                raise EventTransitionError("PIT adapter registration watermark is stale")
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'AsharePITAdapterRegistered'
+                  AND (
+                    json_extract(payload, '$.adapter_id') = ?
+                    OR json_extract(payload, '$.registration_hash') = ?
+                  )
+                """,
+                (payload["adapter_id"], payload["registration_hash"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("PIT adapter is already registered")
+            return
+        if event_type == "AsharePITSnapshotRecorded":
+            if self._tail_hash(conn) != payload["source_watermark_event_hash"]:
+                raise EventTransitionError("PIT snapshot watermark is stale")
+            registration = conn.execute(
+                """
+                SELECT payload FROM research_events
+                WHERE event_type = 'AsharePITAdapterRegistered' AND event_hash = ?
+                """,
+                (payload["adapter_registration_event_hash"],),
+            ).fetchone()
+            policy = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'EvaluationPolicyRegistered' AND event_hash = ?
+                """,
+                (payload["evaluation_policy_event_hash"],),
+            ).fetchone()
+            started = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'TrialStarted' AND run_id = ?
+                """,
+                (draft.run_id,),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'AsharePITSnapshotRecorded' AND run_id = ?
+                """,
+                (draft.run_id,),
+            ).fetchone()
+            if registration is None or policy is None:
+                raise EventTransitionError("PIT snapshot source event is missing")
+            registration_payload = json.loads(str(registration["payload"]))
+            policy_payload = json.loads(str(policy["payload"]))
+            if (
+                started is not None
+                or prior is not None
+                or str(policy["run_id"]) != draft.run_id
+                or registration_payload["adapter_id"] != payload["adapter_id"]
+                or registration_payload["registration_hash"] != payload["registration_hash"]
+                or policy_payload["calendar_hash"] != payload["calendar_hash"]
+                or policy_payload["evaluation_time_policy_hash"] != payload["evaluation_time_policy_hash"]
+                or policy_payload["split_plan_hash"] != payload["split_plan_hash"]
+            ):
+                raise EventTransitionError("PIT snapshot source identity, order or scope differs")
+            return
+        if event_type == "FactorOutputRecordedV3":
+            contract = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'ResolvedEvaluationContractRegistered'
+                  AND event_hash = ?
+                """,
+                (payload["contract_event_hash"],),
+            ).fetchone()
+            snapshot = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'AsharePITSnapshotRecorded' AND event_hash = ?
+                """,
+                (payload["pit_snapshot_event_hash"],),
+            ).fetchone()
+            definitions = conn.execute(
+                """
+                SELECT run_id, event_hash FROM research_events
+                WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?
+                """,
+                (payload["factor_spec_id"],),
+            ).fetchall()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'FactorOutputRecordedV3'
+                  AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?
+                """,
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if (
+                contract is None
+                or snapshot is None
+                or len(definitions) != 1
+                or prior is not None
+                or str(contract["run_id"]) != draft.run_id
+                or str(snapshot["run_id"]) != draft.run_id
+                or str(definitions[0]["run_id"]) != draft.run_id
+            ):
+                raise EventTransitionError("factor output source identity or order differs")
+            contract_payload = json.loads(str(contract["payload"]))
+            snapshot_payload = json.loads(str(snapshot["payload"]))
+            if (
+                contract_payload["contract_hash"] != payload["resolved_contract_hash"]
+                or snapshot_payload["snapshot_hash"] != payload["pit_snapshot_hash"]
+                or contract_payload["evaluation_policy_event_hash"] != payload["evaluation_policy_event_hash"]
+                or str(definitions[0]["event_hash"]) not in payload["source_event_hashes"]
+            ):
+                raise EventTransitionError("factor output source hashes differ")
+            return
+        if event_type in {
+            "ObservedPanelPredictiveEvidenceRecorded",
+            "PITPredictiveEvidenceRecorded",
+        }:
+            factor = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'FactorOutputRecordedV3' AND event_hash = ?
+                """,
+                (payload["factor_output_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = ? AND run_id = ?
+                  AND json_extract(payload, '$.factor_spec_id') = ?
+                """,
+                (event_type, draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if factor is None or prior is not None or str(factor["run_id"]) != draft.run_id:
+                raise EventTransitionError("predictive evidence source identity differs")
+            factor_payload = json.loads(str(factor["payload"]))
+            for name in (
+                "factor_output_hash",
+                "factor_spec_id",
+                "resolved_contract_hash",
+                "contract_event_hash",
+                "pit_snapshot_hash",
+                "pit_snapshot_event_hash",
+            ):
+                if factor_payload[name] != payload[name]:
+                    raise EventTransitionError("predictive evidence factor binding differs")
+            return
+        if event_type == "ScorecardDecisionEvidenceV4Recorded":
+            source_types = {
+                "factor_output_event_hash": "FactorOutputRecordedV3",
+                "observed_event_hash": "ObservedPanelPredictiveEvidenceRecorded",
+                "pit_event_hash": "PITPredictiveEvidenceRecorded",
+            }
+            source_rows: dict[str, Mapping[str, Any]] = {}
+            for name, expected_type in source_types.items():
+                row = conn.execute(
+                    "SELECT run_id, payload FROM research_events WHERE event_type = ? AND event_hash = ?",
+                    (expected_type, payload[name]),
+                ).fetchone()
+                if row is None or str(row["run_id"]) != draft.run_id:
+                    raise EventTransitionError("scorecard v4 source event is missing")
+                source_rows[name] = json.loads(str(row["payload"]))
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ScorecardDecisionEvidenceV4Recorded'
+                  AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?
+                """,
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("scorecard v4 already exists for factor/run")
+            factor_payload = source_rows["factor_output_event_hash"]
+            observed_payload = source_rows["observed_event_hash"]
+            pit_payload = source_rows["pit_event_hash"]
+            if (
+                factor_payload["factor_output_hash"] != payload["factor_output_hash"]
+                or observed_payload["evidence_hash"] != payload["observed_evidence_hash"]
+                or pit_payload["evidence_hash"] != payload["pit_evidence_hash"]
+                or any(
+                    source["factor_spec_id"] != payload["factor_spec_id"]
+                    for source in (factor_payload, observed_payload, pit_payload)
                 )
+            ):
+                raise EventTransitionError("scorecard v4 source binding differs")
+            return
+        if event_type == "ExecutionEvidenceRecorded":
+            factor = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'FactorOutputRecordedV3' AND event_hash = ?
+                """,
+                (payload["factor_output_event_hash"],),
+            ).fetchone()
+            observed = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'ObservedPanelPredictiveEvidenceRecorded'
+                  AND event_hash = ?
+                """,
+                (payload["observed_predictive_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ExecutionEvidenceRecorded'
+                  AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?
+                """,
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            execution_source_rows = [
+                conn.execute(
+                    "SELECT 1 FROM research_events WHERE event_hash = ?",
+                    (event_hash,),
+                ).fetchone()
+                for event_hash in payload["source_event_hashes"]
+            ]
+            if (
+                factor is None
+                or observed is None
+                or prior is not None
+                or str(factor["run_id"]) != draft.run_id
+                or str(observed["run_id"]) != draft.run_id
+                or any(row is None for row in execution_source_rows)
+            ):
+                raise EventTransitionError("execution evidence source identity differs")
+            factor_payload = json.loads(str(factor["payload"]))
+            observed_payload = json.loads(str(observed["payload"]))
+            if (
+                factor_payload["factor_spec_id"] != payload["factor_spec_id"]
+                or factor_payload["resolved_contract_hash"] != payload["resolved_contract_hash"]
+                or observed_payload["factor_output_event_hash"] != payload["factor_output_event_hash"]
+            ):
+                raise EventTransitionError("execution evidence source binding differs")
+            return
+        if event_type == "ComparisonPoolFrozen":
+            watermark = conn.execute(
+                "SELECT seq FROM research_events WHERE event_hash = ?",
+                (payload["source_watermark_event_hash"],),
+            ).fetchone()
+            if watermark is None:
+                raise EventTransitionError("comparison pool watermark is missing")
+            position = conn.execute(
+                "SELECT COUNT(*) AS count FROM research_events WHERE seq <= ?",
+                (watermark["seq"],),
+            ).fetchone()
+            if int(position["count"]) - 1 != int(payload["evidence_watermark"]):
+                raise EventTransitionError("comparison pool watermark position differs")
+            for member in payload["members"]:
+                definition = conn.execute(
+                    "SELECT seq, payload FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND event_hash = ?",
+                    (member["factor_definition_event_hash"],),
+                ).fetchone()
+                if (
+                    definition is None
+                    or definition["seq"] > watermark["seq"]
+                    or json.loads(str(definition["payload"]))["factor_spec_id"] != member["factor_spec_id"]
+                ):
+                    raise EventTransitionError("comparison pool definition differs")
+                for field, expected_type in (
+                    ("factor_output_event_hash", "FactorOutputRecordedV3"),
+                    ("execution_event_hash", "ExecutionEvidenceRecorded"),
+                    ("decision_event_hash", "QualityDecisionV4Recorded"),
+                ):
+                    source_hash = member[field]
+                    if source_hash is None:
+                        continue
+                    source = conn.execute(
+                        "SELECT seq, payload FROM research_events WHERE event_type = ? AND event_hash = ?",
+                        (expected_type, source_hash),
+                    ).fetchone()
+                    if (
+                        source is None
+                        or source["seq"] > watermark["seq"]
+                        or json.loads(str(source["payload"])).get("factor_spec_id") != member["factor_spec_id"]
+                    ):
+                        raise EventTransitionError("comparison pool evidence differs")
+            return
+        if event_type == "SecondaryEvidenceRecorded":
+            factor = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?",
+                (payload["factor_spec_id"],),
+            ).fetchone()
+            pool = conn.execute(
+                "SELECT run_id FROM research_events WHERE event_type = 'ComparisonPoolFrozen' AND json_extract(payload, '$.comparison_pool_hash') = ?",
+                (payload["comparison_pool_hash"],),
+            ).fetchall()
+            applicability = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'ApplicabilityAssessmentRecorded' AND event_hash = ?",
+                (payload["applicability_event_hash"],),
+            ).fetchone()
+            if (
+                factor is None
+                or len(pool) != 1
+                or applicability is None
+                or str(factor["run_id"]) != draft.run_id
+                or str(applicability["run_id"]) != draft.run_id
+                or json.loads(str(applicability["payload"]))["factor_spec_id"] != payload["factor_spec_id"]
+            ):
+                raise EventTransitionError("secondary source binding differs")
+            for field, expected_type in (
+                ("factor_output_event_hash", "FactorOutputRecordedV3"),
+                ("execution_event_hash", "ExecutionEvidenceRecorded"),
+            ):
+                source_hash = payload[field]
+                if source_hash is None:
+                    continue
+                source = conn.execute(
+                    "SELECT run_id, payload FROM research_events WHERE event_type = ? AND event_hash = ?",
+                    (expected_type, source_hash),
+                ).fetchone()
+                if (
+                    source is None
+                    or str(source["run_id"]) != draft.run_id
+                    or json.loads(str(source["payload"]))["factor_spec_id"] != payload["factor_spec_id"]
+                ):
+                    raise EventTransitionError("secondary candidate evidence differs")
+            source_count = conn.execute(
+                "SELECT COUNT(*) AS count FROM research_events WHERE event_hash IN (%s)"
+                % ",".join("?" for _ in payload["source_event_hashes"]),
+                tuple(payload["source_event_hashes"]),
+            ).fetchone()
+            if int(source_count["count"]) != len(payload["source_event_hashes"]):
+                raise EventTransitionError("secondary source event is missing")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'SecondaryEvidenceRecorded' AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?",
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("secondary evidence already exists")
+            return
+        if event_type == "SelectionAssessmentRecorded":
+            contracts = conn.execute(
+                "SELECT event_hash, payload FROM research_events WHERE event_type = 'ResolvedEvaluationContractRegistered' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            starts = conn.execute(
+                "SELECT event_hash, payload FROM research_events WHERE event_type = 'TrialStarted' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            terminals = conn.execute(
+                "SELECT event_hash, payload FROM research_events WHERE event_type = 'TrialTerminated' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            final_events = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type IN ('FinalTestAccessRecorded', 'FinalTestArtifactRecorded') AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            if len(contracts) != 1:
+                raise EventTransitionError("selection requires one exact run contract")
+            contract_payload = json.loads(str(contracts[0]["payload"]))
+            if contract_payload["research_family_id"] != payload["research_family_id"]:
+                raise EventTransitionError("selection research family differs")
+            expected_sources = sorted(
+                {
+                    str(contracts[0]["event_hash"]),
+                    *(str(row["event_hash"]) for row in starts),
+                    *(str(row["event_hash"]) for row in terminals),
+                    *(str(row["event_hash"]) for row in final_events),
+                }
+            )
+            if payload["source_event_hashes"] != expected_sources:
+                raise EventTransitionError("selection source population is incomplete")
+            if payload["trial_count"] != len(starts) or payload["final_access_count"] != len(final_events):
+                raise EventTransitionError("selection population counts differ")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'SelectionAssessmentRecorded' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("selection assessment already exists")
+            return
+        if event_type == "ClaimMatrixRecorded":
+            selection = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'SelectionAssessmentRecorded' AND event_hash = ?",
+                (payload["selection_event_hash"],),
+            ).fetchone()
+            definition = conn.execute(
+                "SELECT run_id FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?",
+                (payload["factor_spec_id"],),
+            ).fetchone()
+            sources = [
+                conn.execute(
+                    "SELECT event_type FROM research_events WHERE event_hash = ?",
+                    (event_hash,),
+                ).fetchone()
+                for event_hash in payload["source_event_hashes"]
+            ]
+            allowed = {
+                "SelectionAssessmentRecorded",
+                "ObservedPanelPredictiveEvidenceRecorded",
+                "PITPredictiveEvidenceRecorded",
+                "ExecutionEvidenceRecorded",
+                "SecondaryEvidenceRecorded",
+            }
+            if (
+                selection is None
+                or definition is None
+                or str(selection["run_id"]) != draft.run_id
+                or str(definition["run_id"]) != draft.run_id
+                or json.loads(str(selection["payload"]))["assessment_hash"] != payload["selection_assessment_hash"]
+                or any(row is None or row["event_type"] not in allowed for row in sources)
+            ):
+                raise EventTransitionError("claim matrix protected sources differ")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'ClaimMatrixRecorded' AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?",
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("claim matrix already exists")
+            return
+        if event_type == "QualityDecisionV4Recorded":
+            matrix = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'ClaimMatrixRecorded' AND event_hash = ?",
+                (payload["claim_matrix_event_hash"],),
+            ).fetchone()
+            selection = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'SelectionAssessmentRecorded' AND event_hash = ?",
+                (payload["selection_event_hash"],),
+            ).fetchone()
+            if matrix is None or selection is None:
+                raise EventTransitionError("narrow decision source event is missing")
+            matrix_payload = json.loads(str(matrix["payload"]))
+            selection_payload = json.loads(str(selection["payload"]))
+            if (
+                str(matrix["run_id"]) != draft.run_id
+                or str(selection["run_id"]) != draft.run_id
+                or matrix_payload["factor_spec_id"] != payload["factor_spec_id"]
+                or matrix_payload["claim_matrix_hash"] != payload["claim_matrix_hash"]
+                or selection_payload["assessment_hash"] != payload["selection_assessment_hash"]
+                or payload["evidence_event_hashes"]
+                != sorted({payload["claim_matrix_event_hash"], payload["selection_event_hash"]})
+            ):
+                raise EventTransitionError("narrow decision source binding differs")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'QualityDecisionV4Recorded' AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?",
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("narrow decision already exists")
+            return
+        if event_type == "ResearchDossierRecorded":
+            terminal = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'TrialTerminalDossierRecorded' AND event_hash = ?",
+                (payload["terminal_dossier_event_hash"],),
+            ).fetchone()
+            definition = conn.execute(
+                "SELECT run_id FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?",
+                (payload["factor_spec_id"],),
+            ).fetchone()
+            sources = [
+                conn.execute("SELECT 1 FROM research_events WHERE event_hash = ?", (event_hash,)).fetchone()
+                for event_hash in payload["source_event_hashes"]
+            ]
+            decision = None
+            if payload["quality_decision_event_hash"] is not None:
+                decision = conn.execute(
+                    "SELECT run_id, payload FROM research_events WHERE event_type = 'QualityDecisionV4Recorded' AND event_hash = ?",
+                    (payload["quality_decision_event_hash"],),
+                ).fetchone()
+            if (
+                terminal is None
+                or definition is None
+                or str(terminal["run_id"]) != draft.run_id
+                or str(definition["run_id"]) != draft.run_id
+                or any(row is None for row in sources)
+                or (payload["quality_decision_event_hash"] is not None and decision is None)
+                or (
+                    decision is not None
+                    and (
+                        str(decision["run_id"]) != draft.run_id
+                        or json.loads(str(decision["payload"]))["factor_spec_id"] != payload["factor_spec_id"]
+                    )
+                )
+            ):
+                raise EventTransitionError("research dossier source binding differs")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'ResearchDossierRecorded' AND run_id = ? AND json_extract(payload, '$.factor_spec_id') = ?",
+                (draft.run_id, payload["factor_spec_id"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("research dossier already exists")
+            return
+        if event_type == "ExperimentRunReportRecorded":
+            starts = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type = 'TrialStarted' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            terminals = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type = 'TrialTerminated' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            dossiers = conn.execute(
+                "SELECT event_hash, payload FROM research_events WHERE event_type = 'ResearchDossierRecorded' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            decisions = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type = 'QualityDecisionV4Recorded' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchall()
+            expected_sources = sorted(
+                {
+                    *(str(row["event_hash"]) for row in starts),
+                    *(str(row["event_hash"]) for row in terminals),
+                    *(str(row["event_hash"]) for row in dossiers),
+                    *(str(row["event_hash"]) for row in decisions),
+                }
+            )
+            if (
+                not starts
+                or len(terminals) != len(starts)
+                or payload["trial_count"] != len(starts)
+                or payload["source_event_hashes"] != expected_sources
+                or payload["candidate_dossier_hashes"]
+                != sorted(json.loads(str(row["payload"]))["dossier_hash"] for row in dossiers)
+            ):
+                raise EventTransitionError("run report population differs")
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'ExperimentRunReportRecorded' AND run_id = ?",
+                (draft.run_id,),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("run report already exists")
+            return
+        if event_type == "ResearchReleaseManifestRecorded":
+            sources = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type IN ('ResearchDossierRecorded', 'ExperimentRunReportRecorded') ORDER BY seq",
+            ).fetchall()
+            expected = sorted(str(row["event_hash"]) for row in sources)
+            if not sources or payload["source_event_hashes"] != expected:
+                raise EventTransitionError("release manifest source prefix differs")
+            return
+        if event_type == "ResearchDossierMaterializationFailed":
+            terminal = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'TrialTerminalDossierRecorded' AND event_hash = ?",
+                (payload["terminal_dossier_event_hash"],),
+            ).fetchone()
+            decision = None
+            if payload["quality_decision_event_hash"] is not None:
+                decision = conn.execute(
+                    "SELECT run_id, payload FROM research_events WHERE event_type = 'QualityDecisionV4Recorded' AND event_hash = ?",
+                    (payload["quality_decision_event_hash"],),
+                ).fetchone()
+            if (
+                terminal is None
+                or str(terminal["run_id"]) != draft.run_id
+                or json.loads(str(terminal["payload"]))["trial_id"] != payload["trial_id"]
+                or (payload["quality_decision_event_hash"] is not None and decision is None)
+            ):
+                raise EventTransitionError("research dossier failure source differs")
+            return
+        if event_type == "ProductionEvaluationNodeRecorded":
+            trial = conn.execute(
+                "SELECT run_id FROM research_events WHERE event_type = 'TrialStarted' AND entity_id = ?",
+                (payload["trial_id"],),
+            ).fetchone()
+            terminal = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'TrialTerminated' AND entity_id = ?",
+                (payload["trial_id"],),
+            ).fetchone()
+            factor = conn.execute(
+                "SELECT run_id FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?",
+                (payload["factor_spec_id"],),
+            ).fetchone()
+            contract = conn.execute(
+                """
+                SELECT run_id FROM research_events
+                WHERE event_type = 'ResolvedEvaluationContractRegistered'
+                  AND json_extract(payload, '$.contract_hash') = ?
+                """,
+                (payload["resolved_contract_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ProductionEvaluationNodeRecorded'
+                  AND json_extract(payload, '$.trial_id') = ?
+                  AND json_extract(payload, '$.node_name') = ?
+                """,
+                (payload["trial_id"], payload["node_name"]),
+            ).fetchone()
+            node_source_rows = [
+                conn.execute(
+                    "SELECT 1 FROM research_events WHERE event_hash = ?",
+                    (event_hash,),
+                ).fetchone()
+                for event_hash in payload["source_event_hashes"]
+            ]
+            if (
+                trial is None
+                or terminal is not None
+                or factor is None
+                or contract is None
+                or prior is not None
+                or payload["run_id"] != draft.run_id
+                or str(trial["run_id"]) != draft.run_id
+                or str(factor["run_id"]) != draft.run_id
+                or str(contract["run_id"]) != draft.run_id
+                or any(row is None for row in node_source_rows)
+            ):
+                raise EventTransitionError("production node source identity or order differs")
+            return
+        if event_type == "TrialTerminalDossierRecorded":
+            terminal = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'TrialTerminated' AND event_hash = ?
+                """,
+                (payload["terminal_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'TrialTerminalDossierRecorded'
+                  AND json_extract(payload, '$.trial_id') = ?
+                """,
+                (payload["trial_id"],),
+            ).fetchone()
+            dossier_source_rows = [
+                conn.execute(
+                    "SELECT 1 FROM research_events WHERE event_hash = ?",
+                    (event_hash,),
+                ).fetchone()
+                for event_hash in payload["source_event_hashes"]
+            ]
+            if (
+                terminal is None
+                or prior is not None
+                or str(terminal["run_id"]) != draft.run_id
+                or json.loads(str(terminal["payload"]))["trial_id"] != payload["trial_id"]
+                or any(row is None for row in dossier_source_rows)
+            ):
+                raise EventTransitionError("terminal dossier source identity differs")
+            return
+        if event_type == "ReportMaterializationFailed":
+            terminal = conn.execute(
+                """
+                SELECT run_id, payload FROM research_events
+                WHERE event_type = 'TrialTerminated' AND event_hash = ?
+                """,
+                (payload["terminal_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                """
+                SELECT 1 FROM research_events
+                WHERE event_type = 'ReportMaterializationFailed'
+                  AND json_extract(payload, '$.trial_id') = ?
+                """,
+                (payload["trial_id"],),
+            ).fetchone()
+            if (
+                terminal is None
+                or prior is not None
+                or str(terminal["run_id"]) != draft.run_id
+                or json.loads(str(terminal["payload"]))["trial_id"] != payload["trial_id"]
+            ):
+                raise EventTransitionError("report materialization failure source differs")
             return
         if event_type == "TrainValidDataSnapshotFrozen":
             prior = conn.execute(
@@ -3356,15 +4725,11 @@ class ResearchEventStore:
                 (payload["snapshot_id"], payload["snapshot_hash"]),
             ).fetchone()
             if prior is not None:
-                raise EventTransitionError(
-                    "train/valid snapshot identity already exists"
-                )
+                raise EventTransitionError("train/valid snapshot identity already exists")
             return
         if event_type == "RetrieverFeatureSourceRecorded":
             if draft.run_id != payload["execution_run_id"]:
-                raise EventTransitionError(
-                    "Retriever feature event run differs from execution run"
-                )
+                raise EventTransitionError("Retriever feature event run differs from execution run")
             snapshot = conn.execute(
                 """
                 SELECT seq, payload FROM research_events
@@ -3377,17 +4742,13 @@ class ResearchEventStore:
                 (payload["eligible_event_watermark"],),
             ).fetchone()
             if snapshot is None or watermark is None:
-                raise EventTransitionError(
-                    "Retriever feature source or watermark is missing"
-                )
+                raise EventTransitionError("Retriever feature source or watermark is missing")
             snapshot_payload = json.loads(str(snapshot["payload"]))
             if (
                 int(snapshot["seq"]) >= int(watermark["seq"])
                 or snapshot_payload["snapshot_hash"] != payload["snapshot_hash"]
             ):
-                raise EventTransitionError(
-                    "Retriever feature snapshot ordering or identity differs"
-                )
+                raise EventTransitionError("Retriever feature snapshot ordering or identity differs")
             for action_hash in payload["action_event_hashes"]:
                 action = conn.execute(
                     """
@@ -3398,21 +4759,15 @@ class ResearchEventStore:
                     (action_hash,),
                 ).fetchone()
                 if action is None:
-                    raise EventTransitionError(
-                        "Retriever feature source lacks an action event"
-                    )
+                    raise EventTransitionError("Retriever feature source lacks an action event")
                 action_payload = json.loads(str(action["payload"]))
                 if (
                     str(action["run_id"]) != draft.run_id
                     or int(action["seq"]) <= int(watermark["seq"])
-                    or action_payload["data_snapshot_hash"]
-                    != payload["snapshot_hash"]
-                    or action_payload["retrieval_policy_hash"]
-                    != payload["retrieval_policy_hash"]
+                    or action_payload["data_snapshot_hash"] != payload["snapshot_hash"]
+                    or action_payload["retrieval_policy_hash"] != payload["retrieval_policy_hash"]
                 ):
-                    raise EventTransitionError(
-                        "Retriever feature action binding differs"
-                    )
+                    raise EventTransitionError("Retriever feature action binding differs")
             prior = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -3422,9 +4777,7 @@ class ResearchEventStore:
                 (payload["feature_source_id"], payload["source_hash"]),
             ).fetchone()
             if prior is not None:
-                raise EventTransitionError(
-                    "Retriever feature source identity already exists"
-                )
+                raise EventTransitionError("Retriever feature source identity already exists")
             return
         if event_type == "RetrieverDecisionV2Recorded":
             self._validate_retriever_v2_transition(conn, payload)
@@ -3443,9 +4796,7 @@ class ResearchEventStore:
                 (payload["decision_id"],),
             ).fetchone()
             if prior is not None:
-                raise EventTransitionError(
-                    "retriever v4 decision identity already exists"
-                )
+                raise EventTransitionError("retriever v4 decision identity already exists")
             control = conn.execute(
                 """
                 SELECT seq, run_id, payload FROM research_events
@@ -3462,33 +4813,20 @@ class ResearchEventStore:
                 (payload["eligible_event_watermark"],),
             ).fetchone()
             if watermark is None or int(watermark["seq"]) >= int(control["seq"]):
-                raise EventTransitionError(
-                    "retriever v4 discovery watermark must precede its control evidence"
-                )
+                raise EventTransitionError("retriever v4 discovery watermark must precede its control evidence")
             control_terminal_rows = conn.execute(
                 """
                 SELECT seq, event_hash FROM research_events
                 WHERE event_type = 'TrialTerminated'
                 """
             ).fetchall()
-            terminal_seq_by_hash = {
-                str(row["event_hash"]): int(row["seq"])
-                for row in control_terminal_rows
-            }
-            cited_control_terminals = tuple(
-                str(item) for item in control_payload["terminal_event_hashes"]
-            )
-            if (
-                len(cited_control_terminals) != len(set(cited_control_terminals))
-                or any(
-                    terminal_seq_by_hash.get(event_hash, -1)
-                    <= int(watermark["seq"])
-                    for event_hash in cited_control_terminals
-                )
+            terminal_seq_by_hash = {str(row["event_hash"]): int(row["seq"]) for row in control_terminal_rows}
+            cited_control_terminals = tuple(str(item) for item in control_payload["terminal_event_hashes"])
+            if len(cited_control_terminals) != len(set(cited_control_terminals)) or any(
+                terminal_seq_by_hash.get(event_hash, -1) <= int(watermark["seq"])
+                for event_hash in cited_control_terminals
             ):
-                raise EventTransitionError(
-                    "retriever v4 discovery watermark includes control-arm outcomes"
-                )
+                raise EventTransitionError("retriever v4 discovery watermark includes control-arm outcomes")
             if (
                 control_payload["evidence_hash"] != payload["control_evidence_hash"]
                 or control_payload["policy_hash"] != payload["control_policy_hash"]
@@ -3507,9 +4845,7 @@ class ResearchEventStore:
                 (payload["decision_id"],),
             ).fetchone()
             if prior is not None:
-                raise EventTransitionError(
-                    "retriever v5 decision identity already exists"
-                )
+                raise EventTransitionError("retriever v5 decision identity already exists")
             control = conn.execute(
                 """
                 SELECT seq, payload FROM research_events
@@ -3521,32 +4857,21 @@ class ResearchEventStore:
                 "SELECT seq FROM research_events WHERE event_hash = ?",
                 (payload["eligible_event_watermark"],),
             ).fetchone()
-            if (
-                control is None
-                or watermark is None
-                or int(watermark["seq"]) >= int(control["seq"])
-            ):
-                raise EventTransitionError(
-                    "retriever v5 watermark must precede official control"
-                )
+            if control is None or watermark is None or int(watermark["seq"]) >= int(control["seq"]):
+                raise EventTransitionError("retriever v5 watermark must precede official control")
             control_payload = json.loads(str(control["payload"]))
             if (
                 control_payload["evidence_hash"] != payload["control_evidence_hash"]
                 or control_payload["policy_hash"] != payload["control_policy_hash"]
                 or control_payload["output_hash"] != payload["official_output_hash"]
-                or control_payload["data_snapshot_hash"]
-                != payload["data_snapshot_hash"]
+                or control_payload["data_snapshot_hash"] != payload["data_snapshot_hash"]
             ):
-                raise EventTransitionError(
-                    "retriever v5 official control binding differs"
-                )
+                raise EventTransitionError("retriever v5 official control binding differs")
             action_hashes = tuple(payload["action_template_event_hashes"])
             components = tuple(payload["components"])
             if len(action_hashes) != len(components):
                 raise EventTransitionError("retriever v5 actions and components differ")
-            for action_event_hash, component in zip(
-                action_hashes, components, strict=True
-            ):
+            for action_event_hash, component in zip(action_hashes, components, strict=True):
                 row = conn.execute(
                     """
                     SELECT seq, run_id, payload FROM research_events
@@ -3556,29 +4881,21 @@ class ResearchEventStore:
                     (action_event_hash,),
                 ).fetchone()
                 if row is None:
-                    raise EventTransitionError(
-                        "retriever v5 lacks a frozen action event"
-                    )
+                    raise EventTransitionError("retriever v5 lacks a frozen action event")
                 action_payload = json.loads(str(row["payload"]))
                 if (
                     str(row["run_id"]) != draft.run_id
                     or not int(watermark["seq"]) < int(row["seq"]) < int(control["seq"])
                     or action_payload["execution_run_id"] != draft.run_id
-                    or action_payload["eligible_event_watermark"]
-                    != payload["eligible_event_watermark"]
-                    or action_payload["data_snapshot_hash"]
-                    != payload["data_snapshot_hash"]
-                    or action_payload["retrieval_policy_hash"]
-                    != payload["policy_hash"]
+                    or action_payload["eligible_event_watermark"] != payload["eligible_event_watermark"]
+                    or action_payload["data_snapshot_hash"] != payload["data_snapshot_hash"]
+                    or action_payload["retrieval_policy_hash"] != payload["policy_hash"]
                     or action_payload["action_id"] != component["action_id"]
-                    or action_payload["parent_factor_spec_id"]
-                    != component["factor_spec_id"]
+                    or action_payload["parent_factor_spec_id"] != component["factor_spec_id"]
                     or action_payload["expected_motif"] != component["motif"]
                     or action_payload["identity_action"]
                 ):
-                    raise EventTransitionError(
-                        "retriever v5 frozen action binding differs"
-                    )
+                    raise EventTransitionError("retriever v5 frozen action binding differs")
             return
         if event_type == "RetrieverDecisionV6Recorded":
             self._validate_retriever_v2_transition(conn, payload)
@@ -3612,37 +4929,27 @@ class ResearchEventStore:
                 or source is None
                 or control is None
                 or watermark is None
-                or not int(watermark["seq"])
-                < int(source["seq"])
-                < int(control["seq"])
+                or not int(watermark["seq"]) < int(source["seq"]) < int(control["seq"])
             ):
-                raise EventTransitionError(
-                    "retriever v6 source/control ordering or identity is invalid"
-                )
+                raise EventTransitionError("retriever v6 source/control ordering or identity is invalid")
             source_payload = json.loads(str(source["payload"]))
             control_payload = json.loads(str(control["payload"]))
             if (
                 str(source["run_id"]) != draft.run_id
                 or source_payload["execution_run_id"] != draft.run_id
                 or source_payload["source_hash"] != payload["feature_source_hash"]
-                or source_payload["eligible_event_watermark"]
-                != payload["eligible_event_watermark"]
+                or source_payload["eligible_event_watermark"] != payload["eligible_event_watermark"]
                 or source_payload["snapshot_hash"] != payload["data_snapshot_hash"]
                 or source_payload["retrieval_policy_hash"] != payload["policy_hash"]
-                or source_payload["action_event_hashes"]
-                != payload["action_template_event_hashes"]
-                or control_payload["evidence_hash"]
-                != payload["control_evidence_hash"]
+                or source_payload["action_event_hashes"] != payload["action_template_event_hashes"]
+                or control_payload["evidence_hash"] != payload["control_evidence_hash"]
                 or control_payload["policy_hash"] != payload["control_policy_hash"]
                 or control_payload["output_hash"] != payload["official_output_hash"]
-                or control_payload["data_snapshot_hash"]
-                != payload["data_snapshot_hash"]
+                or control_payload["data_snapshot_hash"] != payload["data_snapshot_hash"]
             ):
                 raise EventTransitionError("retriever v6 authoritative binding differs")
             components = tuple(payload["components"])
-            for action_event_hash, component in zip(
-                payload["action_template_event_hashes"], components, strict=True
-            ):
+            for action_event_hash, component in zip(payload["action_template_event_hashes"], components, strict=True):
                 action = conn.execute(
                     """
                     SELECT seq, run_id, payload FROM research_events
@@ -3655,19 +4962,13 @@ class ResearchEventStore:
                 action_payload = json.loads(str(action["payload"]))
                 if (
                     str(action["run_id"]) != draft.run_id
-                    or not int(watermark["seq"])
-                    < int(action["seq"])
-                    < int(source["seq"])
+                    or not int(watermark["seq"]) < int(action["seq"]) < int(source["seq"])
                     or action_payload["action_id"] != component["action_id"]
-                    or action_payload["parent_factor_spec_id"]
-                    != component["factor_spec_id"]
+                    or action_payload["parent_factor_spec_id"] != component["factor_spec_id"]
                     or action_payload["expected_motif"] != component["motif"]
-                    or action_payload["eligible_event_watermark"]
-                    != payload["eligible_event_watermark"]
-                    or action_payload["data_snapshot_hash"]
-                    != payload["data_snapshot_hash"]
-                    or action_payload["retrieval_policy_hash"]
-                    != payload["policy_hash"]
+                    or action_payload["eligible_event_watermark"] != payload["eligible_event_watermark"]
+                    or action_payload["data_snapshot_hash"] != payload["data_snapshot_hash"]
+                    or action_payload["retrieval_policy_hash"] != payload["policy_hash"]
                     or action_payload["identity_action"]
                 ):
                     raise EventTransitionError("retriever v6 frozen action binding differs")
@@ -3676,6 +4977,7 @@ class ResearchEventStore:
             from src.alpha_foundry.activation.runner import (
                 activation_arm_execution_run_id,
             )
+
             self._validate_retriever_v2_transition(conn, payload)
             prior = conn.execute(
                 "SELECT 1 FROM research_events WHERE event_type = 'RetrieverDecisionV7Recorded' AND entity_id = ?",
@@ -3704,8 +5006,7 @@ class ResearchEventStore:
                 or source_payload["source_hash"] != payload["feature_source_hash"]
                 or source_payload["snapshot_hash"] != payload["data_snapshot_hash"]
                 or source_payload["retrieval_policy_hash"] != payload["policy_hash"]
-                or source_payload["action_event_hashes"]
-                != payload["action_template_event_hashes"]
+                or source_payload["action_event_hashes"] != payload["action_template_event_hashes"]
             ):
                 raise EventTransitionError("retriever v7 authoritative binding differs")
             control_run_id = activation_arm_execution_run_id(
@@ -3746,9 +5047,7 @@ class ResearchEventStore:
                 (payload["plan_hash"], payload["pair_id"]),
             ).fetchone()
             if prior is not None or run is not None:
-                raise EventTransitionError(
-                    "pre-arm schedule is duplicate or follows arm outcomes"
-                )
+                raise EventTransitionError("pre-arm schedule is duplicate or follows arm outcomes")
             return
         if event_type == "ActivationPairExecutionScheduled":
             if draft.run_id != payload["run_group_id"]:
@@ -3768,8 +5067,10 @@ class ResearchEventStore:
                   )
                 """,
                 (
-                    payload["schedule_id"], payload["schedule_hash"],
-                    payload["plan_hash"], payload["pair_id"],
+                    payload["schedule_id"],
+                    payload["schedule_hash"],
+                    payload["plan_hash"],
+                    payload["pair_id"],
                 ),
             ).fetchone()
             from src.alpha_foundry.activation.runner import (
@@ -3794,9 +5095,7 @@ class ResearchEventStore:
                 arm_run_ids,
             ).fetchone()
             if prior is not None or outcome is not None:
-                raise EventTransitionError(
-                    "Activation pair schedule is duplicate or follows arm outcomes"
-                )
+                raise EventTransitionError("Activation pair schedule is duplicate or follows arm outcomes")
             return
         if event_type == "ActivationPairExecutionClaimed":
             schedule_row = conn.execute(
@@ -3849,9 +5148,7 @@ class ResearchEventStore:
                 arm_run_ids,
             ).fetchone()
             if prior is not None or outcome is not None:
-                raise EventTransitionError(
-                    "Activation pair claim is duplicate or follows arm outcomes"
-                )
+                raise EventTransitionError("Activation pair claim is duplicate or follows arm outcomes")
             return
         if event_type == "OfficialSearchControlRecorded":
             prior = conn.execute(
@@ -3877,16 +5174,12 @@ class ResearchEventStore:
             return
         if event_type == "ActivationResourceMeasured":
             if draft.run_id != payload["run_group_id"]:
-                raise EventTransitionError(
-                    "Activation resource event run does not match its run group"
-                )
+                raise EventTransitionError("Activation resource event run does not match its run group")
             self._validate_activation_resource_transition(conn, payload)
             return
         if event_type == "ActivationResourceMeasuredV2":
             if draft.run_id != payload["run_group_id"]:
-                raise EventTransitionError(
-                    "Activation resource v2 event run differs from run group"
-                )
+                raise EventTransitionError("Activation resource v2 event run differs from run group")
             schedule = conn.execute(
                 """
                 SELECT payload FROM research_events
@@ -3904,27 +5197,20 @@ class ResearchEventStore:
                 (payload["execution_claim_event_hash"],),
             ).fetchone()
             if schedule is None or claim is None:
-                raise EventTransitionError(
-                    "Activation resource v2 lacks schedule or claim"
-                )
+                raise EventTransitionError("Activation resource v2 lacks schedule or claim")
             schedule_payload = json.loads(str(schedule["payload"]))
             claim_payload = json.loads(str(claim["payload"]))
             if (
                 schedule_payload["schedule_hash"] != payload["pair_schedule_hash"]
-                or claim_payload["schedule_event_hash"]
-                != payload["pair_schedule_event_hash"]
+                or claim_payload["schedule_event_hash"] != payload["pair_schedule_event_hash"]
                 or claim_payload["schedule_hash"] != payload["pair_schedule_hash"]
             ):
-                raise EventTransitionError(
-                    "Activation resource v2 schedule authority differs"
-                )
+                raise EventTransitionError("Activation resource v2 schedule authority differs")
             self._validate_activation_resource_transition(conn, payload)
             return
         if event_type == "ActivationGenerationConsumptionRecorded":
             if draft.run_id != payload["execution_run_id"]:
-                raise EventTransitionError(
-                    "Activation generation event run differs from execution run"
-                )
+                raise EventTransitionError("Activation generation event run differs from execution run")
             self._activation_plan_payload(conn, str(payload["plan_hash"]))
             retriever = conn.execute(
                 """
@@ -3935,20 +5221,14 @@ class ResearchEventStore:
                 (payload["retriever_decision_event_hash"],),
             ).fetchone()
             if retriever is None:
-                raise EventTransitionError(
-                    "Activation generation lacks its retriever decision"
-                )
+                raise EventTransitionError("Activation generation lacks its retriever decision")
             retriever_payload = json.loads(str(retriever["payload"]))
             if (
                 str(retriever["run_id"]) != payload["execution_run_id"]
-                or retriever_payload["decision_hash"]
-                != payload["retriever_decision_hash"]
-                or retriever_payload["control_evidence_event_hash"]
-                != payload["control_evidence_event_hash"]
+                or retriever_payload["decision_hash"] != payload["retriever_decision_hash"]
+                or retriever_payload["control_evidence_event_hash"] != payload["control_evidence_event_hash"]
             ):
-                raise EventTransitionError(
-                    "Activation generation retriever binding differs"
-                )
+                raise EventTransitionError("Activation generation retriever binding differs")
             prior = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -3958,9 +5238,7 @@ class ResearchEventStore:
                 (payload["generation_id"], payload["evidence_hash"]),
             ).fetchone()
             if prior is not None:
-                raise EventTransitionError(
-                    "Activation generation-consumption evidence already exists"
-                )
+                raise EventTransitionError("Activation generation-consumption evidence already exists")
             result = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -3970,15 +5248,11 @@ class ResearchEventStore:
                 (payload["plan_hash"],),
             ).fetchone()
             if result is not None:
-                raise EventTransitionError(
-                    "Activation generation cannot append after result"
-                )
+                raise EventTransitionError("Activation generation cannot append after result")
             return
         if event_type == "ActivationGenerationConsumptionV2Recorded":
             if draft.run_id != payload["execution_run_id"]:
-                raise EventTransitionError(
-                    "Activation exact generation run differs from execution run"
-                )
+                raise EventTransitionError("Activation exact generation run differs from execution run")
             self._activation_plan_payload(conn, str(payload["plan_hash"]))
             retriever = conn.execute(
                 """
@@ -3988,9 +5262,7 @@ class ResearchEventStore:
                 (payload["retriever_decision_event_hash"],),
             ).fetchone()
             if retriever is None:
-                raise EventTransitionError(
-                    "Activation exact generation lacks its v5 Retriever decision"
-                )
+                raise EventTransitionError("Activation exact generation lacks its v5 Retriever decision")
             retriever_payload = json.loads(str(retriever["payload"]))
             action_hash_by_id = {
                 str(component["action_id"]): str(event_hash)
@@ -4001,25 +5273,17 @@ class ResearchEventStore:
                 )
             }
             expected_selected_hashes = [
-                action_hash_by_id[action_id]
-                for action_id in retriever_payload["selected_action_ids"]
+                action_hash_by_id[action_id] for action_id in retriever_payload["selected_action_ids"]
             ]
             if (
                 str(retriever["run_id"]) != payload["execution_run_id"]
-                or retriever_payload["decision_hash"]
-                != payload["retriever_decision_hash"]
-                or retriever_payload["control_evidence_event_hash"]
-                != payload["control_evidence_event_hash"]
-                or retriever_payload["selected_action_ids"]
-                != payload["selected_action_ids"]
-                or expected_selected_hashes
-                != payload["selected_action_event_hashes"]
-                or retriever_payload["selected_parent_factor_spec_ids"]
-                != payload["selected_parent_factor_spec_ids"]
+                or retriever_payload["decision_hash"] != payload["retriever_decision_hash"]
+                or retriever_payload["control_evidence_event_hash"] != payload["control_evidence_event_hash"]
+                or retriever_payload["selected_action_ids"] != payload["selected_action_ids"]
+                or expected_selected_hashes != payload["selected_action_event_hashes"]
+                or retriever_payload["selected_parent_factor_spec_ids"] != payload["selected_parent_factor_spec_ids"]
             ):
-                raise EventTransitionError(
-                    "Activation exact generation v5 Retriever binding differs"
-                )
+                raise EventTransitionError("Activation exact generation v5 Retriever binding differs")
             prior = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -4029,9 +5293,7 @@ class ResearchEventStore:
                 (payload["generation_id"], payload["evidence_hash"]),
             ).fetchone()
             if prior is not None:
-                raise EventTransitionError(
-                    "Activation exact generation evidence already exists"
-                )
+                raise EventTransitionError("Activation exact generation evidence already exists")
             result = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -4041,15 +5303,11 @@ class ResearchEventStore:
                 (payload["plan_hash"],),
             ).fetchone()
             if result is not None:
-                raise EventTransitionError(
-                    "Activation exact generation cannot append after result"
-                )
+                raise EventTransitionError("Activation exact generation cannot append after result")
             return
         if event_type == "ActivationGenerationConsumptionV3Recorded":
             if draft.run_id != payload["execution_run_id"]:
-                raise EventTransitionError(
-                    "source-bound generation run differs from execution run"
-                )
+                raise EventTransitionError("source-bound generation run differs from execution run")
             self._activation_plan_payload(conn, str(payload["plan_hash"]))
             retriever = conn.execute(
                 """
@@ -4066,41 +5324,26 @@ class ResearchEventStore:
                 (payload["feature_source_event_hash"],),
             ).fetchone()
             if retriever is None or source is None:
-                raise EventTransitionError(
-                    "source-bound generation authority is missing"
-                )
+                raise EventTransitionError("source-bound generation authority is missing")
             retriever_payload = json.loads(str(retriever["payload"]))
             source_payload = json.loads(str(source["payload"]))
             if (
                 str(retriever["run_id"]) != draft.run_id
                 or str(source["run_id"]) != draft.run_id
-                or retriever_payload["decision_hash"]
-                != payload["retriever_decision_hash"]
-                or retriever_payload["input_bundle_hash"]
-                != payload["retriever_input_bundle_hash"]
-                or retriever_payload["feature_source_event_hash"]
-                != payload["feature_source_event_hash"]
-                or retriever_payload["feature_source_hash"]
-                != payload["feature_source_hash"]
-                or retriever_payload["control_evidence_event_hash"]
-                != payload["control_evidence_event_hash"]
-                or retriever_payload["selected_action_ids"]
-                != payload["selected_action_ids"]
-                or retriever_payload["selected_parent_factor_spec_ids"]
-                != payload["selected_parent_factor_spec_ids"]
+                or retriever_payload["decision_hash"] != payload["retriever_decision_hash"]
+                or retriever_payload["input_bundle_hash"] != payload["retriever_input_bundle_hash"]
+                or retriever_payload["feature_source_event_hash"] != payload["feature_source_event_hash"]
+                or retriever_payload["feature_source_hash"] != payload["feature_source_hash"]
+                or retriever_payload["control_evidence_event_hash"] != payload["control_evidence_event_hash"]
+                or retriever_payload["selected_action_ids"] != payload["selected_action_ids"]
+                or retriever_payload["selected_parent_factor_spec_ids"] != payload["selected_parent_factor_spec_ids"]
                 or source_payload["source_hash"] != payload["feature_source_hash"]
-                or source_payload["snapshot_event_hash"]
-                != payload["feature_snapshot_event_hash"]
-                or source_payload["snapshot_hash"]
-                != payload["feature_snapshot_hash"]
-                or source_payload["feature_policy_hash"]
-                != payload["feature_policy_hash"]
-                or source_payload["scorecard_event_hashes"]
-                != payload["feature_scorecard_event_hashes"]
+                or source_payload["snapshot_event_hash"] != payload["feature_snapshot_event_hash"]
+                or source_payload["snapshot_hash"] != payload["feature_snapshot_hash"]
+                or source_payload["feature_policy_hash"] != payload["feature_policy_hash"]
+                or source_payload["scorecard_event_hashes"] != payload["feature_scorecard_event_hashes"]
             ):
-                raise EventTransitionError(
-                    "source-bound generation authority differs"
-                )
+                raise EventTransitionError("source-bound generation authority differs")
             prior = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -4118,15 +5361,11 @@ class ResearchEventStore:
                 (payload["plan_hash"],),
             ).fetchone()
             if prior is not None or result is not None:
-                raise EventTransitionError(
-                    "source-bound generation is duplicate or follows result"
-                )
+                raise EventTransitionError("source-bound generation is duplicate or follows result")
             return
         if event_type == "ActivationGenerationConsumptionV4Recorded":
             if draft.run_id != payload["execution_run_id"]:
-                raise EventTransitionError(
-                    "schedule-bound generation run differs from execution run"
-                )
+                raise EventTransitionError("schedule-bound generation run differs from execution run")
             self._activation_plan_payload(conn, str(payload["plan_hash"]))
             retriever = conn.execute(
                 "SELECT run_id, payload FROM research_events WHERE event_type = 'RetrieverDecisionV7Recorded' AND event_hash = ?",
@@ -4151,21 +5390,17 @@ class ResearchEventStore:
                 or rp["decision_hash"] != payload["retriever_decision_hash"]
                 or rp["input_bundle_hash"] != payload["retriever_input_bundle_hash"]
                 or rp["schedule_event_hash"] != payload["schedule_event_hash"]
-                or rp["feature_source_event_hash"]
-                != payload["feature_source_event_hash"]
+                or rp["feature_source_event_hash"] != payload["feature_source_event_hash"]
                 or rp["selected_action_ids"] != payload["selected_action_ids"]
-                or rp["selected_parent_factor_spec_ids"]
-                != payload["selected_parent_factor_spec_ids"]
+                or rp["selected_parent_factor_spec_ids"] != payload["selected_parent_factor_spec_ids"]
                 or sp["schedule_hash"] != payload["schedule_hash"]
                 or sp["plan_hash"] != payload["plan_hash"]
                 or sp["pair_id"] != payload["pair_id"]
                 or fp["source_hash"] != payload["feature_source_hash"]
-                or fp["snapshot_event_hash"]
-                != payload["feature_snapshot_event_hash"]
+                or fp["snapshot_event_hash"] != payload["feature_snapshot_event_hash"]
                 or fp["snapshot_hash"] != payload["feature_snapshot_hash"]
                 or fp["feature_policy_hash"] != payload["feature_policy_hash"]
-                or fp["scorecard_event_hashes"]
-                != payload["feature_scorecard_event_hashes"]
+                or fp["scorecard_event_hashes"] != payload["feature_scorecard_event_hashes"]
             ):
                 raise EventTransitionError("schedule-bound generation authority differs")
             prior = conn.execute(
@@ -4181,9 +5416,7 @@ class ResearchEventStore:
                 (payload["plan_hash"],),
             ).fetchone()
             if prior is not None or result is not None:
-                raise EventTransitionError(
-                    "schedule-bound generation is duplicate or follows result"
-                )
+                raise EventTransitionError("schedule-bound generation is duplicate or follows result")
             return
         if event_type == "ActivationResultRecorded":
             self._validate_activation_result_transition(conn, payload)
@@ -4236,13 +5469,9 @@ class ResearchEventStore:
             return
         if event_type == "DecisionEvidenceV3Recorded":
             if draft.run_id != payload["evidence_run_id"]:
-                raise EventTransitionError(
-                    "Decision evidence event run differs from producer run"
-                )
+                raise EventTransitionError("Decision evidence event run differs from producer run")
             if self._tail_hash(conn) != payload["ledger_watermark_event_hash"]:
-                raise EventTransitionError(
-                    "Decision evidence watermark is stale or widened"
-                )
+                raise EventTransitionError("Decision evidence watermark is stale or widened")
             definition = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -4251,9 +5480,7 @@ class ResearchEventStore:
                 (payload["factor_spec_id"],),
             ).fetchone()
             if definition is None:
-                raise EventTransitionError(
-                    "Decision evidence has no prior factor definition"
-                )
+                raise EventTransitionError("Decision evidence has no prior factor definition")
             prior_rows = conn.execute(
                 """
                 SELECT payload FROM research_events
@@ -4263,20 +5490,15 @@ class ResearchEventStore:
                 (draft.run_id,),
             ).fetchall()
             if any(
-                (prior := json.loads(row["payload"]))["factor_spec_id"]
-                == payload["factor_spec_id"]
+                (prior := json.loads(row["payload"]))["factor_spec_id"] == payload["factor_spec_id"]
                 and prior["evidence_kind"] == payload["evidence_kind"]
                 for row in prior_rows
             ):
-                raise EventTransitionError(
-                    "Decision evidence kind already exists for factor and run"
-                )
+                raise EventTransitionError("Decision evidence kind already exists for factor and run")
             return
         if event_type == "ScorecardDecisionEvidenceV3Recorded":
             if draft.run_id != payload["evidence_run_id"]:
-                raise EventTransitionError(
-                    "scorecard evidence event run differs from producer run"
-                )
+                raise EventTransitionError("scorecard evidence event run differs from producer run")
             if self._tail_hash(conn) != payload["source_watermark_event_hash"]:
                 raise EventTransitionError("scorecard evidence watermark is stale")
             definition = conn.execute(
@@ -4325,9 +5547,7 @@ class ResearchEventStore:
                 or str(policy["run_id"]) != draft.run_id
                 or str(started["run_id"]) != draft.run_id
             ):
-                raise EventTransitionError(
-                    "scorecard evidence source identity or order differs"
-                )
+                raise EventTransitionError("scorecard evidence source identity or order differs")
             prior = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -4339,15 +5559,11 @@ class ResearchEventStore:
                 (draft.run_id, payload["factor_spec_id"], payload["trial_id"]),
             ).fetchone()
             if prior is not None:
-                raise EventTransitionError(
-                    "scorecard evidence already exists for factor trial"
-                )
+                raise EventTransitionError("scorecard evidence already exists for factor trial")
             return
         if event_type == "SnapshotDecisionEvidenceV3Recorded":
             if draft.run_id != payload["evidence_run_id"]:
-                raise EventTransitionError(
-                    "snapshot evidence event run differs from producer run"
-                )
+                raise EventTransitionError("snapshot evidence event run differs from producer run")
             if self._tail_hash(conn) != payload["source_watermark_event_hash"]:
                 raise EventTransitionError("snapshot evidence watermark is stale")
             definition = conn.execute(
@@ -4379,9 +5595,7 @@ class ResearchEventStore:
                 or str(definition["entity_id"]) != payload["factor_spec_id"]
                 or str(policy["run_id"]) != draft.run_id
             ):
-                raise EventTransitionError(
-                    "snapshot evidence source identity or order differs"
-                )
+                raise EventTransitionError("snapshot evidence source identity or order differs")
             prior = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -4392,9 +5606,7 @@ class ResearchEventStore:
                 (draft.run_id, payload["factor_spec_id"]),
             ).fetchone()
             if prior is not None:
-                raise EventTransitionError(
-                    "snapshot evidence already exists for factor and run"
-                )
+                raise EventTransitionError("snapshot evidence already exists for factor and run")
             return
         if event_type in {"QualityDecisionV2Recorded", "QualityDecisionV3Recorded"}:
             definition = conn.execute(
@@ -4406,6 +5618,27 @@ class ResearchEventStore:
             ).fetchone()
             if definition is None:
                 raise EventTransitionError("Decision v2 has no prior factor definition")
+            return
+        if event_type in {
+            "FalsificationCatalogV2Registered",
+            "FalsificationContractV2Registered",
+            "FalsificationOutcomeAccessV2Recorded",
+            "FalsificationSourceArtifactV2Recorded",
+            "FalsificationResultV2Recorded",
+        }:
+            self._validate_falsification_v2_transition(conn, event_type, draft.run_id, payload)
+            return
+        if event_type in {
+            "FinalRawProviderV2Registered",
+            "FinalEvaluationEligibilityRecorded",
+            "FinalTestCapabilityV2Issued",
+            "FinalOutcomeAccessV2Recorded",
+            "FinalContaminationV2Recorded",
+            "FinalTestArtifactV2Recorded",
+            "FinalTestFailedV2Recorded",
+            "FinalSelectionAssessmentV2Recorded",
+        }:
+            self._validate_final_v2_transition(conn, event_type, draft.run_id, payload)
             return
         if event_type == "FinalCandidateFrozen":
             self._validate_final_candidate_transition(conn, payload)
@@ -4446,14 +5679,8 @@ class ResearchEventStore:
                 "SELECT 1 FROM research_events WHERE event_type = 'TrialTerminated' AND entity_id = ?",
                 (trial_id,),
             ).fetchone()
-            if (
-                started is None
-                or terminal is not None
-                or str(started["run_id"]) != draft.run_id
-            ):
-                raise EventTransitionError(
-                    "generation failure requires a prior active trial in the same run"
-                )
+            if started is None or terminal is not None or str(started["run_id"]) != draft.run_id:
+                raise EventTransitionError("generation failure requires a prior active trial in the same run")
             return
         if event_type not in {"TrialStarted", "EvaluationRecorded", "TrialTerminated"}:
             return
@@ -4529,18 +5756,14 @@ class ResearchEventStore:
             "SELECT payload FROM research_events WHERE event_type = 'FactorDefinitionRecorded' ORDER BY seq ASC"
         ).fetchall()
         if any(
-            str(json.loads(str(row["payload"]))["metadata"].get("originating_trial_id", ""))
-            == payload["trial_id"]
+            str(json.loads(str(row["payload"]))["metadata"].get("originating_trial_id", "")) == payload["trial_id"]
             for row in definitions
         ):
             raise EventTransitionError("process action v2 must be frozen before child generation")
         prior_actions = conn.execute(
             "SELECT payload FROM research_events WHERE event_type = 'ProcessActionFrozenV2' ORDER BY seq ASC"
         ).fetchall()
-        if any(
-            json.loads(str(row["payload"]))["trial_id"] == payload["trial_id"]
-            for row in prior_actions
-        ):
+        if any(json.loads(str(row["payload"]))["trial_id"] == payload["trial_id"] for row in prior_actions):
             raise EventTransitionError("trial already has a frozen process action v2")
 
     @staticmethod
@@ -4558,15 +5781,16 @@ class ResearchEventStore:
         prior_outcomes = conn.execute(
             "SELECT payload FROM research_events WHERE event_type = 'ProcessOutcomeRecordedV2' ORDER BY seq ASC"
         ).fetchall()
-        if any(
-            json.loads(str(row["payload"]))["action_id"] == payload["action_id"]
-            for row in prior_outcomes
-        ):
+        if any(json.loads(str(row["payload"]))["action_id"] == payload["action_id"] for row in prior_outcomes):
             raise EventTransitionError("process action v2 already has a terminal outcome")
         action = json.loads(str(action_row["payload"]))
         matching_fields = (
-            "trial_id", "policy_hash", "utility_policy_hash", "data_snapshot_hash",
-            "regime_config_hash", "run_group_id",
+            "trial_id",
+            "policy_hash",
+            "utility_policy_hash",
+            "data_snapshot_hash",
+            "regime_config_hash",
+            "run_group_id",
         )
         if any(action[name] != payload[name] for name in matching_fields) or str(action_row["run_id"]) != draft.run_id:
             raise EventTransitionError("process outcome v2 does not match its frozen action")
@@ -4649,9 +5873,7 @@ class ResearchEventStore:
         payload: Mapping[str, Any],
     ) -> None:
         if draft.run_id != payload["execution_run_id"]:
-            raise EventTransitionError(
-                "Retriever action envelope run differs from its execution run"
-            )
+            raise EventTransitionError("Retriever action envelope run differs from its execution run")
         existing = conn.execute(
             """
             SELECT 1 FROM research_events
@@ -4669,21 +5891,13 @@ class ResearchEventStore:
             """,
             (payload["parent_factor_spec_id"],),
         ).fetchone()
-        if (
-            definition is None
-            or str(definition["event_hash"])
-            != payload["parent_definition_event_hash"]
-        ):
-            raise EventTransitionError(
-                "Retriever action parent definition hash differs"
-            )
+        if definition is None or str(definition["event_hash"]) != payload["parent_definition_event_hash"]:
+            raise EventTransitionError("Retriever action parent definition hash differs")
         ResearchEventStore._validate_retriever_v2_transition(
             conn,
             {
                 "eligible_event_watermark": payload["eligible_event_watermark"],
-                "components": [
-                    {"factor_spec_id": payload["parent_factor_spec_id"]}
-                ],
+                "components": [{"factor_spec_id": payload["parent_factor_spec_id"]}],
             },
         )
 
@@ -4709,16 +5923,12 @@ class ResearchEventStore:
             "SELECT seq, payload FROM research_events WHERE event_type = 'ProcessOutcomeRecordedV2' ORDER BY seq ASC"
         ).fetchall()
         evaluation_payloads = [
-            (int(row["seq"]), str(row["event_hash"]), json.loads(str(row["payload"])))
-            for row in evaluations
+            (int(row["seq"]), str(row["event_hash"]), json.loads(str(row["payload"]))) for row in evaluations
         ]
         terminal_payloads = [
-            (int(row["seq"]), str(row["event_hash"]), json.loads(str(row["payload"])))
-            for row in terminals
+            (int(row["seq"]), str(row["event_hash"]), json.loads(str(row["payload"]))) for row in terminals
         ]
-        outcome_payloads = [
-            (int(row["seq"]), json.loads(str(row["payload"]))) for row in outcomes
-        ]
+        outcome_payloads = [(int(row["seq"]), json.loads(str(row["payload"]))) for row in outcomes]
         for component in payload["components"]:
             factor_id = component["factor_spec_id"]
             definition = conn.execute(
@@ -4731,18 +5941,23 @@ class ResearchEventStore:
             for evaluation_seq, evaluation_hash, evaluation in evaluation_payloads:
                 if evaluation_seq > watermark_seq:
                     continue
-                if evaluation["factor_spec_id"] != factor_id or evaluation["data_scope"] not in {"valid", "train_valid"}:
+                if evaluation["factor_spec_id"] != factor_id or evaluation["data_scope"] not in {
+                    "valid",
+                    "train_valid",
+                }:
                     continue
                 for terminal_seq, terminal_hash, terminal in terminal_payloads:
                     if terminal_seq > watermark_seq:
                         continue
-                    if terminal["trial_id"] != evaluation["trial_id"] or terminal["status"] not in {"success", "reject"}:
+                    if terminal["trial_id"] != evaluation["trial_id"] or terminal["status"] not in {
+                        "success",
+                        "reject",
+                    }:
                         continue
                     directly_cited = terminal["evaluation_event_hash"] == evaluation_hash
                     outcome_cited = any(
                         outcome_seq <= watermark_seq
-                        and
-                        outcome["terminal_event_hash"] == terminal_hash
+                        and outcome["terminal_event_hash"] == terminal_hash
                         and outcome["evaluation_event_hash"] == evaluation_hash
                         for outcome_seq, outcome in outcome_payloads
                     )
@@ -4862,9 +6077,7 @@ class ResearchEventStore:
             ),
         ).fetchone()
         if prior is not None:
-            raise EventTransitionError(
-                "Activation run already has resource evidence"
-            )
+            raise EventTransitionError("Activation run already has resource evidence")
         result = conn.execute(
             "SELECT 1 FROM research_events WHERE event_type = 'ActivationResultRecorded' AND json_extract(payload, '$.plan_hash') = ?",
             (payload["plan_hash"],),
@@ -4891,9 +6104,7 @@ class ResearchEventStore:
         ).fetchall()
         if not runs:
             if payload["replayable"] or not payload["invalidation_reasons"]:
-                raise EventTransitionError(
-                    "outcome-free activation result must explicitly invalidate preflight"
-                )
+                raise EventTransitionError("outcome-free activation result must explicitly invalidate preflight")
             return
         arms: dict[str, set[str]] = {}
         for row in runs:
@@ -4982,9 +6193,258 @@ class ResearchEventStore:
             raise EventTransitionError("successful terminal does not reference complement evaluation")
 
     @staticmethod
-    def _validate_final_candidate_transition(
-        conn: sqlite3.Connection, payload: Mapping[str, Any]
+    def _validate_falsification_v2_transition(
+        conn: sqlite3.Connection,
+        event_type: str,
+        run_id: str,
+        payload: Mapping[str, Any],
     ) -> None:
+        if event_type == "FalsificationCatalogV2Registered":
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.catalog_hash') = ?",
+                (event_type, payload["catalog_hash"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("falsification v2 catalog is already registered")
+            return
+        if event_type == "FalsificationContractV2Registered":
+            catalog = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationCatalogV2Registered' AND event_hash = ?",
+                (payload["catalog_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.contract_hash') = ?",
+                (event_type, payload["contract_hash"]),
+            ).fetchone()
+            if (
+                catalog is None
+                or str(catalog["run_id"]) != run_id
+                or json.loads(str(catalog["payload"]))["catalog_hash"] != payload["catalog_hash"]
+                or prior is not None
+            ):
+                raise EventTransitionError("falsification v2 contract lacks its exact catalog")
+            return
+        contract = conn.execute(
+            "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationContractV2Registered' AND event_hash = ?",
+            (payload["contract_event_hash"],),
+        ).fetchone()
+        if contract is None or str(contract["run_id"]) != run_id:
+            raise EventTransitionError("falsification v2 event lacks its exact contract")
+        contract_payload = json.loads(str(contract["payload"]))
+        if (
+            contract_payload["contract_hash"] != payload["contract_hash"]
+            or contract_payload["factor_spec_id"] != payload["factor_spec_id"]
+        ):
+            raise EventTransitionError("falsification v2 contract binding differs")
+        expected_test_ids = [item["test_id"] for item in contract_payload["contract"]["tests"]]
+        if event_type == "FalsificationOutcomeAccessV2Recorded":
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.contract_hash') = ?",
+                (event_type, payload["contract_hash"]),
+            ).fetchone()
+            if prior is not None or payload["test_ids"] != expected_test_ids:
+                raise EventTransitionError("falsification v2 outcome access differs or repeats")
+            return
+        if event_type == "FalsificationSourceArtifactV2Recorded":
+            access = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationOutcomeAccessV2Recorded' AND event_hash = ?",
+                (payload["access_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.contract_hash') = ?",
+                (event_type, payload["contract_hash"]),
+            ).fetchone()
+            if (
+                access is None
+                or str(access["run_id"]) != run_id
+                or json.loads(str(access["payload"]))["contract_event_hash"] != payload["contract_event_hash"]
+                or payload["test_ids"] != expected_test_ids
+                or prior is not None
+            ):
+                raise EventTransitionError("falsification v2 source authority differs")
+            return
+        if event_type == "FalsificationResultV2Recorded":
+            source = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationSourceArtifactV2Recorded' AND event_hash = ?",
+                (payload["source_event_hash"],),
+            ).fetchone()
+            access = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FalsificationOutcomeAccessV2Recorded' AND event_hash = ?",
+                (payload["outcome_access_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.contract_hash') = ?",
+                (event_type, payload["contract_hash"]),
+            ).fetchone()
+            result_ids = [item["test_id"] for item in payload["test_results"]]
+            if (
+                source is None
+                or access is None
+                or str(source["run_id"]) != run_id
+                or str(access["run_id"]) != run_id
+                or json.loads(str(source["payload"]))["access_event_hash"] != payload["outcome_access_event_hash"]
+                or json.loads(str(source["payload"]))["source_hash"] != payload["source_hash"]
+                or payload["family_id"] != contract_payload["family_id"]
+                or result_ids != expected_test_ids
+                or prior is not None
+            ):
+                raise EventTransitionError("falsification v2 result authority differs")
+            return
+
+    @staticmethod
+    def _validate_final_v2_transition(
+        conn: sqlite3.Connection,
+        event_type: str,
+        run_id: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if event_type == "FinalRawProviderV2Registered":
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.descriptor.provider_id') = ? AND json_extract(payload, '$.descriptor.provider_version') = ?",
+                (
+                    event_type,
+                    payload["descriptor"]["provider_id"],
+                    payload["descriptor"]["provider_version"],
+                ),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("final raw provider is already registered")
+            return
+        eligibility_hash = payload.get("eligibility_event_hash")
+        if event_type == "FinalEvaluationEligibilityRecorded":
+            expected = {
+                payload["factor_definition_event_hash"]: "FactorDefinitionRecorded",
+                payload["prefinal_decision_event_hash"]: "QualityDecisionV4Recorded",
+                payload["contract_event_hash"]: "ResolvedEvaluationContractRegistered",
+                payload["provider_registration_event_hash"]: "FinalRawProviderV2Registered",
+            }
+            rows = {
+                str(row["event_hash"]): row
+                for row in conn.execute(
+                    "SELECT event_hash, event_type, run_id, payload FROM research_events WHERE event_hash IN (%s)"
+                    % ",".join("?" for _ in expected),
+                    tuple(expected),
+                ).fetchall()
+            }
+            if len(rows) != len(expected) or any(
+                rows[event_hash]["event_type"] != expected_type or str(rows[event_hash]["run_id"]) != run_id
+                for event_hash, expected_type in expected.items()
+            ):
+                raise EventTransitionError("final v2 eligibility sources differ")
+            decision = json.loads(str(rows[payload["prefinal_decision_event_hash"]]["payload"]))
+            contract = json.loads(str(rows[payload["contract_event_hash"]]["payload"]))
+            definition = json.loads(str(rows[payload["factor_definition_event_hash"]]["payload"]))
+            provider = json.loads(str(rows[payload["provider_registration_event_hash"]]["payload"]))
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.research_family_id') = ?",
+                (event_type, payload["research_family_id"]),
+            ).fetchone()
+            if (
+                prior is not None
+                or decision["decision"] not in {"research_only", "candidate_zoo"}
+                or decision["decision_hash"] != payload["prefinal_decision_hash"]
+                or decision["factor_spec_id"] != payload["factor_spec_id"]
+                or definition["factor_spec_id"] != payload["factor_spec_id"]
+                or contract["research_family_id"] != payload["research_family_id"]
+                or contract["contract_hash"] != payload["contract_hash"]
+                or provider["descriptor"]["provider_id"] != payload["scope_config"]["provider_id"]
+                or provider["descriptor"]["provider_version"] != payload["scope_config"]["provider_version"]
+            ):
+                raise EventTransitionError("final v2 eligibility authority differs")
+            return
+        if event_type == "FinalSelectionAssessmentV2Recorded":
+            eligibility = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FinalEvaluationEligibilityRecorded' AND json_extract(payload, '$.final_evaluation_key') = ?",
+                (payload["final_evaluation_key"],),
+            ).fetchone()
+        else:
+            eligibility = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FinalEvaluationEligibilityRecorded' AND event_hash = ?",
+                (eligibility_hash,),
+            ).fetchone()
+        if eligibility is None or str(eligibility["run_id"]) != run_id:
+            raise EventTransitionError("final v2 event lacks exact eligibility")
+        eligibility_payload = json.loads(str(eligibility["payload"]))
+        if (
+            eligibility_payload["eligibility_hash"]
+            != payload.get("eligibility_hash", eligibility_payload["eligibility_hash"])
+            or eligibility_payload["final_evaluation_key"] != payload["final_evaluation_key"]
+        ):
+            raise EventTransitionError("final v2 eligibility binding differs")
+        if event_type == "FinalTestCapabilityV2Issued":
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.final_evaluation_key') = ?",
+                (event_type, payload["final_evaluation_key"]),
+            ).fetchone()
+            if prior is not None:
+                raise EventTransitionError("final v2 capability already exists")
+            return
+        if event_type == "FinalOutcomeAccessV2Recorded":
+            capability = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FinalTestCapabilityV2Issued' AND json_extract(payload, '$.capability_hash') = ?",
+                (payload["capability_hash"],),
+            ).fetchone()
+            if capability is None or str(capability["run_id"]) != run_id:
+                raise EventTransitionError("final v2 access lacks capability")
+            prior_allowed = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = ? AND json_extract(payload, '$.final_evaluation_key') = ? AND json_extract(payload, '$.outcome') = 'allowed'",
+                (event_type, payload["final_evaluation_key"]),
+            ).fetchone()
+            if payload["outcome"] == "allowed" and prior_allowed is not None:
+                raise EventTransitionError("final v2 physical access already occurred")
+            return
+        if event_type == "FinalContaminationV2Recorded":
+            return
+        if event_type in {"FinalTestArtifactV2Recorded", "FinalTestFailedV2Recorded"}:
+            access = conn.execute(
+                "SELECT run_id, payload FROM research_events WHERE event_type = 'FinalOutcomeAccessV2Recorded' AND event_hash = ?",
+                (payload["access_event_hash"],),
+            ).fetchone()
+            prior = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type IN ('FinalTestArtifactV2Recorded', 'FinalTestFailedV2Recorded') AND json_extract(payload, '$.final_evaluation_key') = ?",
+                (payload["final_evaluation_key"],),
+            ).fetchone()
+            if (
+                access is None
+                or str(access["run_id"]) != run_id
+                or json.loads(str(access["payload"]))["outcome"] != "allowed"
+                or prior is not None
+                or payload["research_family_id"] != eligibility_payload["research_family_id"]
+                or payload["factor_spec_id"] != eligibility_payload["factor_spec_id"]
+            ):
+                raise EventTransitionError("final v2 terminal authority differs")
+            return
+        if event_type == "FinalSelectionAssessmentV2Recorded":
+            accesses = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type = 'FinalOutcomeAccessV2Recorded' AND json_extract(payload, '$.final_evaluation_key') = ?",
+                (payload["final_evaluation_key"],),
+            ).fetchall()
+            artifacts = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type = 'FinalTestArtifactV2Recorded' AND json_extract(payload, '$.final_evaluation_key') = ?",
+                (payload["final_evaluation_key"],),
+            ).fetchall()
+            failures = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type = 'FinalTestFailedV2Recorded' AND json_extract(payload, '$.final_evaluation_key') = ?",
+                (payload["final_evaluation_key"],),
+            ).fetchall()
+            taints = conn.execute(
+                "SELECT event_hash FROM research_events WHERE event_type = 'FinalContaminationV2Recorded' AND json_extract(payload, '$.final_evaluation_key') = ?",
+                (payload["final_evaluation_key"],),
+            ).fetchall()
+            expected_sources = sorted(str(row["event_hash"]) for row in (*accesses, *artifacts, *failures, *taints))
+            if (
+                payload["access_count"] != len(accesses)
+                or payload["artifact_count"] != len(artifacts)
+                or payload["failure_count"] != len(failures)
+                or payload["terminal_count"] != len(artifacts) + len(failures)
+                or payload["taint_count"] != len(taints)
+                or payload["source_event_hashes"] != expected_sources
+            ):
+                raise EventTransitionError("final v2 selection population differs")
+            return
+
+    @staticmethod
+    def _validate_final_candidate_transition(conn: sqlite3.Connection, payload: Mapping[str, Any]) -> None:
         definition = conn.execute(
             "SELECT event_hash FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ? ORDER BY seq DESC LIMIT 1",
             (payload["factor_spec_id"],),
@@ -5001,9 +6461,7 @@ class ResearchEventStore:
             raise EventTransitionError("final candidate freeze already exists")
 
     @staticmethod
-    def _validate_final_capability_transition(
-        conn: sqlite3.Connection, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_final_capability_transition(conn: sqlite3.Connection, payload: Mapping[str, Any]) -> None:
         freeze = conn.execute(
             """
             SELECT payload FROM research_events
@@ -5033,9 +6491,7 @@ class ResearchEventStore:
             raise EventTransitionError("frozen candidate already has a final capability")
 
     @staticmethod
-    def _validate_final_access_transition(
-        conn: sqlite3.Connection, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_final_access_transition(conn: sqlite3.Connection, payload: Mapping[str, Any]) -> None:
         definition = conn.execute(
             "SELECT 1 FROM research_events WHERE event_type = 'FactorDefinitionRecorded' AND entity_id = ?",
             (payload["factor_spec_id"],),
@@ -5077,9 +6533,7 @@ class ResearchEventStore:
                 raise EventTransitionError("final capability was already consumed")
 
     @staticmethod
-    def _validate_final_artifact_transition(
-        conn: sqlite3.Connection, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_final_artifact_transition(conn: sqlite3.Connection, payload: Mapping[str, Any]) -> None:
         access_row = conn.execute(
             """
             SELECT payload FROM research_events
@@ -5132,9 +6586,7 @@ class ResearchEventStore:
             raise EventTransitionError("frozen candidate already has a final artifact")
 
     @staticmethod
-    def _validate_forward_plan_v2_transition(
-        conn: sqlite3.Connection, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_forward_plan_v2_transition(conn: sqlite3.Connection, payload: Mapping[str, Any]) -> None:
         artifact_row = conn.execute(
             """
             SELECT payload FROM research_events
@@ -5165,9 +6617,7 @@ class ResearchEventStore:
             raise EventTransitionError("forward plan requires qualified uncontaminated final evidence")
 
     @staticmethod
-    def _validate_forward_observation_v2_transition(
-        conn: sqlite3.Connection, payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_forward_observation_v2_transition(conn: sqlite3.Connection, payload: Mapping[str, Any]) -> None:
         plan_row = conn.execute(
             "SELECT payload FROM research_events WHERE event_type = 'ForwardPlanV2Recorded' AND entity_id = ?",
             (payload["plan_id"],),
@@ -5282,11 +6732,7 @@ class ResearchEventStore:
 
         used_block_ids = {str(look["block_id"]) for _, look in prior}
         used_block_hashes = {str(look["block_hash"]) for _, look in prior}
-        used_unit_hashes = {
-            str(unit_hash)
-            for _, look in prior
-            for unit_hash in look["unit_hashes"]
-        }
+        used_unit_hashes = {str(unit_hash) for _, look in prior for unit_hash in look["unit_hashes"]}
         if payload["block_id"] in used_block_ids or payload["block_hash"] in used_block_hashes:
             raise EventTransitionError("sequential look cannot reuse an observed block")
         if used_unit_hashes.intersection(str(item) for item in payload["unit_hashes"]):
@@ -5305,9 +6751,7 @@ class ResearchEventStore:
                 raise EventTransitionError("sequential look index must be contiguous")
             if payload["previous_look_event_hash"] != previous_hash:
                 raise EventTransitionError("sequential look previous hash does not match")
-            expected_information = int(previous["information_time"]) + int(
-                payload["incremental_information"]
-            )
+            expected_information = int(previous["information_time"]) + int(payload["incremental_information"])
             if payload["information_time"] != expected_information:
                 raise EventTransitionError("sequential information time must advance cumulatively")
 
@@ -5343,9 +6787,7 @@ class ResearchEventStore:
         payload: Mapping[str, Any],
     ) -> None:
         source_hashes = tuple(str(item) for item in payload["source_event_hashes"])
-        referenced_result_hashes = {
-            str(item) for item in payload["source_result_hashes"]
-        }
+        referenced_result_hashes = {str(item) for item in payload["source_result_hashes"]}
         available_result_hashes: set[str] = set()
         source_outcomes: dict[str, str] = {}
         for source_hash in source_hashes:
@@ -5360,10 +6802,7 @@ class ResearchEventStore:
                 raise EventTransitionError("MEI references no prior falsification result")
             result = json.loads(str(result_row["payload"]))
             source_outcomes[source_hash] = str(result["outcome"])
-            available_result_hashes.update(
-                str(reference["artifact_hash"])
-                for reference in result["artifact_refs"]
-            )
+            available_result_hashes.update(str(reference["artifact_hash"]) for reference in result["artifact_refs"])
             contract_row = conn.execute(
                 """
                 SELECT payload FROM research_events
@@ -5390,14 +6829,10 @@ class ResearchEventStore:
             raise EventTransitionError("MEI hash does not match deterministic ordinal content")
 
     @staticmethod
-    def _validate_sequential_mixture_evidence(
-        protocol: Mapping[str, Any], payload: Mapping[str, Any]
-    ) -> None:
+    def _validate_sequential_mixture_evidence(protocol: Mapping[str, Any], payload: Mapping[str, Any]) -> None:
         weights = tuple(float(value) for value in protocol["mixture_weights"])
         support = tuple(float(value) for value in payload["support_component_log_capitals"])
-        contradiction = tuple(
-            float(value) for value in payload["contradiction_component_log_capitals"]
-        )
+        contradiction = tuple(float(value) for value in payload["contradiction_component_log_capitals"])
         if len(support) != len(weights) or len(contradiction) != len(weights):
             raise EventTransitionError("sequential component state does not match frozen mixture")
 
@@ -5422,13 +6857,9 @@ class ResearchEventStore:
             raise EventTransitionError("sequential cumulative log-e does not match component state")
 
     @staticmethod
-    def _mechanism_ordinal_state(
-        source_outcomes: Mapping[str, str], decisive_event_hashes: set[str]
-    ) -> str:
+    def _mechanism_ordinal_state(source_outcomes: Mapping[str, str], decisive_event_hashes: set[str]) -> str:
         decisive_outcomes = [
-            outcome
-            for event_hash, outcome in source_outcomes.items()
-            if event_hash in decisive_event_hashes
+            outcome for event_hash, outcome in source_outcomes.items() if event_hash in decisive_event_hashes
         ]
         if any(outcome == "falsified" for outcome in decisive_outcomes):
             return "falsified"
@@ -5457,9 +6888,7 @@ class ResearchEventStore:
         }
 
     def _tail_hash(self, conn: sqlite3.Connection) -> str | None:
-        row = conn.execute(
-            "SELECT event_hash FROM research_events ORDER BY seq DESC LIMIT 1"
-        ).fetchone()
+        row = conn.execute("SELECT event_hash FROM research_events ORDER BY seq DESC LIMIT 1").fetchone()
         return None if row is None else str(row["event_hash"])
 
     @staticmethod
@@ -5512,12 +6941,8 @@ class ResearchEventStore:
             payload_schema_version=str(row["payload_schema_version"]),
             payload=json.loads(row["payload"]),
             payload_hash=str(row["payload_hash"]),
-            idempotency_key=(
-                None if row["idempotency_key"] is None else str(row["idempotency_key"])
-            ),
-            previous_event_hash=(
-                None if row["previous_event_hash"] is None else str(row["previous_event_hash"])
-            ),
+            idempotency_key=(None if row["idempotency_key"] is None else str(row["idempotency_key"])),
+            previous_event_hash=(None if row["previous_event_hash"] is None else str(row["previous_event_hash"])),
             event_hash=str(row["event_hash"]),
             created_at=str(row["created_at"]),
             code_version=str(row["code_version"]),
@@ -5597,11 +7022,51 @@ class ResearchEventStore:
                     event.event_type,
                     validated_payload,
                 )
+                self._validate_external_resolved_evaluation_contract(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_applicability_assessment(
+                    event.event_type,
+                    validated_payload,
+                )
                 self._validate_external_scorecard_evidence_v3(
                     event.event_type,
                     validated_payload,
                 )
                 self._validate_external_snapshot_evidence_v3(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_pit_adapter_registration(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_pit_snapshot(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_predictive_v4(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_execution_evidence(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_secondary_evidence(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_claim_decision(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_research_dossier(
+                    event.event_type,
+                    validated_payload,
+                )
+                self._validate_external_production_evaluator(
                     event.event_type,
                     validated_payload,
                 )
@@ -5761,10 +7226,36 @@ class ResearchEventStore:
         scorecard_evidence_keys: set[tuple[str, str, str]] = set()
         snapshot_evidence_keys: set[tuple[str, str]] = set()
         evaluation_policy_runs: set[str] = set()
+        resolved_contract_runs: set[str] = set()
+        resolved_contract_events: dict[str, ResearchEventEnvelope] = {}
+        applicability_keys: set[tuple[str, str, str]] = set()
+        pit_adapter_ids: set[str] = set()
+        pit_adapter_registration_hashes: set[str] = set()
+        pit_adapter_events: dict[str, ResearchEventEnvelope] = {}
+        pit_snapshot_runs: set[str] = set()
+        factor_output_keys: set[tuple[str, str]] = set()
+        factor_output_events: dict[str, ResearchEventEnvelope] = {}
+        observed_predictive_keys: set[tuple[str, str]] = set()
+        pit_predictive_keys: set[tuple[str, str]] = set()
+        predictive_events: dict[str, ResearchEventEnvelope] = {}
+        scorecard_v4_keys: set[tuple[str, str]] = set()
+        execution_evidence_keys: set[tuple[str, str]] = set()
+        comparison_pool_hashes: set[str] = set()
+        comparison_pool_events: dict[str, ResearchEventEnvelope] = {}
+        secondary_evidence_keys: set[tuple[str, str]] = set()
+        selection_assessment_runs: set[str] = set()
+        selection_assessment_events: dict[str, ResearchEventEnvelope] = {}
+        claim_matrix_keys: set[tuple[str, str]] = set()
+        claim_matrix_events: dict[str, ResearchEventEnvelope] = {}
+        quality_decision_v4_keys: set[tuple[str, str]] = set()
+        research_dossier_keys: set[tuple[str, str]] = set()
+        experiment_run_report_runs: set[str] = set()
+        production_node_keys: set[tuple[str, str]] = set()
+        production_node_events: set[str] = set()
+        terminal_dossier_trials: set[str] = set()
+        report_failure_trials: set[str] = set()
         seen_run_ids: set[str] = set()
-        event_order = {
-            event.event_hash: index for index, event in enumerate(events)
-        }
+        event_order = {event.event_hash: index for index, event in enumerate(events)}
         events_by_hash = {event.event_hash: event for event in events}
         for event in events:
             payload = event.payload
@@ -5802,9 +7293,7 @@ class ResearchEventStore:
                     activation_arm_execution_run_id,
                 )
 
-                schedule = pair_schedule_events.get(
-                    str(payload["schedule_event_hash"])
-                )
+                schedule = pair_schedule_events.get(str(payload["schedule_event_hash"]))
                 schedule_hash = str(payload["schedule_hash"])
                 arm_run_ids = {
                     activation_arm_execution_run_id(
@@ -5878,8 +7367,7 @@ class ResearchEventStore:
                     or watermark_index < 0
                     or watermark_index >= current_index
                     or definition_hash != payload["parent_definition_event_hash"]
-                    or event_order.get(str(definition_hash), current_index)
-                    > watermark_index
+                    or event_order.get(str(definition_hash), current_index) > watermark_index
                 ):
                     return False
                 eligible = False
@@ -5887,29 +7375,22 @@ class ResearchEventStore:
                     if (
                         event_order[evaluation_hash] > watermark_index
                         or candidate_evaluation["factor_spec_id"] != factor_id
-                        or candidate_evaluation["data_scope"]
-                        not in {"valid", "train_valid"}
+                        or candidate_evaluation["data_scope"] not in {"valid", "train_valid"}
                     ):
                         continue
                     for terminal_hash, candidate_terminal in terminal_payloads.items():
                         if (
                             event_order[terminal_hash] > watermark_index
-                            or candidate_terminal["trial_id"]
-                            != candidate_evaluation["trial_id"]
-                            or candidate_terminal["status"]
-                            not in {"success", "reject"}
+                            or candidate_terminal["trial_id"] != candidate_evaluation["trial_id"]
+                            or candidate_terminal["status"] not in {"success", "reject"}
                         ):
                             continue
-                        directly_cited = (
-                            candidate_terminal["evaluation_event_hash"]
-                            == evaluation_hash
-                        )
+                        directly_cited = candidate_terminal["evaluation_event_hash"] == evaluation_hash
                         outcome_cited = any(
                             event_order[outcome_hash] <= watermark_index
                             and cited_terminal == terminal_hash
                             and cited_evaluation == evaluation_hash
-                            for outcome_hash, cited_terminal, cited_evaluation
-                            in process_outcome_links
+                            for outcome_hash, cited_terminal, cited_evaluation in process_outcome_links
                         )
                         if directly_cited or outcome_cited:
                             eligible = True
@@ -5933,18 +7414,479 @@ class ResearchEventStore:
                     run_seen_before
                     or event.run_id in evaluation_policy_runs
                     or event.entity_id != expected_id
-                    or event.previous_event_hash
-                    != payload["preregistration_watermark"]
+                    or event.previous_event_hash != payload["preregistration_watermark"]
                 ):
                     return False
                 evaluation_policy_runs.add(event.run_id)
+            elif event.event_type == "ResolvedEvaluationContractRegistered":
+                policy = events_by_hash.get(str(payload["evaluation_policy_event_hash"]))
+                prior_run_events = [
+                    prior for prior in events[: event_order[event.event_hash]] if prior.run_id == event.run_id
+                ]
+                if (
+                    event.run_id in resolved_contract_runs
+                    or policy is None
+                    or policy.event_type != "EvaluationPolicyRegistered"
+                    or policy.run_id != event.run_id
+                    or len(prior_run_events) != 1
+                    or prior_run_events[0].event_hash != policy.event_hash
+                    or policy.payload["bundle_hash"] != payload["evaluation_policy_bundle_hash"]
+                    or payload["preregistration_watermark"] != policy.event_hash
+                ):
+                    return False
+                resolved_contract_runs.add(event.run_id)
+                resolved_contract_events[str(payload["contract_hash"])] = event
+            elif event.event_type == "ApplicabilityAssessmentRecorded":
+                contract = resolved_contract_events.get(str(payload["resolved_contract_hash"]))
+                definition = events_by_hash.get(str(payload["factor_definition_event_hash"]))
+                key = (
+                    str(payload["resolved_contract_hash"]),
+                    str(payload["factor_spec_id"]),
+                    str(payload["claim_type"]),
+                )
+                if (
+                    key in applicability_keys
+                    or contract is None
+                    or definition is None
+                    or definition.event_type != "FactorDefinitionRecorded"
+                    or contract.run_id != event.run_id
+                    or definition.run_id != event.run_id
+                    or contract.event_hash not in payload["source_event_hashes"]
+                    or definition.event_hash not in payload["source_event_hashes"]
+                    or definition.payload["factor_spec_id"] != payload["factor_spec_id"]
+                ):
+                    return False
+                applicability_keys.add(key)
+            elif event.event_type == "AsharePITAdapterRegistered":
+                adapter_id = str(payload["adapter_id"])
+                registration_hash = str(payload["registration_hash"])
+                if (
+                    adapter_id in pit_adapter_ids
+                    or registration_hash in pit_adapter_registration_hashes
+                    or event.previous_event_hash != payload["source_watermark_event_hash"]
+                ):
+                    return False
+                pit_adapter_ids.add(adapter_id)
+                pit_adapter_registration_hashes.add(registration_hash)
+                pit_adapter_events[event.event_hash] = event
+            elif event.event_type == "AsharePITSnapshotRecorded":
+                registration = pit_adapter_events.get(str(payload["adapter_registration_event_hash"]))
+                policy = events_by_hash.get(str(payload["evaluation_policy_event_hash"]))
+                if (
+                    event.run_id in pit_snapshot_runs
+                    or registration is None
+                    or policy is None
+                    or policy.event_type != "EvaluationPolicyRegistered"
+                    or policy.run_id != event.run_id
+                    or event.previous_event_hash != payload["source_watermark_event_hash"]
+                    or registration.payload["adapter_id"] != payload["adapter_id"]
+                    or registration.payload["registration_hash"] != payload["registration_hash"]
+                    or any(run == event.run_id for run in started.values())
+                ):
+                    return False
+                pit_snapshot_runs.add(event.run_id)
+            elif event.event_type == "FactorOutputRecordedV3":
+                contract = events_by_hash.get(str(payload["contract_event_hash"]))
+                snapshot = events_by_hash.get(str(payload["pit_snapshot_event_hash"]))
+                definitions_for_factor = [
+                    candidate
+                    for candidate in events[: event_order[event.event_hash]]
+                    if candidate.event_type == "FactorDefinitionRecorded"
+                    and candidate.entity_id == payload["factor_spec_id"]
+                ]
+                factor_output_key = (event.run_id, str(payload["factor_spec_id"]))
+                if (
+                    factor_output_key in factor_output_keys
+                    or contract is None
+                    or contract.event_type != "ResolvedEvaluationContractRegistered"
+                    or snapshot is None
+                    or snapshot.event_type != "AsharePITSnapshotRecorded"
+                    or len(definitions_for_factor) != 1
+                    or contract.run_id != event.run_id
+                    or snapshot.run_id != event.run_id
+                    or definitions_for_factor[0].run_id != event.run_id
+                    or contract.payload["contract_hash"] != payload["resolved_contract_hash"]
+                    or snapshot.payload["snapshot_hash"] != payload["pit_snapshot_hash"]
+                    or definitions_for_factor[0].event_hash not in payload["source_event_hashes"]
+                ):
+                    return False
+                factor_output_keys.add(factor_output_key)
+                factor_output_events[event.event_hash] = event
+            elif event.event_type in {
+                "ObservedPanelPredictiveEvidenceRecorded",
+                "PITPredictiveEvidenceRecorded",
+            }:
+                factor = factor_output_events.get(str(payload["factor_output_event_hash"]))
+                predictive_key = (event.run_id, str(payload["factor_spec_id"]))
+                keys = (
+                    observed_predictive_keys
+                    if event.event_type == "ObservedPanelPredictiveEvidenceRecorded"
+                    else pit_predictive_keys
+                )
+                if (
+                    factor is None
+                    or predictive_key in keys
+                    or factor.run_id != event.run_id
+                    or factor.payload["factor_output_hash"] != payload["factor_output_hash"]
+                    or factor.payload["factor_spec_id"] != payload["factor_spec_id"]
+                    or factor.payload["resolved_contract_hash"] != payload["resolved_contract_hash"]
+                ):
+                    return False
+                keys.add(predictive_key)
+                predictive_events[event.event_hash] = event
+            elif event.event_type == "ScorecardDecisionEvidenceV4Recorded":
+                factor = factor_output_events.get(str(payload["factor_output_event_hash"]))
+                observed = predictive_events.get(str(payload["observed_event_hash"]))
+                pit = predictive_events.get(str(payload["pit_event_hash"]))
+                scorecard_key = (event.run_id, str(payload["factor_spec_id"]))
+                if (
+                    scorecard_key in scorecard_v4_keys
+                    or factor is None
+                    or observed is None
+                    or pit is None
+                    or observed.event_type != "ObservedPanelPredictiveEvidenceRecorded"
+                    or pit.event_type != "PITPredictiveEvidenceRecorded"
+                    or any(source.run_id != event.run_id for source in (factor, observed, pit))
+                    or factor.payload["factor_output_hash"] != payload["factor_output_hash"]
+                    or observed.payload["evidence_hash"] != payload["observed_evidence_hash"]
+                    or pit.payload["evidence_hash"] != payload["pit_evidence_hash"]
+                ):
+                    return False
+                scorecard_v4_keys.add(scorecard_key)
+            elif event.event_type == "ExecutionEvidenceRecorded":
+                factor = factor_output_events.get(str(payload["factor_output_event_hash"]))
+                observed = predictive_events.get(str(payload["observed_predictive_event_hash"]))
+                execution_key = (event.run_id, str(payload["factor_spec_id"]))
+                sources = [events_by_hash.get(str(item)) for item in payload["source_event_hashes"]]
+                if (
+                    execution_key in execution_evidence_keys
+                    or factor is None
+                    or observed is None
+                    or observed.event_type != "ObservedPanelPredictiveEvidenceRecorded"
+                    or factor.run_id != event.run_id
+                    or observed.run_id != event.run_id
+                    or factor.payload["factor_spec_id"] != payload["factor_spec_id"]
+                    or factor.payload["resolved_contract_hash"] != payload["resolved_contract_hash"]
+                    or observed.payload["factor_output_event_hash"] != factor.event_hash
+                    or any(source is None for source in sources)
+                    or any(
+                        source is not None and event_order[source.event_hash] >= event_order[event.event_hash]
+                        for source in sources
+                    )
+                ):
+                    return False
+                execution_evidence_keys.add(execution_key)
+            elif event.event_type == "ComparisonPoolFrozen":
+                pool_hash = str(payload["comparison_pool_hash"])
+                watermark = events_by_hash.get(str(payload["source_watermark_event_hash"]))
+                valid_members = True
+                for member in payload["members"]:
+                    definition = events_by_hash.get(str(member["factor_definition_event_hash"]))
+                    if (
+                        definition is None
+                        or definition.event_type != "FactorDefinitionRecorded"
+                        or definition.payload["factor_spec_id"] != member["factor_spec_id"]
+                        or event_order[definition.event_hash] > int(payload["evidence_watermark"])
+                    ):
+                        valid_members = False
+                        break
+                    for field, expected_type in (
+                        ("factor_output_event_hash", "FactorOutputRecordedV3"),
+                        ("execution_event_hash", "ExecutionEvidenceRecorded"),
+                        ("decision_event_hash", "QualityDecisionV4Recorded"),
+                    ):
+                        source_hash = member[field]
+                        if source_hash is None:
+                            continue
+                        source = events_by_hash.get(str(source_hash))
+                        if (
+                            source is None
+                            or source.event_type != expected_type
+                            or source.payload.get("factor_spec_id") != member["factor_spec_id"]
+                            or event_order[source.event_hash] > int(payload["evidence_watermark"])
+                        ):
+                            valid_members = False
+                            break
+                if (
+                    pool_hash in comparison_pool_hashes
+                    or watermark is None
+                    or event_order[watermark.event_hash] != int(payload["evidence_watermark"])
+                    or event_order[watermark.event_hash] >= event_order[event.event_hash]
+                    or not valid_members
+                ):
+                    return False
+                comparison_pool_hashes.add(pool_hash)
+                comparison_pool_events[pool_hash] = event
+            elif event.event_type == "SecondaryEvidenceRecorded":
+                key = (event.run_id, str(payload["factor_spec_id"]))
+                definitions_for_factor = [
+                    candidate
+                    for candidate in events[: event_order[event.event_hash]]
+                    if candidate.event_type == "FactorDefinitionRecorded"
+                    and candidate.entity_id == payload["factor_spec_id"]
+                ]
+                pool = comparison_pool_events.get(str(payload["comparison_pool_hash"]))
+                applicability = events_by_hash.get(str(payload["applicability_event_hash"]))
+                sources = [events_by_hash.get(str(item)) for item in payload["source_event_hashes"]]
+                if (
+                    key in secondary_evidence_keys
+                    or len(definitions_for_factor) != 1
+                    or definitions_for_factor[0].run_id != event.run_id
+                    or pool is None
+                    or applicability is None
+                    or applicability.event_type != "ApplicabilityAssessmentRecorded"
+                    or applicability.run_id != event.run_id
+                    or applicability.payload["factor_spec_id"] != payload["factor_spec_id"]
+                    or any(source is None for source in sources)
+                    or any(
+                        source is not None and event_order[source.event_hash] >= event_order[event.event_hash]
+                        for source in sources
+                    )
+                ):
+                    return False
+                secondary_evidence_keys.add(key)
+            elif event.event_type == "SelectionAssessmentRecorded":
+                prior_events = events[: event_order[event.event_hash]]
+                contracts = [
+                    item
+                    for item in prior_events
+                    if item.event_type == "ResolvedEvaluationContractRegistered" and item.run_id == event.run_id
+                ]
+                starts_for_run = [
+                    item for item in prior_events if item.event_type == "TrialStarted" and item.run_id == event.run_id
+                ]
+                terminals_for_run = [
+                    item
+                    for item in prior_events
+                    if item.event_type == "TrialTerminated" and item.run_id == event.run_id
+                ]
+                finals_for_run = [
+                    item
+                    for item in prior_events
+                    if item.event_type in {"FinalTestAccessRecorded", "FinalTestArtifactRecorded"}
+                    and item.run_id == event.run_id
+                ]
+                expected_sources = tuple(
+                    sorted(
+                        {
+                            *(item.event_hash for item in contracts),
+                            *(item.event_hash for item in starts_for_run),
+                            *(item.event_hash for item in terminals_for_run),
+                            *(item.event_hash for item in finals_for_run),
+                        }
+                    )
+                )
+                if (
+                    event.run_id in selection_assessment_runs
+                    or len(contracts) != 1
+                    or contracts[0].payload["research_family_id"] != payload["research_family_id"]
+                    or payload["source_event_hashes"] != expected_sources
+                    or payload["trial_count"] != len(starts_for_run)
+                    or payload["final_access_count"] != len(finals_for_run)
+                ):
+                    return False
+                selection_assessment_runs.add(event.run_id)
+                selection_assessment_events[event.event_hash] = event
+            elif event.event_type == "ClaimMatrixRecorded":
+                key = (event.run_id, str(payload["factor_spec_id"]))
+                selection = selection_assessment_events.get(str(payload["selection_event_hash"]))
+                sources = [events_by_hash.get(str(item)) for item in payload["source_event_hashes"]]
+                allowed = {
+                    "SelectionAssessmentRecorded",
+                    "ObservedPanelPredictiveEvidenceRecorded",
+                    "PITPredictiveEvidenceRecorded",
+                    "ExecutionEvidenceRecorded",
+                    "SecondaryEvidenceRecorded",
+                }
+                if (
+                    key in claim_matrix_keys
+                    or selection is None
+                    or selection.run_id != event.run_id
+                    or selection.payload["assessment_hash"] != payload["selection_assessment_hash"]
+                    or any(source is None for source in sources)
+                    or any(
+                        source is not None
+                        and (
+                            source.event_type not in allowed
+                            or event_order[source.event_hash] >= event_order[event.event_hash]
+                        )
+                        for source in sources
+                    )
+                ):
+                    return False
+                claim_matrix_keys.add(key)
+                claim_matrix_events[event.event_hash] = event
+            elif event.event_type == "QualityDecisionV4Recorded":
+                key = (event.run_id, str(payload["factor_spec_id"]))
+                matrix = claim_matrix_events.get(str(payload["claim_matrix_event_hash"]))
+                selection = selection_assessment_events.get(str(payload["selection_event_hash"]))
+                if (
+                    key in quality_decision_v4_keys
+                    or matrix is None
+                    or selection is None
+                    or matrix.run_id != event.run_id
+                    or selection.run_id != event.run_id
+                    or matrix.payload["factor_spec_id"] != payload["factor_spec_id"]
+                    or matrix.payload["claim_matrix_hash"] != payload["claim_matrix_hash"]
+                    or selection.payload["assessment_hash"] != payload["selection_assessment_hash"]
+                ):
+                    return False
+                quality_decision_v4_keys.add(key)
+            elif event.event_type == "ResearchDossierRecorded":
+                key = (event.run_id, str(payload["factor_spec_id"]))
+                terminal = events_by_hash.get(str(payload["terminal_dossier_event_hash"]))
+                decision_hash = payload["quality_decision_event_hash"]
+                decision = None if decision_hash is None else events_by_hash.get(str(decision_hash))
+                sources = [events_by_hash.get(str(item)) for item in payload["source_event_hashes"]]
+                if (
+                    key in research_dossier_keys
+                    or terminal is None
+                    or terminal.event_type != "TrialTerminalDossierRecorded"
+                    or terminal.run_id != event.run_id
+                    or any(source is None for source in sources)
+                    or any(
+                        source is not None and event_order[source.event_hash] >= event_order[event.event_hash]
+                        for source in sources
+                    )
+                    or (
+                        decision_hash is not None
+                        and (
+                            decision is None
+                            or decision.event_type != "QualityDecisionV4Recorded"
+                            or decision.run_id != event.run_id
+                            or decision.payload["factor_spec_id"] != payload["factor_spec_id"]
+                        )
+                    )
+                ):
+                    return False
+                research_dossier_keys.add(key)
+            elif event.event_type == "ExperimentRunReportRecorded":
+                prior_events = events[: event_order[event.event_hash]]
+                starts_for_run = [
+                    item for item in prior_events if item.event_type == "TrialStarted" and item.run_id == event.run_id
+                ]
+                terminals_for_run = [
+                    item
+                    for item in prior_events
+                    if item.event_type == "TrialTerminated" and item.run_id == event.run_id
+                ]
+                dossiers_for_run = [
+                    item
+                    for item in prior_events
+                    if item.event_type == "ResearchDossierRecorded" and item.run_id == event.run_id
+                ]
+                decisions_for_run = [
+                    item
+                    for item in prior_events
+                    if item.event_type == "QualityDecisionV4Recorded" and item.run_id == event.run_id
+                ]
+                expected_sources = tuple(
+                    sorted(
+                        {
+                            *(item.event_hash for item in starts_for_run),
+                            *(item.event_hash for item in terminals_for_run),
+                            *(item.event_hash for item in dossiers_for_run),
+                            *(item.event_hash for item in decisions_for_run),
+                        }
+                    )
+                )
+                if (
+                    event.run_id in experiment_run_report_runs
+                    or not starts_for_run
+                    or len(terminals_for_run) != len(starts_for_run)
+                    or payload["trial_count"] != len(starts_for_run)
+                    or payload["source_event_hashes"] != expected_sources
+                    or payload["candidate_dossier_hashes"]
+                    != tuple(sorted(str(item.payload["dossier_hash"]) for item in dossiers_for_run))
+                ):
+                    return False
+                experiment_run_report_runs.add(event.run_id)
+            elif event.event_type == "ResearchReleaseManifestRecorded":
+                prior_sources = [
+                    item
+                    for item in events[: event_order[event.event_hash]]
+                    if item.event_type in {"ResearchDossierRecorded", "ExperimentRunReportRecorded"}
+                ]
+                if not prior_sources or payload["source_event_hashes"] != tuple(
+                    sorted(item.event_hash for item in prior_sources)
+                ):
+                    return False
+            elif event.event_type == "ResearchDossierMaterializationFailed":
+                terminal = events_by_hash.get(str(payload["terminal_dossier_event_hash"]))
+                decision_hash = payload["quality_decision_event_hash"]
+                decision = None if decision_hash is None else events_by_hash.get(str(decision_hash))
+                if (
+                    terminal is None
+                    or terminal.event_type != "TrialTerminalDossierRecorded"
+                    or terminal.run_id != event.run_id
+                    or terminal.payload["trial_id"] != payload["trial_id"]
+                    or (
+                        decision_hash is not None
+                        and (
+                            decision is None
+                            or decision.event_type != "QualityDecisionV4Recorded"
+                            or decision.run_id != event.run_id
+                        )
+                    )
+                ):
+                    return False
+            elif event.event_type == "ProductionEvaluationNodeRecorded":
+                production_node_key = (
+                    str(payload["trial_id"]),
+                    str(payload["node_name"]),
+                )
+                sources = [events_by_hash.get(str(item)) for item in payload["source_event_hashes"]]
+                contract = resolved_contract_events.get(str(payload["resolved_contract_hash"]))
+                if (
+                    production_node_key in production_node_keys
+                    or str(payload["trial_id"]) not in started
+                    or str(payload["trial_id"]) in terminated
+                    or str(payload["factor_spec_id"]) not in definitions
+                    or contract is None
+                    or contract.run_id != event.run_id
+                    or payload["run_id"] != event.run_id
+                    or any(source is None for source in sources)
+                    or any(
+                        source is not None and event_order[source.event_hash] >= event_order[event.event_hash]
+                        for source in sources
+                    )
+                ):
+                    return False
+                production_node_keys.add(production_node_key)
+                production_node_events.add(event.event_hash)
+            elif event.event_type == "TrialTerminalDossierRecorded":
+                trial_id = str(payload["trial_id"])
+                terminal = events_by_hash.get(str(payload["terminal_event_hash"]))
+                source_hashes = set(str(item) for item in payload["source_event_hashes"])
+                if (
+                    trial_id in terminal_dossier_trials
+                    or terminal is None
+                    or terminal.event_type != "TrialTerminated"
+                    or terminal.event_hash not in terminal_hashes
+                    or terminal.run_id != event.run_id
+                    or not set(payload["node_event_hashes"]).issubset(production_node_events)
+                    or not set(payload["evidence_event_hashes"]).issubset(events_by_hash)
+                    or not source_hashes.issubset(events_by_hash)
+                    or any(event_order[item] >= event_order[event.event_hash] for item in source_hashes)
+                ):
+                    return False
+                terminal_dossier_trials.add(trial_id)
+            elif event.event_type == "ReportMaterializationFailed":
+                trial_id = str(payload["trial_id"])
+                terminal = events_by_hash.get(str(payload["terminal_event_hash"]))
+                if (
+                    trial_id in report_failure_trials
+                    or terminal is None
+                    or terminal.event_type != "TrialTerminated"
+                    or terminal.run_id != event.run_id
+                    or terminal.event_hash not in terminal_hashes
+                ):
+                    return False
+                report_failure_trials.add(trial_id)
             elif event.event_type == "TrainValidDataSnapshotFrozen":
                 snapshot_id = str(payload["snapshot_id"])
                 snapshot_hash = str(payload["snapshot_hash"])
-                if (
-                    snapshot_id in train_valid_snapshot_ids
-                    or snapshot_hash in train_valid_snapshot_hashes
-                ):
+                if snapshot_id in train_valid_snapshot_ids or snapshot_hash in train_valid_snapshot_hashes:
                     return False
                 train_valid_snapshot_ids.add(snapshot_id)
                 train_valid_snapshot_hashes.add(snapshot_hash)
@@ -5952,16 +7894,11 @@ class ResearchEventStore:
             elif event.event_type == "RetrieverFeatureSourceRecorded":
                 source_id = str(payload["feature_source_id"])
                 source_hash = str(payload["source_hash"])
-                snapshot = train_valid_snapshot_events.get(
-                    str(payload["snapshot_event_hash"])
-                )
+                snapshot = train_valid_snapshot_events.get(str(payload["snapshot_event_hash"]))
                 actions = tuple(
-                    retriever_action_events.get(str(action_hash))
-                    for action_hash in payload["action_event_hashes"]
+                    retriever_action_events.get(str(action_hash)) for action_hash in payload["action_event_hashes"]
                 )
-                watermark_index = event_order.get(
-                    str(payload["eligible_event_watermark"]), -1
-                )
+                watermark_index = event_order.get(str(payload["eligible_event_watermark"]), -1)
                 if (
                     source_id in retriever_feature_source_ids
                     or source_hash in retriever_feature_source_hashes
@@ -5993,14 +7930,9 @@ class ResearchEventStore:
                     ),
                     None,
                 )
-                action_hashes = tuple(
-                    str(item) for item in payload["action_template_event_hashes"]
-                )
+                action_hashes = tuple(str(item) for item in payload["action_template_event_hashes"])
                 components = tuple(payload["components"])
-                action_events = tuple(
-                    retriever_action_events.get(action_hash)
-                    for action_hash in action_hashes
-                )
+                action_events = tuple(retriever_action_events.get(action_hash) for action_hash in action_hashes)
                 if (
                     decision_id in retriever_v5_ids
                     or control_event is None
@@ -6008,13 +7940,9 @@ class ResearchEventStore:
                     or any(action is None for action in action_events)
                 ):
                     return False
-                watermark_index = event_order.get(
-                    str(payload["eligible_event_watermark"]), -1
-                )
+                watermark_index = event_order.get(str(payload["eligible_event_watermark"]), -1)
                 control_index = event_order[control_event.event_hash]
-                for action_event, component in zip(
-                    action_events, components, strict=True
-                ):
+                for action_event, component in zip(action_events, components, strict=True):
                     if action_event is None:
                         return False
                     action_payload = action_event.payload
@@ -6026,8 +7954,7 @@ class ResearchEventStore:
                         < event_order[event.event_hash]
                         or action_payload["execution_run_id"] != event.run_id
                         or action_payload["action_id"] != component["action_id"]
-                        or action_payload["parent_factor_spec_id"]
-                        != component["factor_spec_id"]
+                        or action_payload["parent_factor_spec_id"] != component["factor_spec_id"]
                         or action_payload["expected_motif"] != component["motif"]
                         or action_payload["identity_action"]
                     ):
@@ -6036,62 +7963,42 @@ class ResearchEventStore:
                 retriever_v5_events[event.event_hash] = event
             elif event.event_type == "RetrieverDecisionV6Recorded":
                 decision_id = str(payload["decision_id"])
-                source_event = retriever_feature_source_events.get(
-                    str(payload["feature_source_event_hash"])
-                )
+                source_event = retriever_feature_source_events.get(str(payload["feature_source_event_hash"]))
                 control_event = next(
                     (
                         candidate
                         for candidate in events
-                        if candidate.event_hash
-                        == payload["control_evidence_event_hash"]
+                        if candidate.event_hash == payload["control_evidence_event_hash"]
                         and candidate.event_type == "OfficialSearchControlRecorded"
                     ),
                     None,
                 )
-                action_hashes = tuple(
-                    str(item) for item in payload["action_template_event_hashes"]
-                )
+                action_hashes = tuple(str(item) for item in payload["action_template_event_hashes"])
                 components = tuple(payload["components"])
-                action_events = tuple(
-                    retriever_action_events.get(action_hash)
-                    for action_hash in action_hashes
-                )
-                watermark_index = event_order.get(
-                    str(payload["eligible_event_watermark"]), -1
-                )
+                action_events = tuple(retriever_action_events.get(action_hash) for action_hash in action_hashes)
+                watermark_index = event_order.get(str(payload["eligible_event_watermark"]), -1)
                 if (
                     decision_id in retriever_v6_ids
                     or source_event is None
                     or control_event is None
                     or source_event.run_id != event.run_id
-                    or source_event.payload["source_hash"]
-                    != payload["feature_source_hash"]
-                    or source_event.payload["snapshot_hash"]
-                    != payload["data_snapshot_hash"]
-                    or source_event.payload["retrieval_policy_hash"]
-                    != payload["policy_hash"]
-                    or tuple(source_event.payload["action_event_hashes"])
-                    != action_hashes
+                    or source_event.payload["source_hash"] != payload["feature_source_hash"]
+                    or source_event.payload["snapshot_hash"] != payload["data_snapshot_hash"]
+                    or source_event.payload["retrieval_policy_hash"] != payload["policy_hash"]
+                    or tuple(source_event.payload["action_event_hashes"]) != action_hashes
                     or len(action_hashes) != len(components)
                     or any(action is None for action in action_events)
                     or not watermark_index
                     < event_order[source_event.event_hash]
                     < event_order[control_event.event_hash]
                     < event_order[event.event_hash]
-                    or control_event.payload["evidence_hash"]
-                    != payload["control_evidence_hash"]
-                    or control_event.payload["policy_hash"]
-                    != payload["control_policy_hash"]
-                    or control_event.payload["output_hash"]
-                    != payload["official_output_hash"]
-                    or control_event.payload["data_snapshot_hash"]
-                    != payload["data_snapshot_hash"]
+                    or control_event.payload["evidence_hash"] != payload["control_evidence_hash"]
+                    or control_event.payload["policy_hash"] != payload["control_policy_hash"]
+                    or control_event.payload["output_hash"] != payload["official_output_hash"]
+                    or control_event.payload["data_snapshot_hash"] != payload["data_snapshot_hash"]
                 ):
                     return False
-                for action_event, component in zip(
-                    action_events, components, strict=True
-                ):
+                for action_event, component in zip(action_events, components, strict=True):
                     if action_event is None:
                         return False
                     action_payload = action_event.payload
@@ -6101,8 +8008,7 @@ class ResearchEventStore:
                         < event_order[action_event.event_hash]
                         < event_order[source_event.event_hash]
                         or action_payload["action_id"] != component["action_id"]
-                        or action_payload["parent_factor_spec_id"]
-                        != component["factor_spec_id"]
+                        or action_payload["parent_factor_spec_id"] != component["factor_spec_id"]
                         or action_payload["expected_motif"] != component["motif"]
                         or action_payload["identity_action"]
                     ):
@@ -6113,13 +8019,10 @@ class ResearchEventStore:
                 from src.alpha_foundry.activation.runner import (
                     activation_arm_execution_run_id,
                 )
+
                 decision_id = str(payload["decision_id"])
-                schedule = prearm_schedule_events.get(
-                    str(payload["schedule_event_hash"])
-                )
-                source = retriever_feature_source_events.get(
-                    str(payload["feature_source_event_hash"])
-                )
+                schedule = prearm_schedule_events.get(str(payload["schedule_event_hash"]))
+                source = retriever_feature_source_events.get(str(payload["feature_source_event_hash"]))
                 if schedule is None or source is None:
                     return False
                 control_run_id = activation_arm_execution_run_id(
@@ -6136,23 +8039,15 @@ class ResearchEventStore:
                     or schedule.payload["schedule_hash"] != payload["schedule_hash"]
                     or schedule.payload["plan_hash"] != payload["plan_hash"]
                     or schedule.payload["pair_id"] != payload["pair_id"]
-                    or schedule.payload["output_hash"]
-                    != payload["official_output_hash"]
-                    or schedule.payload["candidate_count"]
-                    != payload["candidate_budget"]
-                    or source.payload["source_hash"]
-                    != payload["feature_source_hash"]
-                    or source.payload["snapshot_hash"]
-                    != payload["data_snapshot_hash"]
-                    or tuple(source.payload["action_event_hashes"])
-                    != tuple(payload["action_template_event_hashes"])
+                    or schedule.payload["output_hash"] != payload["official_output_hash"]
+                    or schedule.payload["candidate_count"] != payload["candidate_budget"]
+                    or source.payload["source_hash"] != payload["feature_source_hash"]
+                    or source.payload["snapshot_hash"] != payload["data_snapshot_hash"]
+                    or tuple(source.payload["action_event_hashes"]) != tuple(payload["action_template_event_hashes"])
                     or any(
                         candidate.run_id in {event.run_id, control_run_id}
-                        and candidate.event_type in {
-                            "TrialStarted", "TrialTerminated", "EvaluationRecorded"
-                        }
-                        and event_order[candidate.event_hash]
-                        < event_order[event.event_hash]
+                        and candidate.event_type in {"TrialStarted", "TrialTerminated", "EvaluationRecorded"}
+                        and event_order[candidate.event_hash] < event_order[event.event_hash]
                         for candidate in events
                     )
                 ):
@@ -6215,9 +8110,7 @@ class ResearchEventStore:
                 ):
                     return False
                 try:
-                    ResearchEventStore._validate_sequential_mixture_evidence(
-                        protocol, payload
-                    )
+                    ResearchEventStore._validate_sequential_mixture_evidence(protocol, payload)
                 except EventTransitionError:
                     return False
                 prior = looks_by_protocol[protocol_id]
@@ -6228,16 +8121,11 @@ class ResearchEventStore:
                 if look_index > maximum_looks:
                     return False
                 if any(
-                    look["block_id"] == payload["block_id"]
-                    or look["block_hash"] == payload["block_hash"]
+                    look["block_id"] == payload["block_id"] or look["block_hash"] == payload["block_hash"]
                     for _, look in prior
                 ):
                     return False
-                used_units = {
-                    str(unit_hash)
-                    for _, look in prior
-                    for unit_hash in look["unit_hashes"]
-                }
+                used_units = {str(unit_hash) for _, look in prior for unit_hash in look["unit_hashes"]}
                 if used_units.intersection(str(item) for item in payload["unit_hashes"]):
                     return False
                 if not prior:
@@ -6254,8 +8142,7 @@ class ResearchEventStore:
                         or look_index != int(previous["look_index"]) + 1
                         or payload["previous_look_event_hash"] != previous_hash
                         or payload["information_time"]
-                        != int(previous["information_time"])
-                        + int(payload["incremental_information"])
+                        != int(previous["information_time"]) + int(payload["incremental_information"])
                     ):
                         return False
                 if payload["status"] == "continue" and look_index == maximum_looks:
@@ -6278,51 +8165,35 @@ class ResearchEventStore:
                 result_outcomes[event.event_hash] = str(payload["outcome"])
                 result_contracts.add(contract_id)
                 result_artifact_hashes[event.event_hash] = {
-                    str(reference["artifact_hash"])
-                    for reference in payload["artifact_refs"]
+                    str(reference["artifact_hash"]) for reference in payload["artifact_refs"]
                 }
             elif event.event_type == "MechanismEvidenceIndexRecorded":
                 factor_spec_id = str(payload["factor_spec_id"])
                 source_events = tuple(str(item) for item in payload["source_event_hashes"])
                 if any(result_factors.get(source) != factor_spec_id for source in source_events):
                     return False
-                if any(
-                    result_policies.get(source) != payload["policy_hash"]
-                    for source in source_events
-                ):
+                if any(result_policies.get(source) != payload["policy_hash"] for source in source_events):
                     return False
                 available_hashes = {
                     artifact_hash
                     for source in source_events
                     for artifact_hash in result_artifact_hashes.get(source, set())
                 }
-                if not set(str(item) for item in payload["source_result_hashes"]).issubset(
-                    available_hashes
-                ):
+                if not set(str(item) for item in payload["source_result_hashes"]).issubset(available_hashes):
                     return False
                 source_outcomes = {
-                    source: result_outcomes[source]
-                    for source in source_events
-                    if source in result_outcomes
+                    source: result_outcomes[source] for source in source_events if source in result_outcomes
                 }
                 decisive = {str(item) for item in payload["decisive_event_hashes"]}
                 if (
-                    ResearchEventStore._mechanism_ordinal_state(source_outcomes, decisive)
-                    != payload["ordinal_state"]
-                    or canonical_json_hash(
-                        ResearchEventStore._mechanism_index_content(payload)
-                    )
-                    != payload["mei_hash"]
+                    ResearchEventStore._mechanism_ordinal_state(source_outcomes, decisive) != payload["ordinal_state"]
+                    or canonical_json_hash(ResearchEventStore._mechanism_index_content(payload)) != payload["mei_hash"]
                 ):
                     return False
             elif event.event_type == "ComplementEvidenceRecorded":
                 factor_spec_id = str(payload["factor_spec_id"])
-                evaluation = evaluation_payloads.get(
-                    str(payload["source_evaluation_event_hash"])
-                )
-                terminal = terminal_payloads.get(
-                    str(payload["source_terminal_event_hash"])
-                )
+                evaluation = evaluation_payloads.get(str(payload["source_evaluation_event_hash"]))
+                terminal = terminal_payloads.get(str(payload["source_terminal_event_hash"]))
                 if factor_spec_id not in definitions or evaluation is None or terminal is None:
                     return False
                 if (
@@ -6334,8 +8205,7 @@ class ResearchEventStore:
                 ):
                     return False
                 if terminal["status"] == "success" and (
-                    terminal["evaluation_event_hash"]
-                    != payload["source_evaluation_event_hash"]
+                    terminal["evaluation_event_hash"] != payload["source_evaluation_event_hash"]
                 ):
                     return False
             elif event.event_type == "ActivationPlanRegistered":
@@ -6355,10 +8225,7 @@ class ResearchEventStore:
                     or event.run_id != payload["run_group_id"]
                     or schedule_id in prearm_schedule_ids
                     or schedule_hash in prearm_schedule_hashes
-                    or any(
-                        run["pair_id"] == payload["pair_id"]
-                        for run in activation_runs.get(plan_hash, [])
-                    )
+                    or any(run["pair_id"] == payload["pair_id"] for run in activation_runs.get(plan_hash, []))
                 ):
                     return False
                 prearm_schedule_ids.add(schedule_id)
@@ -6382,42 +8249,33 @@ class ResearchEventStore:
                 if (
                     plan_hash not in activation_plans
                     or plan_hash in activation_result_plans
-                    or str(payload["summary_manifest_hash"])
-                    not in activation_manifest_hashes
+                    or str(payload["summary_manifest_hash"]) not in activation_manifest_hashes
                     or audit_id in activation_source_audit_ids
                 ):
                     return False
                 activation_source_audit_ids.add(audit_id)
-            elif event.event_type in {
-                "ActivationResourceMeasured", "ActivationResourceMeasuredV2"
-            }:
+            elif event.event_type in {"ActivationResourceMeasured", "ActivationResourceMeasuredV2"}:
                 plan_hash = str(payload["plan_hash"])
                 resource_id = str(payload["resource_id"])
                 evidence_hash = str(payload["evidence_hash"])
                 manifest_hash = str(payload["manifest_hash"])
                 matching_runs = [
-                    run for run in activation_runs.get(plan_hash, [])
+                    run
+                    for run in activation_runs.get(plan_hash, [])
                     if str(run["manifest_hash"]) == manifest_hash
                     and run["run_group_id"] == payload["run_group_id"]
                     and run["pair_id"] == payload["pair_id"]
                     and run["arm"] == payload["arm"]
                 ]
                 if event.event_type == "ActivationResourceMeasuredV2":
-                    schedule = pair_schedule_events.get(
-                        str(payload["pair_schedule_event_hash"])
-                    )
-                    claim = pair_claim_events.get(
-                        str(payload["execution_claim_event_hash"])
-                    )
+                    schedule = pair_schedule_events.get(str(payload["pair_schedule_event_hash"]))
+                    claim = pair_claim_events.get(str(payload["execution_claim_event_hash"]))
                     if (
                         schedule is None
                         or claim is None
-                        or schedule.payload["schedule_hash"]
-                        != payload["pair_schedule_hash"]
-                        or claim.payload["schedule_event_hash"]
-                        != schedule.event_hash
-                        or claim.payload["schedule_hash"]
-                        != payload["pair_schedule_hash"]
+                        or schedule.payload["schedule_hash"] != payload["pair_schedule_hash"]
+                        or claim.payload["schedule_event_hash"] != schedule.event_hash
+                        or claim.payload["schedule_hash"] != payload["pair_schedule_hash"]
                     ):
                         return False
                 if (
@@ -6437,9 +8295,7 @@ class ResearchEventStore:
                 plan_hash = str(payload["plan_hash"])
                 generation_id = str(payload["generation_id"])
                 evidence_hash = str(payload["evidence_hash"])
-                retriever_source = retriever_v4_events.get(
-                    str(payload["retriever_decision_event_hash"])
-                )
+                retriever_source = retriever_v4_events.get(str(payload["retriever_decision_event_hash"]))
                 if (
                     plan_hash not in activation_plans
                     or plan_hash in activation_result_plans
@@ -6456,19 +8312,15 @@ class ResearchEventStore:
                 plan_hash = str(payload["plan_hash"])
                 generation_id = str(payload["generation_id"])
                 evidence_hash = str(payload["evidence_hash"])
-                retriever_source = retriever_v5_events.get(
-                    str(payload["retriever_decision_event_hash"])
-                )
+                retriever_source = retriever_v5_events.get(str(payload["retriever_decision_event_hash"]))
                 if (
                     plan_hash not in activation_plans
                     or plan_hash in activation_result_plans
                     or event.run_id != payload["execution_run_id"]
                     or retriever_source is None
                     or retriever_source.run_id != event.run_id
-                    or retriever_source.payload["decision_hash"]
-                    != payload["retriever_decision_hash"]
-                    or retriever_source.payload["selected_action_ids"]
-                    != payload["selected_action_ids"]
+                    or retriever_source.payload["decision_hash"] != payload["retriever_decision_hash"]
+                    or retriever_source.payload["selected_action_ids"] != payload["selected_action_ids"]
                     or generation_id in activation_generation_ids
                     or evidence_hash in activation_generation_hashes
                 ):
@@ -6479,12 +8331,8 @@ class ResearchEventStore:
                 plan_hash = str(payload["plan_hash"])
                 generation_id = str(payload["generation_id"])
                 evidence_hash = str(payload["evidence_hash"])
-                retriever_source = retriever_v6_events.get(
-                    str(payload["retriever_decision_event_hash"])
-                )
-                feature_source = retriever_feature_source_events.get(
-                    str(payload["feature_source_event_hash"])
-                )
+                retriever_source = retriever_v6_events.get(str(payload["retriever_decision_event_hash"]))
+                feature_source = retriever_feature_source_events.get(str(payload["feature_source_event_hash"]))
                 if (
                     plan_hash not in activation_plans
                     or plan_hash in activation_result_plans
@@ -6493,16 +8341,11 @@ class ResearchEventStore:
                     or feature_source is None
                     or retriever_source.run_id != event.run_id
                     or feature_source.run_id != event.run_id
-                    or retriever_source.payload["decision_hash"]
-                    != payload["retriever_decision_hash"]
-                    or retriever_source.payload["input_bundle_hash"]
-                    != payload["retriever_input_bundle_hash"]
-                    or retriever_source.payload["feature_source_event_hash"]
-                    != feature_source.event_hash
-                    or retriever_source.payload["selected_action_ids"]
-                    != payload["selected_action_ids"]
-                    or feature_source.payload["source_hash"]
-                    != payload["feature_source_hash"]
+                    or retriever_source.payload["decision_hash"] != payload["retriever_decision_hash"]
+                    or retriever_source.payload["input_bundle_hash"] != payload["retriever_input_bundle_hash"]
+                    or retriever_source.payload["feature_source_event_hash"] != feature_source.event_hash
+                    or retriever_source.payload["selected_action_ids"] != payload["selected_action_ids"]
+                    or feature_source.payload["source_hash"] != payload["feature_source_hash"]
                     or generation_id in activation_generation_ids
                     or evidence_hash in activation_generation_hashes
                 ):
@@ -6513,29 +8356,22 @@ class ResearchEventStore:
                 plan_hash = str(payload["plan_hash"])
                 generation_id = str(payload["generation_id"])
                 evidence_hash = str(payload["evidence_hash"])
-                retriever = retriever_v7_events.get(
-                    str(payload["retriever_decision_event_hash"])
-                )
-                schedule = prearm_schedule_events.get(
-                    str(payload["schedule_event_hash"])
-                )
-                source = retriever_feature_source_events.get(
-                    str(payload["feature_source_event_hash"])
-                )
+                retriever = retriever_v7_events.get(str(payload["retriever_decision_event_hash"]))
+                schedule = prearm_schedule_events.get(str(payload["schedule_event_hash"]))
+                source = retriever_feature_source_events.get(str(payload["feature_source_event_hash"]))
                 if (
                     plan_hash not in activation_plans
                     or plan_hash in activation_result_plans
                     or event.run_id != payload["execution_run_id"]
-                    or retriever is None or schedule is None or source is None
+                    or retriever is None
+                    or schedule is None
+                    or source is None
                     or retriever.run_id != event.run_id
                     or source.run_id != event.run_id
-                    or retriever.payload["decision_hash"]
-                    != payload["retriever_decision_hash"]
-                    or retriever.payload["input_bundle_hash"]
-                    != payload["retriever_input_bundle_hash"]
+                    or retriever.payload["decision_hash"] != payload["retriever_decision_hash"]
+                    or retriever.payload["input_bundle_hash"] != payload["retriever_input_bundle_hash"]
                     or retriever.payload["schedule_event_hash"] != schedule.event_hash
-                    or retriever.payload["selected_action_ids"]
-                    != payload["selected_action_ids"]
+                    or retriever.payload["selected_action_ids"] != payload["selected_action_ids"]
                     or schedule.payload["schedule_hash"] != payload["schedule_hash"]
                     or source.payload["source_hash"] != payload["feature_source_hash"]
                     or generation_id in activation_generation_ids
@@ -6558,8 +8394,7 @@ class ResearchEventStore:
                     for run in runs:
                         arms.setdefault(str(run["pair_id"]), set()).add(str(run["arm"]))
                     if int(payload["complete_pairs"]) != sum(
-                        1 for pair_arms in arms.values()
-                        if pair_arms == {"control", "treatment"}
+                        1 for pair_arms in arms.values() if pair_arms == {"control", "treatment"}
                     ):
                         return False
                 activation_results[result_hash] = payload
@@ -6576,9 +8411,7 @@ class ResearchEventStore:
                 ):
                     return False
                 if payload["verdict"] == "approved" and (
-                    plan["phase"] != "confirmatory"
-                    or not result["replayable"]
-                    or result["invalidation_reasons"]
+                    plan["phase"] != "confirmatory" or not result["replayable"] or result["invalidation_reasons"]
                 ):
                     return False
                 activation_decision_plans.add(plan_hash)
@@ -6593,11 +8426,9 @@ class ResearchEventStore:
                     factor_spec_id not in definitions
                     or event.run_id != payload["evidence_run_id"]
                     or key in decision_evidence_keys
-                    or event.previous_event_hash
-                    != payload["ledger_watermark_event_hash"]
+                    or event.previous_event_hash != payload["ledger_watermark_event_hash"]
                     or any(
-                        event_order.get(str(source_hash), len(events))
-                        >= event_order[event.event_hash]
+                        event_order.get(str(source_hash), len(events)) >= event_order[event.event_hash]
                         for source_hash in payload["source_event_hashes"]
                     )
                 ):
@@ -6607,16 +8438,11 @@ class ResearchEventStore:
                 factor_spec_id = str(payload["factor_spec_id"])
                 trial_id = str(payload["trial_id"])
                 key = (event.run_id, factor_spec_id, trial_id)
-                policy_event = events_by_hash.get(
-                    str(payload["evaluation_policy_event_hash"])
-                )
-                snapshot_event = events_by_hash.get(
-                    str(payload["snapshot_event_hash"])
-                )
+                policy_event = events_by_hash.get(str(payload["evaluation_policy_event_hash"]))
+                snapshot_event = events_by_hash.get(str(payload["snapshot_event_hash"]))
                 if (
                     factor_spec_id not in definitions
-                    or definition_event_hashes.get(factor_spec_id)
-                    != payload["factor_definition_event_hash"]
+                    or definition_event_hashes.get(factor_spec_id) != payload["factor_definition_event_hash"]
                     or started.get(trial_id) != event.run_id
                     or trial_id in terminated
                     or event.run_id != payload["evidence_run_id"]
@@ -6625,13 +8451,10 @@ class ResearchEventStore:
                     or policy_event.event_type != "EvaluationPolicyRegistered"
                     or policy_event.run_id != event.run_id
                     or snapshot_event is None
-                    or snapshot_event.event_type
-                    != "TrainValidDataSnapshotFrozen"
-                    or event.previous_event_hash
-                    != payload["source_watermark_event_hash"]
+                    or snapshot_event.event_type != "TrainValidDataSnapshotFrozen"
+                    or event.previous_event_hash != payload["source_watermark_event_hash"]
                     or any(
-                        event_order.get(str(source_hash), len(events))
-                        >= event_order[event.event_hash]
+                        event_order.get(str(source_hash), len(events)) >= event_order[event.event_hash]
                         for source_hash in payload["source_event_hashes"]
                     )
                 ):
@@ -6640,29 +8463,21 @@ class ResearchEventStore:
             elif event.event_type == "SnapshotDecisionEvidenceV3Recorded":
                 factor_spec_id = str(payload["factor_spec_id"])
                 snapshot_key = (event.run_id, factor_spec_id)
-                policy_event = events_by_hash.get(
-                    str(payload["evaluation_policy_event_hash"])
-                )
-                snapshot_event = events_by_hash.get(
-                    str(payload["snapshot_event_hash"])
-                )
+                policy_event = events_by_hash.get(str(payload["evaluation_policy_event_hash"]))
+                snapshot_event = events_by_hash.get(str(payload["snapshot_event_hash"]))
                 if (
                     factor_spec_id not in definitions
-                    or definition_event_hashes.get(factor_spec_id)
-                    != payload["factor_definition_event_hash"]
+                    or definition_event_hashes.get(factor_spec_id) != payload["factor_definition_event_hash"]
                     or event.run_id != payload["evidence_run_id"]
                     or snapshot_key in snapshot_evidence_keys
                     or policy_event is None
                     or policy_event.event_type != "EvaluationPolicyRegistered"
                     or policy_event.run_id != event.run_id
                     or snapshot_event is None
-                    or snapshot_event.event_type
-                    != "TrainValidDataSnapshotFrozen"
-                    or event.previous_event_hash
-                    != payload["source_watermark_event_hash"]
+                    or snapshot_event.event_type != "TrainValidDataSnapshotFrozen"
+                    or event.previous_event_hash != payload["source_watermark_event_hash"]
                     or any(
-                        event_order.get(str(source_hash), len(events))
-                        >= event_order[event.event_hash]
+                        event_order.get(str(source_hash), len(events)) >= event_order[event.event_hash]
                         for source_hash in payload["source_event_hashes"]
                     )
                 ):
@@ -6676,8 +8491,7 @@ class ResearchEventStore:
                 candidate_hash = str(payload["candidate_hash"])
                 if (
                     factor_spec_id not in definitions
-                    or definition_event_hashes.get(factor_spec_id)
-                    != payload["definition_hash"]
+                    or definition_event_hashes.get(factor_spec_id) != payload["definition_hash"]
                     or candidate_hash in final_candidates
                 ):
                     return False
@@ -6689,10 +8503,7 @@ class ResearchEventStore:
                 if (
                     candidate is None
                     or token_hash in final_capabilities
-                    or any(
-                        item["candidate_hash"] == candidate_hash
-                        for item in final_capabilities.values()
-                    )
+                    or any(item["candidate_hash"] == candidate_hash for item in final_capabilities.values())
                     or candidate["factor_spec_id"] != payload["factor_spec_id"]
                     or candidate["data_snapshot_hash"] != payload["data_snapshot_hash"]
                 ):
@@ -6788,8 +8599,7 @@ class ResearchEventStore:
                     previous = forward_prior[-1]
                     if (
                         payload["period_start"] <= previous["period_end"]
-                        or payload["previous_observation_hash"]
-                        != previous["observation_hash"]
+                        or payload["previous_observation_hash"] != previous["observation_hash"]
                     ):
                         return False
                 forward_prior.append(payload)
@@ -6825,11 +8635,7 @@ class ResearchEventStore:
 
     def lifecycle_summary(self) -> LifecycleSummary:
         events = self.query_events()
-        started = {
-            str(event.payload["trial_id"])
-            for event in events
-            if event.event_type == "TrialStarted"
-        }
+        started = {str(event.payload["trial_id"]) for event in events if event.event_type == "TrialStarted"}
         terminal_by_trial = {
             str(event.payload["trial_id"]): str(event.payload["status"])
             for event in events
@@ -6850,9 +8656,7 @@ class ResearchEventStore:
 
         full = self.query_events()
         if not full or not self._verify_events(full):
-            raise ResearchEventAppendError(
-                "cannot issue an event subsequence from an empty or invalid chain"
-            )
+            raise ResearchEventAppendError("cannot issue an event subsequence from an empty or invalid chain")
         by_hash = {event.event_hash: (index, event) for index, event in enumerate(full)}
         prior_index = -1
         normalized: list[ResearchEventEnvelope] = []
@@ -6860,9 +8664,7 @@ class ResearchEventStore:
         for event in selected:
             source = by_hash.get(event.event_hash)
             if source is None or source[0] <= prior_index or event.event_hash in seen:
-                raise EventValidationError(
-                    "selected events are not a unique ordered full-chain subsequence"
-                )
+                raise EventValidationError("selected events are not a unique ordered full-chain subsequence")
             if source[1].to_dict() != event.to_dict():
                 raise EventValidationError("selected event differs from its full-chain source")
             prior_index = source[0]
@@ -6881,10 +8683,7 @@ class ResearchEventStore:
         watermark_event_hash: str,
     ) -> tuple[ResearchEventEnvelope, ...]:
         full = self.query_events()
-        matches = [
-            index for index, event in enumerate(full)
-            if event.event_hash == watermark_event_hash
-        ]
+        matches = [index for index, event in enumerate(full) if event.event_hash == watermark_event_hash]
         if len(matches) != 1:
             raise EventValidationError("historical discovery watermark is unknown")
         return tuple(full[: matches[0] + 1])
@@ -6899,9 +8698,7 @@ class ResearchEventStore:
 
         prefix = self._events_through_watermark(watermark_event_hash)
         if not prefix or not self._verify_events(list(prefix)):
-            raise ResearchEventAppendError(
-                "cannot issue an event subsequence from an invalid historical prefix"
-            )
+            raise ResearchEventAppendError("cannot issue an event subsequence from an invalid historical prefix")
         by_hash = {event.event_hash: (index, event) for index, event in enumerate(prefix)}
         prior_index = -1
         normalized: list[ResearchEventEnvelope] = []
@@ -6909,13 +8706,9 @@ class ResearchEventStore:
         for event in selected:
             source = by_hash.get(event.event_hash)
             if source is None or source[0] <= prior_index or event.event_hash in seen:
-                raise EventValidationError(
-                    "selected events are not an ordered historical-prefix subsequence"
-                )
+                raise EventValidationError("selected events are not an ordered historical-prefix subsequence")
             if source[1].to_dict() != event.to_dict():
-                raise EventValidationError(
-                    "selected historical event differs from its prefix source"
-                )
+                raise EventValidationError("selected historical event differs from its prefix source")
             prior_index = source[0]
             seen.add(event.event_hash)
             normalized.append(source[1])
