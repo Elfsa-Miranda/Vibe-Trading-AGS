@@ -218,6 +218,7 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "ProviderAuthorityDecisionV1Recorded",
         "ProductionGoldenSliceReadinessV1Recorded",
         "ProductionActivationRunInputBundleV1Registered",
+        "ProductionActivationCandidateFactoryV1Bound",
         "ActivationPairExecutionScheduled",
         "ActivationPairExecutionClaimed",
         "ActivationPlanRegistered",
@@ -1288,6 +1289,23 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "source_watermark": digest,
             "canonical_hash_spec": {"spec_hash": digest},
             "bundle": {"schema_version": "production_activation_run_input_bundle.v1"},
+        },
+        "ProductionActivationCandidateFactoryV1Bound": {
+            "binding_id": "production-activation-factory-v1-fixture",
+            "binding_hash": digest,
+            "run_input_bundle_event_hash": digest,
+            "run_input_bundle_hash": digest,
+            "generator_manifest_hash": digest,
+            "evaluator_factory_manifest_hash": digest,
+            "dag_policy_hash": digest,
+            "identity_service": "src.alpha_foundry.dsl.identity.FactorIdentityService",
+            "quality_decision_service": (
+                "src.alpha_quality.decision_v2.source_v3.QualityDecisionV3Service"
+            ),
+            "same_factory_both_arms": True,
+            "only_arm_difference": "retriever_policy_hash",
+            "returns_refs_only": True,
+            "blocker_codes": ["QUALITY_DECISION_V3_EVIDENCE_REF_BRIDGE_NOT_PRODUCER_BOUND"],
         },
         "ActivationRunSourceAudited": {
             "audit_id": "activation-source-v2-1",
