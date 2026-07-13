@@ -87,6 +87,8 @@ class PreregisteredConfirmatoryActivationPlanV2:
     conservative_variance_upper_bound: float
     power_simulation_seed: int
     power_simulation_count: int
+    power_design_alternative: float
+    power_design_rule: str
     estimated_power: float
     power_engine_hash: str
     canonical_hash_spec: CanonicalHashSpecV1
@@ -282,6 +284,8 @@ class ActivationStatisticalAnalyzerV2:
                 "simulation_seed": protocol.power_simulation_seed,
                 "simulation_count": protocol.power_simulation_count,
                 "fixed_sesoi": protocol.sesoi,
+                "power_design_alternative": protocol.power_design_alternative,
+                "power_design_rule": protocol.power_design_rule,
                 "variance_upper_bound": variance,
                 "alpha_level": protocol.alpha_level,
                 "target_power": protocol.target_power,
@@ -314,6 +318,8 @@ class ActivationStatisticalAnalyzerV2:
             "conservative_variance_upper_bound": variance,
             "power_simulation_seed": protocol.power_simulation_seed,
             "power_simulation_count": protocol.power_simulation_count,
+            "power_design_alternative": protocol.power_design_alternative,
+            "power_design_rule": protocol.power_design_rule,
             "estimated_power": estimated_power,
             "power_engine_hash": engine,
             "canonical_hash_spec": protocol.canonical_hash_spec,
@@ -433,11 +439,10 @@ class ActivationStatisticalAnalyzerV2:
     ) -> tuple[int, float, str]:
         """Frozen-seed Monte Carlo power under the conservative variance model.
 
-        The simulation uses the fixed SESOI as the alternative mean and a
-        one-sided Gaussian working-model critical value for the preregistered
-        paired location test.  A Wilson lower bound, rather than the raw Monte
-        Carlo proportion, must reach target power.  Pilot observed uplift is
-        neither accepted nor used by this engine.
+        The null boundary is the fixed SESOI.  The simulation mean is the
+        strictly larger, preregistered design alternative; it is never the
+        pilot-observed uplift.  A Wilson lower bound, rather than the raw Monte
+        Carlo proportion, must reach target power.
         """
 
         if conservative_variance < 0.0 or not math.isfinite(conservative_variance):
@@ -450,10 +455,14 @@ class ActivationStatisticalAnalyzerV2:
         for _ in range(count):
             cumulative = 0.0
             for pair_count in range(1, protocol.maximum_pairs + 1):
-                cumulative += rng.gauss(protocol.sesoi, standard_deviation)
+                cumulative += rng.gauss(
+                    protocol.power_design_alternative, standard_deviation
+                )
                 if pair_count >= protocol.minimum_pairs:
-                    critical_mean = critical_z * standard_deviation / math.sqrt(
-                        pair_count
+                    critical_mean = protocol.sesoi + (
+                        critical_z
+                        * standard_deviation
+                        / math.sqrt(pair_count)
                     )
                     if cumulative / pair_count > critical_mean:
                         rejections[pair_count] += 1
@@ -482,6 +491,8 @@ class ActivationStatisticalAnalyzerV2:
             {
                 "method": protocol.power_method,
                 "fixed_sesoi": protocol.sesoi,
+                "power_design_alternative": protocol.power_design_alternative,
+                "power_design_rule": protocol.power_design_rule,
                 "conservative_variance": conservative_variance,
                 "alpha_level": protocol.alpha_level,
                 "target_power": protocol.target_power,
