@@ -97,3 +97,41 @@ the affected call-boundary descriptions, not the historical pre-flight audit.
 No second ledger, event store, artifact repository, evaluator, scorecard,
 execution engine, Claim Matrix, QualityDecision runner, parser, or identity
 service was introduced during this revalidation.
+
+## Recorded-authority correction (2026-07-14)
+
+The accepted implementation was re-audited through the real event and artifact
+boundaries after the post-hardening record above. These findings supersede its
+remaining compatibility-blocker statements:
+
+- `ProductionActivationCandidateFactoryV1` uses the production evaluator DAG's
+  `authoritative_result`. For evaluated candidates, endpoint eligibility is
+  bound to the existing production evaluator's dossier-cited
+  `QualityDecisionV4Recorded`; the existing `QualityDecisionV3Service` is still
+  invoked as the requested compatibility/replay path, but it is not allowed to
+  override the production decision.
+- Canonical invalid and duplicate attempts keep their real
+  `TrialTerminated` event and intentionally have no fabricated factor identity
+  or dossier. `FormalActivationRunSourceAuditorV3` requires dossiers exactly
+  for evaluated terminals, not for identity-only terminals.
+- `ActivationEvidenceProjector` delegates both arm audits to Activation Run
+  Source v3, then records one `ActivationPairEvidenceV2Recorded` event and one
+  canonical artifact with the existing `ResearchEventStore` and
+  `AtomicContentAddressedArtifactWriter`. It cannot return an authoritative
+  caller-constructed pair object.
+- Pilot dispersion, confirmatory plan, and confirmatory analysis are now
+  separately protected and replayable as
+  `ActivationPilotDispersionV2Recorded`,
+  `ActivationConfirmatoryPlanV2Registered`, and
+  `ActivationStatisticalAnalysisV2Recorded`. Governance accepts only these
+  same-store recorded artifacts.
+- `ActivationGovernanceService` records
+  `ActivationGovernanceDecisionV2Recorded` plus its canonical artifact. It
+  consumes only the registered protocol, recorded statistical analysis, and a
+  readiness event frozen before the complete transitive pilot/confirmatory
+  source ancestry. Report JSON, worker summaries, raw statistics, and
+  caller-authored decisions remain invalid inputs.
+
+The resource finding is unchanged: evaluator-DAG child-node isolation and the
+closed infrastructure probe do not prove whole-arm resource non-inferiority.
+No Activation-specific execution engine was added to manufacture that proof.
