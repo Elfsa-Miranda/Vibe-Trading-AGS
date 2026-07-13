@@ -534,15 +534,17 @@ class ProviderPITAuditServiceV1:
                 | ({"PARTIAL_OR_RATE_LIMITED_INTERFACE_MANIFEST"} if not manifest_eligible else set())
             )
         )
+        normalized_field_event_hashes = tuple(sorted(field_audit_event_hashes))
+        normalized_field_audit_hashes = tuple(
+            sorted(str(event.payload["field_audit_hash"]) for event in events)
+        )
         content = {
             "schema_version": "provider_interface_pit_audit.v1",
             "provider": str(registration.payload["provider"]),
             "adapter_id": str(registration.payload["adapter_id"]),
             "interface": next(iter(interfaces)),
-            "field_audit_event_hashes": list(sorted(field_audit_event_hashes)),
-            "field_audit_hashes": sorted(
-                str(event.payload["field_audit_hash"]) for event in events
-            ),
+            "field_audit_event_hashes": list(normalized_field_event_hashes),
+            "field_audit_hashes": list(normalized_field_audit_hashes),
             "required_fields": list(required),
             "completeness": completeness,
             "complete_manifest_eligible": manifest_eligible,
@@ -555,8 +557,8 @@ class ProviderPITAuditServiceV1:
             provider=str(registration.payload["provider"]),
             adapter_id=str(registration.payload["adapter_id"]),
             interface=next(iter(interfaces)),
-            field_audit_event_hashes=tuple(content["field_audit_event_hashes"]),
-            field_audit_hashes=tuple(content["field_audit_hashes"]),
+            field_audit_event_hashes=normalized_field_event_hashes,
+            field_audit_hashes=normalized_field_audit_hashes,
             required_fields=required,
             completeness=completeness,
             complete_manifest_eligible=manifest_eligible,
@@ -626,19 +628,24 @@ class ProviderPITAuditServiceV1:
             if not blockers and ceiling == "verified_strict"
             else "blocked"
         )
+        normalized_interface_event_hashes = tuple(
+            sorted(interface_audit_event_hashes)
+        )
+        normalized_interface_audit_hashes = tuple(
+            sorted(str(event.payload["interface_audit_hash"]) for event in events)
+        )
+        normalized_blockers = tuple(sorted(blockers))
         content = {
             "schema_version": "provider_authority_decision.v1",
             "provider": str(registration.payload["provider"]),
             "adapter_id": str(registration.payload["adapter_id"]),
             "adapter_registration_event_hash": adapter_registration_event_hash,
-            "interface_audit_event_hashes": list(sorted(interface_audit_event_hashes)),
-            "interface_audit_hashes": sorted(
-                str(event.payload["interface_audit_hash"]) for event in events
-            ),
+            "interface_audit_event_hashes": list(normalized_interface_event_hashes),
+            "interface_audit_hashes": list(normalized_interface_audit_hashes),
             "authority_status": status,
             "claim_scope_ceiling": ceiling,
             "activation_eligible": not blockers and status == "verified_strict",
-            "blocker_codes": sorted(blockers),
+            "blocker_codes": list(normalized_blockers),
             "canonical_hash_spec": DEFAULT_ACTIVATION_HASH_SPEC.to_dict(),
         }
         decision = ProviderAuthorityDecisionV1(
@@ -646,12 +653,12 @@ class ProviderPITAuditServiceV1:
             provider=str(registration.payload["provider"]),
             adapter_id=str(registration.payload["adapter_id"]),
             adapter_registration_event_hash=adapter_registration_event_hash,
-            interface_audit_event_hashes=tuple(content["interface_audit_event_hashes"]),
-            interface_audit_hashes=tuple(content["interface_audit_hashes"]),
+            interface_audit_event_hashes=normalized_interface_event_hashes,
+            interface_audit_hashes=normalized_interface_audit_hashes,
             authority_status=status,
             claim_scope_ceiling=ceiling,
             activation_eligible=bool(content["activation_eligible"]),
-            blocker_codes=tuple(content["blocker_codes"]),
+            blocker_codes=normalized_blockers,
             canonical_hash_spec=DEFAULT_ACTIVATION_HASH_SPEC,
             decision_hash=DEFAULT_ACTIVATION_HASH_SPEC.hash_payload(
                 "provider-authority-decision.v1", content

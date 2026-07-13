@@ -1,0 +1,27 @@
+{
+  "applicability_matrix_registered": false,
+  "blocker_codes": [
+    "APPLICABILITY_MATRIX_REGISTERED",
+    "PAIR_SCHEDULE_FROZEN",
+    "PRODUCTION_CANDIDATE_FACTORY_BOUND",
+    "PRODUCTION_TRAIN_VALID_INPUT_BOUND",
+    "PROVIDER_FIELD_AUDITS_SUFFICIENT",
+    "RESOURCE_ISOLATION_VERIFIED",
+    "SOURCE_REPLAY_COMPLETE",
+    "STATISTICAL_PROTOCOL_REGISTERED"
+  ],
+  "governance_roles_separated": true,
+  "no_final_forward_access": true,
+  "pair_schedule_frozen": false,
+  "production_candidate_factory_bound": false,
+  "production_train_valid_input_bound": false,
+  "provider_field_audits_sufficient": false,
+  "readiness_hash": "sha256:7a4f633ffad1ef43bf2bb4cc69cf4b9821148f86f410496a96fdd417d0a770b4",
+  "ready_for_pilot_outcome_access": false,
+  "research_cycle_id": "ags-v32-activation-enablement-v2-20260713",
+  "resource_isolation_verified": false,
+  "same_factory_for_both_arms": true,
+  "schema_version": "activation_readiness.v4",
+  "source_replay_complete": false,
+  "statistical_protocol_registered": false
+}
