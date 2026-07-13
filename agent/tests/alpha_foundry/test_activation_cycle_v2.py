@@ -684,6 +684,48 @@ def test_lcb_above_sesoi_cannot_approve_without_resource_and_safety_sources(
     assert decision.verdict == "inconclusive"
 
 
+def test_approval_requires_lcb_above_sesoi(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, registered = _registered_protocol(tmp_path)
+    readiness = _record_readiness(
+        store,
+        research_cycle_id=registered.protocol.research_cycle_id,
+    )
+    analyzer = ActivationStatisticalAnalyzerV2(store)
+    plan = _recorded_plan(store, registered)
+    pairs = (
+        _recorded_pair(store, "approval-lcb-1", 0.2),
+        _recorded_pair(store, "approval-lcb-2", 0.2),
+    )
+    monkeypatch.setattr(
+        analyzer,
+        "_exact_noninferiority",
+        lambda **kwargs: (True, True, True),
+    )
+    analysis = analyzer.analyze(
+        registered_protocol=registered,
+        confirmatory_plan=plan,
+        pairs=pairs,
+    )
+    analyzed = analysis.require_analysis()
+    decision = ActivationGovernanceService(store).decide(
+        registered_protocol=registered,
+        analysis=analysis,
+        readiness_event_hash=readiness.event_hash,
+    )
+
+    assert analyzed.confidence_lower is not None
+    assert analyzed.confidence_lower > registered.protocol.sesoi
+    assert analyzed.adequate_power is True
+    assert analyzed.required_pair_complete is True
+    assert analyzed.safety_noninferiority_pass is True
+    assert analyzed.resource_noninferiority_pass is True
+    assert analyzed.failure_noninferiority_pass is True
+    assert analyzed.diversity_coverage_pass is True
+    assert decision.decision.verdict == "approved"
+
+
 def test_p_value_alone_cannot_approve(tmp_path: Path) -> None:
     protocol, analysis, decision = _governance_fixture(
         tmp_path, (0.2, 0.2, 0.2, 0.2, 0.2, 0.2)
