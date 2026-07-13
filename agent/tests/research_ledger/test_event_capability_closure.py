@@ -66,6 +66,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "ActivationPilotDispersionV2Recorded",
     "ActivationConfirmatoryPlanV2Registered",
     "ActivationStatisticalAnalysisV2Recorded",
+    "ActivationGovernanceDecisionV2Recorded",
     "ActivationReadinessV4Recorded",
     "ActivationPairExecutionScheduled",
     "ActivationPairExecutionClaimed",
