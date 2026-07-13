@@ -150,13 +150,18 @@ class ProductionActivationCandidateRefsV1:
 
     trial_terminal_event_hash: str
     evaluation_event_hash: str | None
+    production_quality_decision_event_hash: str | None
     quality_decision_v3_event_hash: str | None
-    terminal_dossier_event_hash: str
+    terminal_dossier_event_hash: str | None
 
     def __post_init__(self) -> None:
         _require_hash(self.trial_terminal_event_hash, "trial terminal event")
-        _require_hash(self.terminal_dossier_event_hash, "terminal dossier event")
-        for name in ("evaluation_event_hash", "quality_decision_v3_event_hash"):
+        for name in (
+            "evaluation_event_hash",
+            "production_quality_decision_event_hash",
+            "quality_decision_v3_event_hash",
+            "terminal_dossier_event_hash",
+        ):
             value = getattr(self, name)
             if value is not None:
                 _require_hash(value, name)
@@ -379,16 +384,30 @@ class ProductionActivationCandidateFactoryV1:
         )
         decisions = tuple(
             sorted(
+                item.production_quality_decision_event_hash
+                for item in candidate_refs
+                if item.production_quality_decision_event_hash is not None
+            )
+        )
+        compatibility_decisions = tuple(
+            sorted(
                 item.quality_decision_v3_event_hash
                 for item in candidate_refs
                 if item.quality_decision_v3_event_hash is not None
             )
         )
-        dossiers = tuple(sorted(item.terminal_dossier_event_hash for item in candidate_refs))
+        dossiers = tuple(
+            sorted(
+                item.terminal_dossier_event_hash
+                for item in candidate_refs
+                if item.terminal_dossier_event_hash is not None
+            )
+        )
         for event_hash, event_type in (
             *((value, "TrialTerminated") for value in terminals),
             *((value, "EvaluationRecorded") for value in evaluations),
-            *((value, "QualityDecisionV3Recorded") for value in decisions),
+            *((value, "QualityDecisionV4Recorded") for value in decisions),
+            *((value, "QualityDecisionV3Recorded") for value in compatibility_decisions),
             *((value, "TrialTerminalDossierRecorded") for value in dossiers),
         ):
             event = self._event(event_hash, event_type)
@@ -489,6 +508,23 @@ class ProductionActivationCandidateFactoryV1:
         if dossier is None:
             raise EventTransitionError("production evaluator omitted terminal dossier")
         evaluation_hash = terminal.payload["evaluation_event_hash"]
+        production_decision_hash = evaluated.quality_decision_event_hash
+        if dossier.payload["quality_decision_event_hash"] != production_decision_hash:
+            raise EventTransitionError(
+                "production evaluator decision differs from terminal dossier"
+            )
+        if production_decision_hash is not None:
+            production_decision = self._event(
+                production_decision_hash, "QualityDecisionV4Recorded"
+            )
+            if (
+                production_decision.run_id != request.run_id
+                or production_decision.payload["factor_spec_id"]
+                != definitions[0].entity_id
+            ):
+                raise EventTransitionError(
+                    "production quality decision differs from evaluated candidate"
+                )
         decision: RecordedQualityDecisionV3 | None = None
         if evaluation_hash is not None:
             decision_evidence_refs = self._producer_bound_decision_refs(
@@ -506,10 +542,51 @@ class ProductionActivationCandidateFactoryV1:
             evaluation_event_hash=(
                 None if evaluation_hash is None else str(evaluation_hash)
             ),
+            production_quality_decision_event_hash=(
+                None
+                if production_decision_hash is None
+                else str(production_decision_hash)
+            ),
             quality_decision_v3_event_hash=(
                 None if decision is None else decision.event.event_hash
             ),
             terminal_dossier_event_hash=dossier.event_hash,
+        )
+
+    def identity_terminal_refs(
+        self,
+        *,
+        attempt: FactorIdentityAttempt,
+        trial_id: str,
+        run_id: str,
+    ) -> ProductionActivationCandidateRefsV1:
+        """Expose the canonical identity producer's terminal without fabrication.
+
+        Invalid and duplicate attempts intentionally have no factor definition,
+        evaluator decision, or terminal dossier.  The factory returns that exact
+        absence instead of inventing a factor identifier to satisfy a dossier
+        schema that applies only after production evaluation.
+        """
+
+        if not isinstance(attempt, FactorIdentityAttempt):
+            raise TypeError("identity terminal refs require FactorIdentityAttempt")
+        if attempt.status not in {"invalid", "duplicate"}:
+            raise ValueError("identity terminal refs require an identity-terminal attempt")
+        terminals = [
+            event
+            for event in self.store.query_events(
+                event_type="TrialTerminated", entity_id=trial_id
+            )
+            if event.run_id == run_id and event.payload["status"] == attempt.status
+        ]
+        if len(terminals) != 1 or terminals[0].payload["evaluation_event_hash"] is not None:
+            raise EventTransitionError("identity attempt lacks one exact terminal")
+        return ProductionActivationCandidateRefsV1(
+            trial_terminal_event_hash=terminals[0].event_hash,
+            evaluation_event_hash=None,
+            production_quality_decision_event_hash=None,
+            quality_decision_v3_event_hash=None,
+            terminal_dossier_event_hash=None,
         )
 
     def _producer_bound_decision_refs(
@@ -761,21 +838,13 @@ class ProductionActivationCandidateFactoryV1:
 
     @staticmethod
     def _compatibility_blockers() -> tuple[str, ...]:
-        # These are repository facts, not speculative runtime failures.
-        # Duplicate/invalid identity terminals are emitted before a production
-        # factor definition exists, while TrialTerminalDossierV1 requires a
-        # non-null factor_spec_id.  Fabricating one would violate identity
-        # authority, so formal arm execution remains blocked on that schema.
-        # QualityDecisionV3Service still routes DecisionEvidenceRecord.v2
-        # through QualityDecisionAuthorityGateV1.  That gate intentionally caps
-        # every non-reject result at research_only because execution,
-        # mechanism, complement, and snapshot authority are not yet fully
-        # producer-bound.  Activation's endpoint counts candidate_zoo+, so the
-        # factory must not advertise an authoritative effective-yield path.
-        return (
-            "IDENTITY_TERMINAL_DOSSIER_PRODUCER_UNAVAILABLE",
-            "QUALITY_DECISION_V3_PRODUCER_AUTHORITY_INCOMPLETE",
-        )
+        # Invalid/duplicate identity attempts now preserve their real terminal
+        # without fabricating a dossier.  Evaluated candidates use the existing
+        # production evaluator's dossier-bound QualityDecisionV4 event as the
+        # endpoint authority.  The requested existing Decision v3 service still
+        # runs as a compatibility/replay path, but its deliberately capped
+        # legacy evidence cannot override the production decision.
+        return ()
 
 
 __all__ = [

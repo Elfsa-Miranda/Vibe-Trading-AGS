@@ -92,7 +92,7 @@ def test_run_source_binds_decision_to_evaluation_factor_when_terminal_omits_it()
         },
     )
     decision = _event(
-        "QualityDecisionV3Recorded",
+        "QualityDecisionV4Recorded",
         "decision",
         run_id=execution_run_id,
         payload={
@@ -110,6 +110,7 @@ def test_run_source_binds_decision_to_evaluation_factor_when_terminal_omits_it()
             "factor_spec_id": factor_spec_id,
             "terminal_event_hash": terminal.event_hash,
             "evaluation_event_hash": evaluation.event_hash,
+            "quality_decision_event_hash": decision.event_hash,
         },
     )
     events = (retrieval, start, evaluation, terminal, decision, dossier)
@@ -130,5 +131,172 @@ def test_run_source_binds_decision_to_evaluation_factor_when_terminal_omits_it()
 
     assert "factor_spec_id" not in terminal.payload
     assert result.derived_effective_candidate_ids == (factor_spec_id,)
+    assert result.source_failure_codes == ()
+    assert result.source_complete is True
+
+    missing_dossier = auditor.audit(
+        plan_hash=plan_hash,
+        pair_id=pair_id,
+        run_group_id=run_group_id,
+        arm="flat",
+        candidate_budget=1,
+        retrieval_authority_event_hashes=(retrieval.event_hash,),
+        terminal_event_hashes=(terminal.event_hash,),
+        evaluation_event_hashes=(evaluation.event_hash,),
+        quality_decision_event_hashes=(decision.event_hash,),
+        terminal_dossier_event_hashes=(),
+    )
+    assert "EVERY_EVALUATED_TERMINAL_REQUIRES_ONE_DOSSIER" in (
+        missing_dossier.source_failure_codes
+    )
+    assert "QUALITY_DECISION_DOSSIER_BINDING_MISMATCH" in (
+        missing_dossier.source_failure_codes
+    )
+    assert missing_dossier.source_complete is False
+
+
+def test_run_source_rejects_legacy_v3_as_effective_yield_authority() -> None:
+    plan_hash = _hash("legacy-plan")
+    pair_id = "pair-legacy"
+    run_group_id = "group-legacy"
+    execution_run_id = activation_arm_execution_run_id(
+        plan_hash=plan_hash,
+        run_group_id=run_group_id,
+        arm="control",
+    )
+    trial_id = "trial-legacy"
+    factor_spec_id = _hash("legacy-factor")
+    retrieval = _event(
+        "PreArmFlatScheduleFrozen",
+        "legacy-retrieval",
+        run_id=execution_run_id,
+        payload={"plan_hash": plan_hash, "pair_id": pair_id},
+    )
+    start = _event(
+        "TrialStarted",
+        "legacy-start",
+        run_id=execution_run_id,
+        payload={"trial_id": trial_id, "candidate_id": "candidate-legacy"},
+    )
+    evaluation = _event(
+        "EvaluationRecorded",
+        "legacy-evaluation",
+        run_id=execution_run_id,
+        payload={"trial_id": trial_id, "factor_spec_id": factor_spec_id},
+    )
+    terminal = _event(
+        "TrialTerminated",
+        "legacy-terminal",
+        run_id=execution_run_id,
+        payload={
+            "trial_id": trial_id,
+            "status": "success",
+            "evaluation_event_hash": evaluation.event_hash,
+        },
+    )
+    legacy_decision = _event(
+        "QualityDecisionV3Recorded",
+        "legacy-decision",
+        run_id=execution_run_id,
+        payload={
+            "factor_spec_id": factor_spec_id,
+            "decision": "candidate_zoo",
+            "tier": 2,
+        },
+    )
+    dossier = _event(
+        "TrialTerminalDossierRecorded",
+        "legacy-dossier",
+        run_id=execution_run_id,
+        payload={
+            "trial_id": trial_id,
+            "factor_spec_id": factor_spec_id,
+            "terminal_event_hash": terminal.event_hash,
+            "evaluation_event_hash": evaluation.event_hash,
+            "quality_decision_event_hash": legacy_decision.event_hash,
+        },
+    )
+    auditor = FormalActivationRunSourceAuditorV3(
+        _VerifiedStore(
+            (retrieval, start, evaluation, terminal, legacy_decision, dossier)
+        )  # type: ignore[arg-type]
+    )
+
+    result = auditor.audit(
+        plan_hash=plan_hash,
+        pair_id=pair_id,
+        run_group_id=run_group_id,
+        arm="flat",
+        candidate_budget=1,
+        retrieval_authority_event_hashes=(retrieval.event_hash,),
+        terminal_event_hashes=(terminal.event_hash,),
+        evaluation_event_hashes=(evaluation.event_hash,),
+        quality_decision_event_hashes=(legacy_decision.event_hash,),
+        terminal_dossier_event_hashes=(dossier.event_hash,),
+    )
+
+    assert result.derived_effective_candidate_ids == ()
+    assert "PRODUCTION_QUALITY_DECISION_SOURCE_MISSING" in result.source_failure_codes
+    assert "QUALITY_DECISION_DOSSIER_BINDING_MISMATCH" in result.source_failure_codes
+    assert result.source_complete is False
+
+
+def test_run_source_accepts_identity_invalid_terminal_without_fabricated_dossier() -> None:
+    plan_hash = _hash("invalid-plan")
+    pair_id = "pair-invalid"
+    run_group_id = "group-invalid"
+    execution_run_id = activation_arm_execution_run_id(
+        plan_hash=plan_hash,
+        run_group_id=run_group_id,
+        arm="control",
+    )
+    trial_id = "trial-invalid"
+    retrieval = _event(
+        "PreArmFlatScheduleFrozen",
+        "invalid-retrieval",
+        run_id=execution_run_id,
+        payload={"plan_hash": plan_hash, "pair_id": pair_id},
+    )
+    start = _event(
+        "TrialStarted",
+        "invalid-start",
+        run_id=execution_run_id,
+        payload={"trial_id": trial_id, "candidate_id": "candidate-invalid"},
+    )
+    failure = _event(
+        "GenerationFailureRecorded",
+        "invalid-generation",
+        run_id=execution_run_id,
+        payload={"trial_id": trial_id, "failure_code": "INVALID_FORMULA"},
+    )
+    terminal = _event(
+        "TrialTerminated",
+        "invalid-terminal",
+        run_id=execution_run_id,
+        payload={
+            "trial_id": trial_id,
+            "status": "invalid",
+            "evaluation_event_hash": None,
+        },
+    )
+    auditor = FormalActivationRunSourceAuditorV3(
+        _VerifiedStore((retrieval, start, failure, terminal))  # type: ignore[arg-type]
+    )
+
+    result = auditor.audit(
+        plan_hash=plan_hash,
+        pair_id=pair_id,
+        run_group_id=run_group_id,
+        arm="flat",
+        candidate_budget=1,
+        retrieval_authority_event_hashes=(retrieval.event_hash,),
+        terminal_event_hashes=(terminal.event_hash,),
+        evaluation_event_hashes=(),
+        quality_decision_event_hashes=(),
+        terminal_dossier_event_hashes=(),
+    )
+
+    assert result.derived_terminal_status_counts[3] == ("invalid", 1)
+    assert result.derived_effective_candidate_ids == ()
     assert result.source_failure_codes == ()
     assert result.source_complete is True
