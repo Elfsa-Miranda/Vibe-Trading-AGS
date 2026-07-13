@@ -48,6 +48,7 @@ from .run_input_v1 import (
     ProductionActivationRunInputBundleV1,
 )
 from .protocol_v2 import CanonicalHashSpecV1
+from .runner import activation_arm_execution_run_id
 
 
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -265,6 +266,166 @@ class ProductionActivationCandidateFactoryV1:
         )
         return RecordedProductionActivationFactoryBindingV1(
             recorded, binding_hash, blockers
+        )
+
+    def start_arm(
+        self, request: ProductionActivationFactoryArmRequestV1
+    ) -> ResearchEventEnvelope:
+        """Record the exact pre-outcome arm binding after all source checks."""
+        if not isinstance(request, ProductionActivationFactoryArmRequestV1):
+            raise TypeError("Activation arm start requires a closed factory request")
+        bundle, _ = self._bundle(request.run_input_bundle_event_hash)
+        expected_policy = (
+            bundle.flat_policy_hash
+            if request.arm == "flat"
+            else bundle.topology_policy_hash
+        )
+        execution_arm = "control" if request.arm == "flat" else "treatment"
+        expected_run_id = activation_arm_execution_run_id(
+            plan_hash=request.plan_hash,
+            run_group_id=request.run_group_id,
+            arm=execution_arm,
+        )
+        expected_retrieval_type = (
+            "PreArmFlatScheduleFrozen"
+            if request.arm == "flat"
+            else "RetrieverDecisionV7Recorded"
+        )
+        retrieval = self._event(
+            request.retrieval_authority_event_hash, expected_retrieval_type
+        )
+        if (
+            request.retriever_policy_hash != expected_policy
+            or request.execution_run_id != expected_run_id
+            or retrieval.payload.get("policy_hash") != expected_policy
+            or retrieval.payload.get("plan_hash") != request.plan_hash
+            or retrieval.payload.get("pair_id") != request.pair_id
+        ):
+            raise EventTransitionError("Activation arm sources differ from frozen inputs")
+        start_hash = canonical_json_hash(
+            {
+                "schema_version": "production_activation_arm_started.v1",
+                "run_input_bundle_event_hash": request.run_input_bundle_event_hash,
+                "plan_hash": request.plan_hash,
+                "pair_id": request.pair_id,
+                "run_group_id": request.run_group_id,
+                "execution_run_id": request.execution_run_id,
+                "arm": request.arm,
+                "retriever_policy_hash": request.retriever_policy_hash,
+                "retrieval_authority_event_hash": retrieval.event_hash,
+            }
+        )
+        start_id = "production-activation-arm-start-" + start_hash[-24:]
+        return self.store._append_producer_event(
+            EventDraft(
+                event_type="ProductionActivationArmStartedV1Recorded",
+                entity_id=start_id,
+                run_id=request.execution_run_id,
+                payload_schema_version="production_activation_arm_started_recorded.v1",
+                idempotency_key="production-activation-arm-start-v1:" + start_hash,
+                payload={
+                    "arm_start_id": start_id,
+                    "arm_start_hash": start_hash,
+                    "run_input_bundle_event_hash": request.run_input_bundle_event_hash,
+                    "plan_hash": request.plan_hash,
+                    "pair_id": request.pair_id,
+                    "run_group_id": request.run_group_id,
+                    "arm": request.arm,
+                    "retriever_policy_hash": request.retriever_policy_hash,
+                    "retrieval_authority_event_hash": retrieval.event_hash,
+                },
+            )
+        )
+
+    def complete_arm(
+        self,
+        *,
+        request: ProductionActivationFactoryArmRequestV1,
+        arm_started_event_hash: str,
+        candidate_refs: tuple[ProductionActivationCandidateRefsV1, ...],
+    ) -> ProductionActivationFactoryArmResultV1:
+        """Close one arm from evaluator-minted refs without deriving metrics."""
+        started = self._event(
+            arm_started_event_hash, "ProductionActivationArmStartedV1Recorded"
+        )
+        if (
+            started.run_id != request.execution_run_id
+            or started.payload["retrieval_authority_event_hash"]
+            != request.retrieval_authority_event_hash
+        ):
+            raise EventTransitionError("Activation arm completion differs from start")
+        if not candidate_refs or any(
+            not isinstance(item, ProductionActivationCandidateRefsV1)
+            for item in candidate_refs
+        ):
+            raise TypeError("Activation arm completion requires evaluator-minted refs")
+        terminals = tuple(sorted(item.trial_terminal_event_hash for item in candidate_refs))
+        evaluations = tuple(
+            sorted(
+                item.evaluation_event_hash
+                for item in candidate_refs
+                if item.evaluation_event_hash is not None
+            )
+        )
+        decisions = tuple(
+            sorted(
+                item.quality_decision_v3_event_hash
+                for item in candidate_refs
+                if item.quality_decision_v3_event_hash is not None
+            )
+        )
+        dossiers = tuple(sorted(item.terminal_dossier_event_hash for item in candidate_refs))
+        for event_hash, event_type in (
+            *((value, "TrialTerminated") for value in terminals),
+            *((value, "EvaluationRecorded") for value in evaluations),
+            *((value, "QualityDecisionV3Recorded") for value in decisions),
+            *((value, "TrialTerminalDossierRecorded") for value in dossiers),
+        ):
+            event = self._event(event_hash, event_type)
+            if event.run_id != request.execution_run_id:
+                raise EventTransitionError("Activation arm refs cross execution runs")
+        content = {
+            "schema_version": "production_activation_arm_completed.v1",
+            "arm_started_event_hash": started.event_hash,
+            "run_input_bundle_event_hash": request.run_input_bundle_event_hash,
+            "plan_hash": request.plan_hash,
+            "pair_id": request.pair_id,
+            "run_group_id": request.run_group_id,
+            "arm": request.arm,
+            "retrieval_authority_event_hashes": [
+                request.retrieval_authority_event_hash
+            ],
+            "trial_terminal_event_hashes": list(terminals),
+            "evaluation_event_hashes": list(evaluations),
+            "quality_decision_event_hashes": list(decisions),
+            "terminal_dossier_event_hashes": list(dossiers),
+            "artifact_refs": [dict(request.resource_artifact_ref)],
+        }
+        completion_hash = canonical_json_hash(content)
+        completion_id = "production-activation-arm-complete-" + completion_hash[-24:]
+        completed = self.store._append_producer_event(
+            EventDraft(
+                event_type="ProductionActivationArmCompletedV1Recorded",
+                entity_id=completion_id,
+                run_id=request.execution_run_id,
+                payload_schema_version="production_activation_arm_completed_recorded.v1",
+                idempotency_key="production-activation-arm-complete-v1:"
+                + completion_hash,
+                payload={
+                    "arm_completion_id": completion_id,
+                    "arm_completion_hash": completion_hash,
+                    **{key: value for key, value in content.items() if key != "schema_version"},
+                },
+            )
+        )
+        return ProductionActivationFactoryArmResultV1(
+            schema_version="production_activation_factory_arm_result.v1",
+            arm_started_event_hash=started.event_hash,
+            retriever_decision_event_refs=(request.retrieval_authority_event_hash,),
+            trial_terminal_event_refs=terminals,
+            quality_decision_event_refs=decisions,
+            resource_artifact_ref=request.resource_artifact_ref,
+            arm_completed_event_hash=completed.event_hash,
         )
 
     def record_generated_identity(

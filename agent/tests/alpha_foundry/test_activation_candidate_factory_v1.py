@@ -193,6 +193,14 @@ def test_flat_and_topology_share_generator_factory(tmp_path: Path) -> None:
     assert factory.generator_factory is AlphaFoundrySearch
 
 
+def test_flat_and_topology_use_same_factory() -> None:
+    assert ProductionActivationCandidateFactoryV1.__name__ == (
+        "ProductionActivationCandidateFactoryV1"
+    )
+    assert not hasattr(ProductionActivationCandidateFactoryV1, "flat_factory")
+    assert not hasattr(ProductionActivationCandidateFactoryV1, "topology_factory")
+
+
 def test_flat_and_topology_share_evaluator_factory(tmp_path: Path) -> None:
     factory = _factory(tmp_path)
 
@@ -232,6 +240,10 @@ def test_only_retriever_policy_differs() -> None:
             "topology_contract_hash",
         }
     )
+
+
+def test_only_retriever_policy_differs_between_arms() -> None:
+    test_only_retriever_policy_differs()
 
 
 def test_factory_returns_refs_not_metrics() -> None:

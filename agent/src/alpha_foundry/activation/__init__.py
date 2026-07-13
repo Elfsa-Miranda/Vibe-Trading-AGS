@@ -14,6 +14,24 @@ from src.alpha_foundry.activation.candidate_factory_v1 import (
     ProductionActivationFactoryArmRequestV1,
     ProductionActivationFactoryArmResultV1,
 )
+from src.alpha_foundry.activation.coordinator_v2 import ActivationPairCoordinatorV2
+from src.alpha_foundry.activation.governance_v2 import (
+    ActivationGovernanceDecisionV2,
+    ActivationGovernanceService,
+    ActivationReadinessServiceV4,
+    ActivationReadinessV4,
+)
+from src.alpha_foundry.activation.pair_projector_v2 import (
+    ActivationArmEventRefsV2,
+    ActivationEvidenceProjector,
+    ActivationPairEvidenceV2,
+)
+from src.alpha_foundry.activation.statistical_v2 import (
+    ActivationStatisticalAnalysisV2,
+    ActivationStatisticalAnalyzerV2,
+    PilotDispersionEvidenceV2,
+    PreregisteredConfirmatoryActivationPlanV2,
+)
 from src.alpha_foundry.activation.model import (
     ActivationAnalysisPolicy,
     ActivationDesign,
@@ -53,6 +71,12 @@ __all__ = [
     "PairedActivationRunner", "RegisteredActivationPlan", "RetrieverActivationDecision",
     "ProductionActivationCandidateFactoryV1", "ProductionActivationCandidateRefsV1",
     "ProductionActivationFactoryArmRequestV1", "ProductionActivationFactoryArmResultV1",
+    "ActivationArmEventRefsV2", "ActivationEvidenceProjector",
+    "ActivationPairCoordinatorV2", "ActivationPairEvidenceV2",
+    "ActivationReadinessServiceV4", "ActivationReadinessV4",
+    "ActivationStatisticalAnalysisV2", "ActivationStatisticalAnalyzerV2",
+    "ActivationGovernanceDecisionV2", "ActivationGovernanceService",
+    "PilotDispersionEvidenceV2", "PreregisteredConfirmatoryActivationPlanV2",
     "RetrieverActivationPolicy", "RetrieverModeResolution", "TrainValidActivationScope",
     "holm_adjust",
     "activation_arm_execution_run_id",
