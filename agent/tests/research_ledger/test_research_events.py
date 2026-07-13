@@ -211,6 +211,8 @@ def test_closed_payload_registry_covers_every_required_event_type() -> None:
         "RetrieverDecisionV7Recorded",
         "OfficialSearchControlRecorded",
         "PreArmFlatScheduleFrozen",
+        "ActivationStatisticalProtocolV2Registered",
+        "ActivationApplicabilityMatrixV1Registered",
         "ActivationPairExecutionScheduled",
         "ActivationPairExecutionClaimed",
         "ActivationPlanRegistered",
@@ -1190,6 +1192,38 @@ def test_every_registered_payload_schema_validates_a_complete_production_shape()
             "candidate_count": 1,
             "output_hash": digest,
             "artifact_refs": [],
+        },
+        "ActivationStatisticalProtocolV2Registered": {
+            "protocol_id": "activation-protocol-v2-fixture",
+            "research_cycle_id": "activation-cycle-v2-fixture",
+            "protocol_hash": digest,
+            "registration_event_hash": digest,
+            "code_manifest_hash": digest,
+            "canonical_hash_spec": {
+                "algorithm": "sha256",
+                "canonicalization_version": "canonical_json.v1",
+                "domain_separation_version": "activation_domain.v1",
+                "output_prefix": "sha256:",
+                "spec_hash": digest,
+            },
+            "protocol": {
+                "schema_version": "preregistered_activation_statistical_protocol.v2"
+            },
+        },
+        "ActivationApplicabilityMatrixV1Registered": {
+            "matrix_id": "activation-applicability-v1-fixture",
+            "research_cycle_id": "activation-cycle-v2-fixture",
+            "matrix_hash": digest,
+            "frozen_before_event_hash": digest,
+            "code_manifest_hash": digest,
+            "canonical_hash_spec": {
+                "algorithm": "sha256",
+                "canonicalization_version": "canonical_json.v1",
+                "domain_separation_version": "activation_domain.v1",
+                "output_prefix": "sha256:",
+                "spec_hash": digest,
+            },
+            "matrix": {"schema_version": "activation_applicability_matrix.v1"},
         },
         "ActivationRunSourceAudited": {
             "audit_id": "activation-source-v2-1",
