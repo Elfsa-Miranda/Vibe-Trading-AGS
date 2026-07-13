@@ -27,10 +27,12 @@ from src.alpha_quality.flags import ResolvedAGSFlags
 from src.alpha_quality.production_evaluator_v1 import (
     ProductionCandidateEvaluatorFactoryV1,
     ProductionCandidateEvaluatorV1,
+    ProductionEvaluationRequestV1,
     TrialTerminalDossierArtifactStoreV1,
 )
 from src.research_ledger.events import ResearchEventStore
 from src.research_ledger.hash_utils import canonical_json_hash
+from tests.alpha_quality.test_predictive_evidence_v4 import _setup
 
 
 def _hash(name: str) -> str:
@@ -65,7 +67,9 @@ def _service(store: ResearchEventStore, tmp_path: Path) -> QualityDecisionV3Serv
             schema_version="decision_v2_policy.v1",
             policy_version="activation-factory-v1-test",
         ),
-        repository=DecisionEvidenceRepository(tmp_path / "decision-evidence"),
+        repository=DecisionEvidenceRepository(
+            store.artifact_root / "decision-evidence-v2"
+        ),
     )
 
 
@@ -157,6 +161,9 @@ def test_activation_uses_existing_quality_decision_v3() -> None:
         ProductionActivationCandidateFactoryV1.quality_decision_service_class
         is QualityDecisionV3Service
     )
+    assert "decision_evidence_refs" not in inspect.signature(
+        ProductionActivationCandidateFactoryV1.evaluate_recorded_candidate
+    ).parameters
 
 
 def test_activation_uses_existing_terminal_and_dossier_builders() -> None:
@@ -164,12 +171,69 @@ def test_activation_uses_existing_terminal_and_dossier_builders() -> None:
         ProductionActivationCandidateFactoryV1.evaluate_recorded_candidate
     )
 
-    assert "self.evaluator.evaluate(request).authoritative" in source
+    assert "self.evaluator.evaluate(request).authoritative_result" in source
     assert "TrialTerminalDossierRecorded" in source
     assert TrialTerminalDossierArtifactStoreV1.__module__ == (
         "src.alpha_quality.production_evaluator_v1"
     )
     assert not hasattr(ProductionActivationCandidateFactoryV1, "dossier_writer")
+
+
+def test_factory_real_dag_evaluator_decision_and_dossier_chain(
+    tmp_path: Path,
+) -> None:
+    flags, store, contract, snapshot, definition = _setup(
+        tmp_path,
+        enable_decision=True,
+    )
+    service = QualityDecisionV3Service(
+        store=store,
+        flags=flags,
+        policy=DecisionV2Policy(
+            schema_version="decision_v2_policy.v1",
+            policy_version="activation-factory-real-chain-v1",
+        ),
+        repository=DecisionEvidenceRepository(
+            store.artifact_root / "decision-evidence-v2"
+        ),
+    )
+    factory = ProductionActivationCandidateFactoryV1(
+        store=store,
+        quality_decision_v3=service,
+    )
+    request = ProductionEvaluationRequestV1(
+        run_id="predictive-run",
+        trial_id="predictive-trial",
+        factor_definition_event_hash=definition.event_hash,
+        resolved_contract_hash=contract.contract.contract_hash,
+        snapshot_event_hash=snapshot.event.event_hash,
+        source_watermark_event_hash=definition.event_hash,
+        frozen_comparison_pool_hash=None,
+    )
+
+    refs = factory.evaluate_recorded_candidate(request=request)
+
+    terminal = next(
+        event
+        for event in store.query_events(event_type="TrialTerminated")
+        if event.event_hash == refs.trial_terminal_event_hash
+    )
+    decision = next(
+        event
+        for event in store.query_events(event_type="QualityDecisionV3Recorded")
+        if event.event_hash == refs.quality_decision_v3_event_hash
+    )
+    dossier = next(
+        event
+        for event in store.query_events(event_type="TrialTerminalDossierRecorded")
+        if event.event_hash == refs.terminal_dossier_event_hash
+    )
+    assert terminal.payload["evaluation_event_hash"] == refs.evaluation_event_hash
+    assert decision.payload["factor_spec_id"] == definition.entity_id
+    assert decision.payload["decision"] == "research_only"
+    assert dossier.payload["terminal_event_hash"] == terminal.event_hash
+    assert store.query_events(event_type="ProductionEvaluationNodeRecorded")
+    assert store.verify_chain()
 
 
 def test_flat_and_topology_share_generator_factory(tmp_path: Path) -> None:
