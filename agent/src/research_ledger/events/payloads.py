@@ -1647,6 +1647,42 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ActivationPilotDispersionV2Recorded": PayloadSpec(
+        "activation_pilot_dispersion_recorded.v2",
+        {
+            "statistical_artifact_id": _string,
+            "artifact_kind": _enum("pilot"),
+            "semantic_hash": _hash,
+            "artifact_hash": _hash,
+            "protocol_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ActivationConfirmatoryPlanV2Registered": PayloadSpec(
+        "activation_confirmatory_plan_registered.v2",
+        {
+            "statistical_artifact_id": _string,
+            "artifact_kind": _enum("confirmatory_plan"),
+            "semantic_hash": _hash,
+            "artifact_hash": _hash,
+            "protocol_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ActivationStatisticalAnalysisV2Recorded": PayloadSpec(
+        "activation_statistical_analysis_recorded.v2",
+        {
+            "statistical_artifact_id": _string,
+            "artifact_kind": _enum("analysis"),
+            "semantic_hash": _hash,
+            "artifact_hash": _hash,
+            "protocol_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "ActivationReadinessV4Recorded": PayloadSpec(
         "activation_readiness_recorded.v4",
         {
