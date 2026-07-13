@@ -36,6 +36,7 @@ class FormalActivationRunSourceV3:
     evaluation_event_hashes: tuple[str, ...]
     quality_decision_event_hashes: tuple[str, ...]
     terminal_dossier_event_hashes: tuple[str, ...]
+    resource_event_hashes: tuple[str, ...]
     derived_terminal_status_counts: tuple[tuple[str, int], ...]
     derived_candidate_ids: tuple[str, ...]
     derived_effective_candidate_ids: tuple[str, ...]
@@ -50,6 +51,7 @@ class FormalActivationRunSourceV3:
             self.evaluation_event_hashes,
             self.quality_decision_event_hashes,
             self.terminal_dossier_event_hashes,
+            self.resource_event_hashes,
         ):
             if values != tuple(sorted(set(values))):
                 raise ValueError("formal Activation source hashes must be sorted and unique")
@@ -74,6 +76,7 @@ class FormalActivationRunSourceV3:
             "evaluation_event_hashes": list(self.evaluation_event_hashes),
             "quality_decision_event_hashes": list(self.quality_decision_event_hashes),
             "terminal_dossier_event_hashes": list(self.terminal_dossier_event_hashes),
+            "resource_event_hashes": list(self.resource_event_hashes),
             "derived_terminal_status_counts": [list(item) for item in self.derived_terminal_status_counts],
             "derived_candidate_ids": list(self.derived_candidate_ids),
             "derived_effective_candidate_ids": list(self.derived_effective_candidate_ids),
@@ -104,6 +107,7 @@ class FormalActivationRunSourceAuditorV3:
         evaluation_event_hashes: tuple[str, ...],
         quality_decision_event_hashes: tuple[str, ...],
         terminal_dossier_event_hashes: tuple[str, ...],
+        resource_event_hashes: tuple[str, ...],
     ) -> FormalActivationRunSourceV3:
         events = self.store.query_events()
         failures: set[str] = set()
@@ -140,6 +144,13 @@ class FormalActivationRunSourceAuditorV3:
             by_hash, terminal_dossier_event_hashes, {"TrialTerminalDossierRecorded"},
             "TERMINAL_DOSSIER_SOURCE_MISSING", failures, required=False,
         )
+        resources = self._resolve(
+            by_hash,
+            resource_event_hashes,
+            {"ActivationResourceMeasuredV2"},
+            "PRODUCTION_ARM_RESOURCE_SOURCE_MISSING",
+            failures,
+        )
         if any(event.run_id != execution_run_id for event in terminals + evaluations + decisions + dossiers):
             failures.add("ARM_EXECUTION_RUN_ID_MISMATCH")
         if arm == "topology" and any(
@@ -156,6 +167,25 @@ class FormalActivationRunSourceAuditorV3:
             for event in retrieval
         ):
             failures.add("FLAT_PREARM_SCHEDULE_BINDING_MISMATCH")
+        if len(resources) != 1:
+            failures.add("EVERY_ARM_REQUIRES_ONE_RESOURCE_EVENT")
+        for resource in resources:
+            if (
+                resource.run_id != run_group_id
+                or resource.payload.get("plan_hash") != plan_hash
+                or resource.payload.get("pair_id") != pair_id
+                or resource.payload.get("run_group_id") != run_group_id
+                or resource.payload.get("arm") != execution_arm
+            ):
+                failures.add("PRODUCTION_ARM_RESOURCE_BINDING_MISMATCH")
+            if resource.payload.get("source_complete") is not True:
+                failures.add("PRODUCTION_ARM_RESOURCE_SOURCE_INCOMPLETE")
+            if any(
+                order.get(resource.event_hash, -1)
+                <= order.get(outcome.event_hash, -1)
+                for outcome in terminals + evaluations + decisions + dossiers
+            ):
+                failures.add("PRODUCTION_ARM_RESOURCE_PRECEDES_ARM_OUTCOME")
 
         starts = {
             str(event.payload["trial_id"]): event
@@ -277,6 +307,7 @@ class FormalActivationRunSourceAuditorV3:
             *evaluation_event_hashes,
             *quality_decision_event_hashes,
             *terminal_dossier_event_hashes,
+            *resource_event_hashes,
         )
         if len(all_requested) != len(set(all_requested)):
             failures.add("DUPLICATE_CROSS_FAMILY_SOURCE_HASH")
@@ -289,6 +320,7 @@ class FormalActivationRunSourceAuditorV3:
         normalized_evaluations = tuple(sorted(set(evaluation_event_hashes)))
         normalized_decisions = tuple(sorted(set(quality_decision_event_hashes)))
         normalized_dossiers = tuple(sorted(set(terminal_dossier_event_hashes)))
+        normalized_resources = tuple(sorted(set(resource_event_hashes)))
         content = {
             "schema_version": "formal_activation_run_source.v3",
             "plan_hash": plan_hash,
@@ -302,6 +334,7 @@ class FormalActivationRunSourceAuditorV3:
             "evaluation_event_hashes": list(normalized_evaluations),
             "quality_decision_event_hashes": list(normalized_decisions),
             "terminal_dossier_event_hashes": list(normalized_dossiers),
+            "resource_event_hashes": list(normalized_resources),
             "derived_terminal_status_counts": [list(item) for item in status_pairs],
             "derived_candidate_ids": candidates,
             "derived_effective_candidate_ids": sorted(effective),
@@ -321,6 +354,7 @@ class FormalActivationRunSourceAuditorV3:
             evaluation_event_hashes=normalized_evaluations,
             quality_decision_event_hashes=normalized_decisions,
             terminal_dossier_event_hashes=normalized_dossiers,
+            resource_event_hashes=normalized_resources,
             derived_terminal_status_counts=status_pairs,
             derived_candidate_ids=tuple(candidates),
             derived_effective_candidate_ids=tuple(sorted(effective)),

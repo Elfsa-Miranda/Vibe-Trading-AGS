@@ -12,6 +12,7 @@ from src.alpha_foundry.activation.candidate_factory_v1 import (
     ProductionActivationFactoryArmRequestV1,
     ProductionActivationFactoryArmResultV1,
 )
+from src.alpha_foundry.activation.coordinator_v2 import ActivationPairCoordinatorV2
 from src.alpha_foundry.candidate_pool import make_candidate
 from src.alpha_foundry.dsl.identity import FactorIdentityService, FactorSpecSemantics
 from src.alpha_foundry.mutators import SeedMutator
@@ -376,8 +377,9 @@ def test_factory_returns_refs_not_metrics() -> None:
         "arm_started_event_hash",
         "retriever_decision_event_refs",
         "trial_terminal_event_refs",
+        "evaluation_event_refs",
         "quality_decision_event_refs",
-        "resource_artifact_ref",
+        "terminal_dossier_event_refs",
         "arm_completed_event_hash",
     }
     assert public_result_fields.isdisjoint(forbidden)
@@ -395,17 +397,75 @@ def test_factory_rejects_callable_import_path_formula_and_decision_truth() -> No
         "arm": "flat",
         "retriever_policy_hash": _hash("flat-policy"),
         "retrieval_authority_event_hash": _hash("retrieval"),
-        "resource_artifact_ref": {
-            "relative_path": "resource/a.json",
-            "artifact_hash": _hash("resource"),
-            "media_type": "application/json",
-        },
     }
     for forbidden in ("callable", "import_path", "formula", "decision", "score"):
         with pytest.raises(ValueError, match="caller truth"):
             ProductionActivationFactoryArmRequestV1.from_mapping(
                 {**base, forbidden: "forbidden"}
             )
+
+
+def test_factory_cannot_accept_precomputed_resource_outcome() -> None:
+    base = {
+        "schema_version": "production_activation_factory_arm_request.v1",
+        "run_input_bundle_event_hash": _hash("bundle-event"),
+        "plan_hash": _hash("plan"),
+        "pair_id": "pair-1",
+        "run_group_id": "group-1",
+        "execution_run_id": "execution-1",
+        "arm": "flat",
+        "retriever_policy_hash": _hash("flat-policy"),
+        "retrieval_authority_event_hash": _hash("retrieval"),
+    }
+    request_fields = {
+        field.name for field in fields(ProductionActivationFactoryArmRequestV1)
+    }
+    assert "resource_artifact_ref" not in request_fields
+    assert "resource_event_hash" not in inspect.signature(
+        ProductionActivationCandidateFactoryV1.complete_arm
+    ).parameters
+    with pytest.raises(ValueError, match="schema is closed"):
+        ProductionActivationFactoryArmRequestV1.from_mapping(
+            {
+                **base,
+                "resource_artifact_ref": {
+                    "relative_path": "resource/a.json",
+                    "artifact_hash": _hash("resource"),
+                    "media_type": "application/json",
+                },
+            }
+        )
+
+
+def test_pair_coordinator_joins_post_executor_resource_with_factory_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    factory = _factory(tmp_path)
+    coordinator = ActivationPairCoordinatorV2(factory)
+    result = ProductionActivationFactoryArmResultV1(
+        schema_version="production_activation_factory_arm_result.v1",
+        arm_started_event_hash=_hash("arm-started"),
+        retriever_decision_event_refs=(_hash("retrieval"),),
+        trial_terminal_event_refs=(_hash("terminal"),),
+        evaluation_event_refs=(_hash("evaluation"),),
+        quality_decision_event_refs=(_hash("quality"),),
+        terminal_dossier_event_refs=(_hash("dossier"),),
+        arm_completed_event_hash=_hash("arm-completed"),
+    )
+    resource_event_hash = _hash("resource-event")
+    resource_event = type("ResourceEvent", (), {"event_hash": resource_event_hash})()
+    monkeypatch.setattr(factory, "_event", lambda event_hash, event_type: resource_event)
+
+    refs = coordinator.projector_refs(
+        result, resource_event_hash=resource_event_hash
+    )
+
+    assert refs.retrieval_authority_event_hashes == result.retriever_decision_event_refs
+    assert refs.terminal_event_hashes == result.trial_terminal_event_refs
+    assert refs.evaluation_event_hashes == result.evaluation_event_refs
+    assert refs.quality_decision_event_hashes == result.quality_decision_event_refs
+    assert refs.terminal_dossier_event_hashes == result.terminal_dossier_event_refs
+    assert refs.resource_event_hashes == (resource_event_hash,)
 
 
 def test_no_activation_specific_scorecard_exists() -> None:

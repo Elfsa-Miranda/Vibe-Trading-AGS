@@ -167,6 +167,7 @@ def _audit(
         "evaluation_event_hashes": [_hash(f"evaluation-{arm}")],
         "quality_decision_event_hashes": [_hash(f"decision-{arm}")],
         "terminal_dossier_event_hashes": [_hash(f"dossier-{arm}")],
+        "resource_event_hashes": [_hash(f"resource-{arm}")],
         "derived_terminal_status_counts": [list(item) for item in counts],
         "derived_candidate_ids": list(candidates),
         "derived_effective_candidate_ids": list(effective),
@@ -186,6 +187,7 @@ def _audit(
         evaluation_event_hashes=tuple(content["evaluation_event_hashes"]),
         quality_decision_event_hashes=tuple(content["quality_decision_event_hashes"]),
         terminal_dossier_event_hashes=tuple(content["terminal_dossier_event_hashes"]),
+        resource_event_hashes=tuple(content["resource_event_hashes"]),
         derived_terminal_status_counts=counts,
         derived_candidate_ids=candidates,
         derived_effective_candidate_ids=effective,
@@ -275,6 +277,7 @@ def _recorded_pair(
             evaluation_event_hashes=(source.event_hash,),
             quality_decision_event_hashes=(source.event_hash,),
             terminal_dossier_event_hashes=(source.event_hash,),
+            resource_event_hashes=(source.event_hash,),
         )
 
     return projector.project_pair(
@@ -379,6 +382,7 @@ def test_activation_projector_delegates_to_run_source_v3(
         evaluation_event_hashes=(source.event_hash,),
         quality_decision_event_hashes=(source.event_hash,),
         terminal_dossier_event_hashes=(source.event_hash,),
+        resource_event_hashes=(source.event_hash,),
     )
 
     projected = projector.project_pair(
@@ -420,6 +424,7 @@ def test_projector_rejects_empty_or_noncanonical_event_refs() -> None:
             evaluation_event_hashes=(_hash("evaluation"),),
             quality_decision_event_hashes=(_hash("decision"),),
             terminal_dossier_event_hashes=(_hash("dossier"),),
+            resource_event_hashes=(_hash("resource"),),
         )
     with pytest.raises(ValueError, match="non-zero canonical hashes"):
         ActivationArmEventRefsV2(
@@ -428,6 +433,7 @@ def test_projector_rejects_empty_or_noncanonical_event_refs() -> None:
             evaluation_event_hashes=(_hash("evaluation"),),
             quality_decision_event_hashes=(_hash("decision"),),
             terminal_dossier_event_hashes=(_hash("dossier"),),
+            resource_event_hashes=(_hash("resource"),),
         )
 
 

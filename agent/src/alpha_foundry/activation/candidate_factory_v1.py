@@ -78,15 +78,6 @@ def _require_hash(value: str, name: str) -> None:
         raise ValueError(f"{name} must be a canonical hash")
 
 
-def _require_reference(value: Mapping[str, str]) -> dict[str, str]:
-    if set(value) != {"relative_path", "artifact_hash", "media_type"}:
-        raise ValueError("resource artifact reference has an invalid schema")
-    _require_hash(str(value["artifact_hash"]), "resource artifact")
-    if not value["relative_path"] or not value["media_type"]:
-        raise ValueError("resource artifact reference is incomplete")
-    return {name: str(item) for name, item in value.items()}
-
-
 @dataclass(frozen=True)
 class ProductionActivationFactoryArmRequestV1:
     """Closed arm request: references and frozen identities, never outcomes."""
@@ -100,7 +91,6 @@ class ProductionActivationFactoryArmRequestV1:
     arm: Literal["flat", "topology"]
     retriever_policy_hash: str
     retrieval_authority_event_hash: str
-    resource_artifact_ref: Mapping[str, str]
 
     def __post_init__(self) -> None:
         for name in (
@@ -112,7 +102,6 @@ class ProductionActivationFactoryArmRequestV1:
             _require_hash(str(getattr(self, name)), name)
         if not self.pair_id or not self.run_group_id or not self.execution_run_id:
             raise ValueError("Activation factory arm identities are required")
-        object.__setattr__(self, "resource_artifact_ref", _require_reference(self.resource_artifact_ref))
 
     @classmethod
     def from_mapping(
@@ -127,9 +116,6 @@ class ProductionActivationFactoryArmRequestV1:
                     + ",".join(forbidden)
                 )
             raise ValueError("Activation factory arm request schema is closed")
-        resource = raw["resource_artifact_ref"]
-        if not isinstance(resource, Mapping):
-            raise ValueError("resource artifact ref must be typed")
         return cls(
             schema_version=str(raw["schema_version"]),  # type: ignore[arg-type]
             run_input_bundle_event_hash=str(raw["run_input_bundle_event_hash"]),
@@ -140,7 +126,6 @@ class ProductionActivationFactoryArmRequestV1:
             arm=str(raw["arm"]),  # type: ignore[arg-type]
             retriever_policy_hash=str(raw["retriever_policy_hash"]),
             retrieval_authority_event_hash=str(raw["retrieval_authority_event_hash"]),
-            resource_artifact_ref={str(k): str(v) for k, v in resource.items()},
         )
 
 
@@ -175,8 +160,9 @@ class ProductionActivationFactoryArmResultV1:
     arm_started_event_hash: str
     retriever_decision_event_refs: tuple[str, ...]
     trial_terminal_event_refs: tuple[str, ...]
+    evaluation_event_refs: tuple[str, ...]
     quality_decision_event_refs: tuple[str, ...]
-    resource_artifact_ref: Mapping[str, str]
+    terminal_dossier_event_refs: tuple[str, ...]
     arm_completed_event_hash: str
 
     def __post_init__(self) -> None:
@@ -185,13 +171,14 @@ class ProductionActivationFactoryArmResultV1:
         for values in (
             self.retriever_decision_event_refs,
             self.trial_terminal_event_refs,
+            self.evaluation_event_refs,
             self.quality_decision_event_refs,
+            self.terminal_dossier_event_refs,
         ):
             if values != tuple(sorted(set(values))):
                 raise ValueError("Activation factory result refs must be sorted and unique")
             for value in values:
                 _require_hash(value, "Activation factory result event")
-        object.__setattr__(self, "resource_artifact_ref", _require_reference(self.resource_artifact_ref))
 
 
 @dataclass(frozen=True)
@@ -359,7 +346,12 @@ class ProductionActivationCandidateFactoryV1:
         arm_started_event_hash: str,
         candidate_refs: tuple[ProductionActivationCandidateRefsV1, ...],
     ) -> ProductionActivationFactoryArmResultV1:
-        """Close one arm from evaluator-minted refs without deriving metrics."""
+        """Close one evaluator arm from producer events without deriving metrics.
+
+        Whole-arm resource evidence is runner-owned and is only available after
+        this executor boundary returns.  The pair coordinator joins that later
+        protected event reference before invoking Run Source v3.
+        """
         started = self._event(
             arm_started_event_hash, "ProductionActivationArmStartedV1Recorded"
         )
@@ -428,7 +420,7 @@ class ProductionActivationCandidateFactoryV1:
             "evaluation_event_hashes": list(evaluations),
             "quality_decision_event_hashes": list(decisions),
             "terminal_dossier_event_hashes": list(dossiers),
-            "artifact_refs": [dict(request.resource_artifact_ref)],
+            "artifact_refs": [],
         }
         completion_hash = canonical_json_hash(content)
         completion_id = "production-activation-arm-complete-" + completion_hash[-24:]
@@ -452,8 +444,9 @@ class ProductionActivationCandidateFactoryV1:
             arm_started_event_hash=started.event_hash,
             retriever_decision_event_refs=(request.retrieval_authority_event_hash,),
             trial_terminal_event_refs=terminals,
+            evaluation_event_refs=evaluations,
             quality_decision_event_refs=decisions,
-            resource_artifact_ref=request.resource_artifact_ref,
+            terminal_dossier_event_refs=dossiers,
             arm_completed_event_hash=completed.event_hash,
         )
 
