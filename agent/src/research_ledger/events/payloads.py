@@ -1549,6 +1549,34 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "decision": _mapping,
         },
     ),
+    "ProductionGoldenSliceReadinessV1Recorded": PayloadSpec(
+        "production_golden_slice_readiness_recorded.v1",
+        {
+            "readiness_id": _string,
+            "research_cycle_id": _string,
+            "provider_authority_decision_event_hash": _hash,
+            "ready": _boolean,
+            "blocker_codes": _string_list,
+            "readiness_hash": _hash,
+            "canonical_hash_spec": _mapping,
+            "readiness": _mapping,
+        },
+    ),
+    "ProductionActivationRunInputBundleV1Registered": PayloadSpec(
+        "production_activation_run_input_bundle_registered.v1",
+        {
+            "bundle_id": _string,
+            "research_cycle_id": _string,
+            "bundle_hash": _hash,
+            "resolved_contract_event_hash": _hash,
+            "provider_authority_decision_event_hash": _hash,
+            "golden_slice_readiness_event_hash": _hash,
+            "pit_snapshot_event_hash": _hash,
+            "source_watermark": _hash,
+            "canonical_hash_spec": _mapping,
+            "bundle": _mapping,
+        },
+    ),
     "ActivationPairExecutionScheduled": PayloadSpec(
         "activation_pair_execution_scheduled.v1",
         {

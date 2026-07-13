@@ -317,6 +317,19 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_ALPHA_SCORECARD",
         "VIBE_TRADING_RESEARCH_EVENTS",
     ),
+    "ProductionGoldenSliceReadinessV1Recorded": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+    ),
+    "ProductionActivationRunInputBundleV1Registered": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ActivationPairExecutionScheduled": (
         "VIBE_TRADING_ALPHA_FOUNDRY",
         "VIBE_TRADING_RESEARCH_EVENTS",
@@ -478,6 +491,8 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "ProviderFieldPITAuditV1Recorded",
         "ProviderInterfacePITAuditV1Recorded",
         "ProviderAuthorityDecisionV1Recorded",
+        "ProductionGoldenSliceReadinessV1Recorded",
+        "ProductionActivationRunInputBundleV1Registered",
     }
 )
 
@@ -941,6 +956,8 @@ class ResearchEventStore:
             "ProviderFieldPITAuditV1Recorded": "audit_id",
             "ProviderInterfacePITAuditV1Recorded": "audit_id",
             "ProviderAuthorityDecisionV1Recorded": "decision_id",
+            "ProductionGoldenSliceReadinessV1Recorded": "readiness_id",
+            "ProductionActivationRunInputBundleV1Registered": "bundle_id",
             "ActivationPairExecutionScheduled": "schedule_id",
             "ActivationPairExecutionClaimed": "claim_id",
             "ActivationPlanRegistered": "experiment_id",

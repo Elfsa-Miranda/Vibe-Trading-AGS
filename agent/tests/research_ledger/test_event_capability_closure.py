@@ -57,6 +57,8 @@ _SPECIALIZED_EVENT_TYPES = {
     "ProviderFieldPITAuditV1Recorded",
     "ProviderInterfacePITAuditV1Recorded",
     "ProviderAuthorityDecisionV1Recorded",
+    "ProductionGoldenSliceReadinessV1Recorded",
+    "ProductionActivationRunInputBundleV1Registered",
     "ActivationPairExecutionScheduled",
     "ActivationPairExecutionClaimed",
     "ActivationPlanRegistered",
