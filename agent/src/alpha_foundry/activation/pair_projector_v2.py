@@ -56,6 +56,7 @@ class ActivationArmEventRefsV2:
     evaluation_event_hashes: tuple[str, ...]
     quality_decision_event_hashes: tuple[str, ...]
     terminal_dossier_event_hashes: tuple[str, ...]
+    resource_event_hashes: tuple[str, ...]
 
     def __post_init__(self) -> None:
         for name, values in self.__dict__.items():
@@ -64,8 +65,11 @@ class ActivationArmEventRefsV2:
             if name in {
                 "retrieval_authority_event_hashes",
                 "terminal_event_hashes",
+                "resource_event_hashes",
             } and not values:
-                raise ValueError("arm retrieval and terminal refs cannot be empty")
+                raise ValueError(
+                    "arm retrieval, terminal, and resource refs cannot be empty"
+                )
             if any(not _is_hash(value) for value in values):
                 raise ValueError("arm event refs require non-zero canonical hashes")
 
@@ -400,6 +404,7 @@ class ActivationEvidenceProjector:
             evaluation_event_hashes=refs.evaluation_event_hashes,
             quality_decision_event_hashes=refs.quality_decision_event_hashes,
             terminal_dossier_event_hashes=refs.terminal_dossier_event_hashes,
+            resource_event_hashes=refs.resource_event_hashes,
         )
 
     @staticmethod

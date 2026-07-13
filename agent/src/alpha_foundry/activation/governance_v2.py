@@ -600,10 +600,10 @@ class ActivationReadinessServiceV4:
             "no_final_forward_access": not any(
                 event.event_type.startswith(("Final", "Forward")) for event in cycle
             ),
-            # The only existing isolated-worker v3 implementation is a closed
-            # infrastructure probe.  No production-arm resource event exists,
-            # so this gate must remain false rather than treating probe output
-            # as effect evidence.
+            # The existing isolated-worker v3 implementation proves only the
+            # infrastructure probes. No source-complete production-arm
+            # resource producer/event exists, so this pre-outcome gate remains
+            # false rather than depending on post-outcome pair measurements.
             "resource_isolation_verified": False,
             "applicability_matrix_registered": len(matrices) == 1,
             "governance_roles_separated": self._roles_are_separated(),

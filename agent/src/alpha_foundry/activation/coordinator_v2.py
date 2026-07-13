@@ -9,6 +9,7 @@ from src.alpha_foundry.activation.candidate_factory_v1 import (
     ProductionActivationCandidateFactoryV1,
 )
 from src.alpha_foundry.activation.formal_protocol_v3 import FormalActivationPairScheduleV3
+from src.alpha_foundry.activation.pair_projector_v2 import ActivationArmEventRefsV2
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
@@ -109,6 +110,31 @@ class ActivationPairCoordinatorV2:
             complete=not reasons,
             incomplete_reason_codes=reasons,
             completion_hash=canonical_json_hash(content),
+        )
+
+    def projector_refs(
+        self,
+        result: object,
+        *,
+        resource_event_hash: str,
+    ) -> ActivationArmEventRefsV2:
+        """Join post-executor resource authority with refs-only factory output."""
+        from src.alpha_foundry.activation.candidate_factory_v1 import (
+            ProductionActivationFactoryArmResultV1,
+        )
+
+        if not isinstance(result, ProductionActivationFactoryArmResultV1):
+            raise TypeError("pair coordinator requires a refs-only factory result")
+        resource = self.factory._event(
+            resource_event_hash, "ActivationResourceMeasuredV2"
+        )
+        return ActivationArmEventRefsV2(
+            retrieval_authority_event_hashes=result.retriever_decision_event_refs,
+            terminal_event_hashes=result.trial_terminal_event_refs,
+            evaluation_event_hashes=result.evaluation_event_refs,
+            quality_decision_event_hashes=result.quality_decision_event_refs,
+            terminal_dossier_event_hashes=result.terminal_dossier_event_refs,
+            resource_event_hashes=(resource.event_hash,),
         )
 
     def update_shared_process_memory(
