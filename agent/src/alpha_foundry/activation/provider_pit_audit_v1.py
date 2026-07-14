@@ -473,6 +473,65 @@ def tushare_activation_field_audits_v1(
     )
 
 
+def baostock_golden_cohort_field_audits_v1(
+    *,
+    adapter_registration_event_hash: str,
+    typed_receipt_hashes: tuple[str, ...],
+    hash_spec: CanonicalHashSpecV1 = DEFAULT_ACTIVATION_HASH_SPEC,
+) -> tuple[ProviderFieldPITAuditV1, ...]:
+    """Build the free-source audit from typed raw-call receipts, never frames.
+
+    BaoStock has no credential boundary, but its retrieval timestamp is not a
+    provider publication timestamp.  Receipt-backed success therefore supports
+    schema/replay evidence only; it cannot mint strict PIT authority.
+    """
+    _hashes((adapter_registration_event_hash,), "adapter registration")
+    _hashes(typed_receipt_hashes, "BaoStock typed receipt")
+    interface_by_field = {
+        "amount": "query_history_k_data_plus",
+        "close": "query_history_k_data_plus",
+        "delisting_state": "query_stock_basic",
+        "high": "query_history_k_data_plus",
+        "listing_date": "query_stock_basic",
+        "low": "query_history_k_data_plus",
+        "open": "query_history_k_data_plus",
+        "reliable_price_availability": "query_history_k_data_plus",
+        "st_status": "query_history_k_data_plus",
+        "suspension": "query_history_k_data_plus",
+        "trading_calendar": "query_trade_dates",
+        "trading_status": "query_history_k_data_plus",
+        "volume": "query_history_k_data_plus",
+    }
+    unavailable_fields = {"reliable_price_availability"}
+    return tuple(
+        ProviderFieldPITAuditV1.create(
+            provider="baostock",
+            adapter_id="baostock-ashare-eligible-golden-cohort-v1",
+            interface=interface_by_field[field_name],
+            field_name=field_name,
+            event_or_reporting_time="provider_market_date",
+            effective_time="market_session_date",
+            provider_availability_time="retrieval_receipt_not_provider_publication_time",
+            retrieval_vintage="source_manifest_source_as_of",
+            revision_history="unknown",
+            cross_interface_consistency="not_verified",
+            missingness_policy="fail_closed",
+            rate_limit_retry_behavior="partial_batch_possible",
+            cache_vintage="bound_to_manifest",
+            audit_sample_definition="typed_baostock_raw_receipt_replay",
+            compliance_level=("non_compliant" if field_name in unavailable_fields else "verified_with_limitations"),
+            claim_scope_ceiling=("unavailable" if field_name in unavailable_fields else "best_effort"),
+            allowed_claim_scopes=("eligible_universe_schema_replay",),
+            prohibited_claim_scopes=("csi300_membership_claim", "formal_strict_pit_activation"),
+            evidence_kinds=("typed_provider_receipt", "source_partition_replay"),
+            audit_evidence_hashes=tuple(sorted((adapter_registration_event_hash, *typed_receipt_hashes))),
+            limitations=tuple(sorted({"PROVIDER_PUBLICATION_TIMESTAMP_UNAVAILABLE", "REVISION_HISTORY_UNVERIFIED", "STRICT_PIT_NOT_ESTABLISHED"})),
+            hash_spec=hash_spec,
+        )
+        for field_name in sorted(interface_by_field)
+    )
+
+
 @dataclass(frozen=True)
 class RecordedProviderFieldPITAuditV1:
     audit: ProviderFieldPITAuditV1
@@ -760,5 +819,6 @@ __all__ = [
     "RecordedProviderFieldPITAuditV1",
     "RecordedProviderInterfacePITAuditV1",
     "STRICT_ACTIVATION_REQUIRED_FIELDS_V1",
+    "baostock_golden_cohort_field_audits_v1",
     "tushare_activation_field_audits_v1",
 ]

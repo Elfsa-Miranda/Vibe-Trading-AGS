@@ -11,6 +11,7 @@ from src.alpha_foundry.activation.provider_pit_audit_v1 import (
     STRICT_ACTIVATION_REQUIRED_FIELDS_V1,
     ProviderFieldPITAuditV1,
     ProviderPITAuditServiceV1,
+    baostock_golden_cohort_field_audits_v1,
     tushare_activation_field_audits_v1,
 )
 from src.alpha_quality.flags import ResolvedAGSFlags
@@ -177,6 +178,17 @@ def test_revision_history_gap_caps_claim_scope() -> None:
     )
     assert set(a.field_name for a in audits) == set(STRICT_ACTIVATION_REQUIRED_FIELDS_V1)
     assert not set(PROHIBITED_FINANCIAL_STATEMENT_FIELDS_V1).intersection(audit.field_name for audit in audits)
+
+
+def test_baostock_typed_receipts_cannot_mint_strict_or_csi300_authority() -> None:
+    audits = baostock_golden_cohort_field_audits_v1(
+        adapter_registration_event_hash=_hash("baostock-registration"),
+        typed_receipt_hashes=(_hash("baostock-receipt"),),
+    )
+
+    assert audits
+    assert all(audit.claim_scope_ceiling != "verified_strict" for audit in audits)
+    assert all("csi300_membership_claim" in audit.prohibited_claim_scopes for audit in audits)
 
 
 def test_narrow_activation_catalog_matches_existing_adapter_interfaces() -> None:

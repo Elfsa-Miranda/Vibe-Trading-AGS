@@ -418,7 +418,9 @@ def validate_ashare_pit_source_v2(
         "can_buy": can_buy.astype(bool),
         "can_observe": can_observe.astype(bool),
         "can_sell": can_sell.astype(bool),
-        "eligible_universe": membership.astype(bool),
+        # A registered eligible universe is an execution-eligible subset, not
+        # merely a provider's daily constituent/security list.
+        "eligible_universe": can_buy.astype(bool),
     }
     evidence = _evidence(
         registration=registration,
