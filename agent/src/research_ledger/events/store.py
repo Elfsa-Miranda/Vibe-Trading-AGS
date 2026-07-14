@@ -302,6 +302,11 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_RESEARCH_EVENTS",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "FormalActivationCycleV1Bootstrapped": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ProviderFieldPITAuditV1Recorded": (
         "VIBE_TRADING_ALPHA_FOUNDRY",
         "VIBE_TRADING_ALPHA_SCORECARD",
@@ -537,6 +542,7 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "DataRevisionRecorded",
         "ActivationStatisticalProtocolV2Registered",
         "ActivationApplicabilityMatrixV1Registered",
+        "FormalActivationCycleV1Bootstrapped",
         "ProviderFieldPITAuditV1Recorded",
         "ProviderInterfacePITAuditV1Recorded",
         "ProviderAuthorityDecisionV1Recorded",
@@ -1011,6 +1017,7 @@ class ResearchEventStore:
             "PreArmFlatScheduleFrozen": "schedule_id",
             "ActivationStatisticalProtocolV2Registered": "protocol_id",
             "ActivationApplicabilityMatrixV1Registered": "matrix_id",
+            "FormalActivationCycleV1Bootstrapped": "cycle_bootstrap_id",
             "ProviderFieldPITAuditV1Recorded": "audit_id",
             "ProviderInterfacePITAuditV1Recorded": "audit_id",
             "ProviderAuthorityDecisionV1Recorded": "decision_id",
