@@ -79,12 +79,12 @@ FAMILY = "ags-v32-phase11-flat-topology-baostock-research-only-v1"
 BASELINE_FORMULA = "neg(delta(close,5))"
 SEED_FORMULAS = (
     BASELINE_FORMULA,
-    "close",
-    "open",
-    "high",
-    "low",
-    "volume",
-    "amount",
+    "rank(close)",
+    "rank(open)",
+    "rank(high)",
+    "rank(low)",
+    "rank(volume)",
+    "rank(amount)",
     "delta(close,1)",
 )
 NONIDENTITY_TEMPLATES = ("rank_wrap", "decay_3", "delay_1", "zscore_wrap")
