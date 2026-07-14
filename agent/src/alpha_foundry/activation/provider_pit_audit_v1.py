@@ -25,6 +25,38 @@ from src.research_ledger.events import (
 
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 AuditStatus = Literal["verified_strict", "best_effort", "unavailable"]
+ComplianceLevel = Literal[
+    "verified_strict",
+    "verified_with_limitations",
+    "best_effort",
+    "non_compliant",
+    "unknown",
+]
+
+STRICT_ACTIVATION_REQUIRED_FIELDS_V1 = (
+    "adjustment",
+    "amount",
+    "close",
+    "corporate_action",
+    "daily_csi300_membership",
+    "delisting_state",
+    "high",
+    "limit_down",
+    "limit_up",
+    "listing_date",
+    "low",
+    "open",
+    "reliable_price_availability",
+    "st_status",
+    "suspension",
+    "trading_calendar",
+    "volume",
+)
+PROHIBITED_FINANCIAL_STATEMENT_FIELDS_V1 = (
+    "end_date",
+    "f_ann_date",
+    "update_flag",
+)
 
 
 def _hashes(values: tuple[str, ...], name: str, *, allow_empty: bool = False) -> None:
@@ -48,15 +80,15 @@ class ProviderFieldPITAuditV1:
     provider_availability_time: str
     retrieval_vintage: str
     revision_history: Literal["complete", "partial", "unknown", "not_applicable"]
-    cross_interface_consistency: Literal[
-        "verified", "not_verified", "not_applicable"
-    ]
+    cross_interface_consistency: Literal["verified", "not_verified", "not_applicable"]
     missingness_policy: Literal["fail_closed", "typed_unavailable", "unknown"]
-    rate_limit_retry_behavior: Literal[
-        "complete_manifest_required", "partial_batch_possible", "unknown"
-    ]
+    rate_limit_retry_behavior: Literal["complete_manifest_required", "partial_batch_possible", "unknown"]
     cache_vintage: Literal["bound_to_manifest", "unbound", "unknown"]
+    audit_sample_definition: str
+    compliance_level: ComplianceLevel
     claim_scope_ceiling: AuditStatus
+    allowed_claim_scopes: tuple[str, ...]
+    prohibited_claim_scopes: tuple[str, ...]
     evidence_kinds: tuple[str, ...]
     audit_evidence_hashes: tuple[str, ...]
     limitations: tuple[str, ...]
@@ -73,34 +105,43 @@ class ProviderFieldPITAuditV1:
             self.retrieval_vintage,
         )
         if any(not value for value in temporal) or len(set(temporal)) != 4:
-            raise ValueError(
-                "reporting, effective, availability, and vintage semantics must be distinct"
-            )
+            raise ValueError("reporting, effective, availability, and vintage semantics must be distinct")
         if self.evidence_kinds != tuple(sorted(set(self.evidence_kinds))):
             raise ValueError("provider evidence kinds must be sorted and unique")
         _hashes(self.audit_evidence_hashes, "provider audit evidence", allow_empty=True)
         if self.limitations != tuple(sorted(set(self.limitations))):
             raise ValueError("provider field limitations must be sorted and unique")
+        for values, name in (
+            (self.allowed_claim_scopes, "allowed claim scopes"),
+            (self.prohibited_claim_scopes, "prohibited claim scopes"),
+        ):
+            if not values or values != tuple(sorted(set(values))):
+                raise ValueError(f"{name} must be non-empty, sorted, and unique")
+        if not self.audit_sample_definition:
+            raise ValueError("provider audit sample definition is required")
         strict_evidence = {"independent_crosscheck", "source_partition_replay"}
         strict_ready = (
             bool(strict_evidence.intersection(self.evidence_kinds))
             and bool(self.audit_evidence_hashes)
             and self.revision_history in {"complete", "not_applicable"}
-            and self.cross_interface_consistency
-            in {"verified", "not_applicable"}
+            and self.cross_interface_consistency in {"verified", "not_applicable"}
             and self.missingness_policy == "fail_closed"
             and self.rate_limit_retry_behavior == "complete_manifest_required"
             and self.cache_vintage == "bound_to_manifest"
             and "unknown" not in " ".join(temporal).lower()
             and "not_exposed" not in " ".join(temporal).lower()
         )
-        if self.claim_scope_ceiling == "verified_strict" and not strict_ready:
+        if self.compliance_level == "verified_strict" and not strict_ready:
             raise ValueError("verified_strict requires independent field-level audit evidence")
+        if self.claim_scope_ceiling == "verified_strict" and (
+            self.compliance_level != "verified_strict" or not strict_ready
+        ):
+            raise ValueError("strict claim scope requires verified_strict compliance")
+        if self.compliance_level in {"non_compliant", "unknown"} and not self.limitations:
+            raise ValueError("non-strict provider compliance requires a typed limitation")
         if self.claim_scope_ceiling == "unavailable" and not self.limitations:
             raise ValueError("unavailable provider field requires a typed limitation")
-        expected = self.canonical_hash_spec.hash_payload(
-            "provider-field-pit-audit.v1", self._content_dict()
-        )
+        expected = self.canonical_hash_spec.hash_payload("provider-field-pit-audit.v1", self._content_dict())
         if self.field_audit_hash != expected:
             raise ValueError("provider field PIT audit hash mismatch")
 
@@ -117,15 +158,15 @@ class ProviderFieldPITAuditV1:
         provider_availability_time: str,
         retrieval_vintage: str,
         revision_history: Literal["complete", "partial", "unknown", "not_applicable"],
-        cross_interface_consistency: Literal[
-            "verified", "not_verified", "not_applicable"
-        ],
+        cross_interface_consistency: Literal["verified", "not_verified", "not_applicable"],
         missingness_policy: Literal["fail_closed", "typed_unavailable", "unknown"],
-        rate_limit_retry_behavior: Literal[
-            "complete_manifest_required", "partial_batch_possible", "unknown"
-        ],
+        rate_limit_retry_behavior: Literal["complete_manifest_required", "partial_batch_possible", "unknown"],
         cache_vintage: Literal["bound_to_manifest", "unbound", "unknown"],
+        audit_sample_definition: str,
+        compliance_level: ComplianceLevel,
         claim_scope_ceiling: AuditStatus,
+        allowed_claim_scopes: tuple[str, ...],
+        prohibited_claim_scopes: tuple[str, ...],
         evidence_kinds: tuple[str, ...],
         audit_evidence_hashes: tuple[str, ...],
         limitations: tuple[str, ...],
@@ -146,7 +187,11 @@ class ProviderFieldPITAuditV1:
             "missingness_policy": missingness_policy,
             "rate_limit_retry_behavior": rate_limit_retry_behavior,
             "cache_vintage": cache_vintage,
+            "audit_sample_definition": audit_sample_definition,
+            "compliance_level": compliance_level,
             "claim_scope_ceiling": claim_scope_ceiling,
+            "allowed_claim_scopes": list(sorted(set(allowed_claim_scopes))),
+            "prohibited_claim_scopes": list(sorted(set(prohibited_claim_scopes))),
             "evidence_kinds": list(sorted(set(evidence_kinds))),
             "audit_evidence_hashes": list(sorted(set(audit_evidence_hashes))),
             "limitations": list(sorted(set(limitations))),
@@ -167,14 +212,16 @@ class ProviderFieldPITAuditV1:
             missingness_policy=missingness_policy,
             rate_limit_retry_behavior=rate_limit_retry_behavior,
             cache_vintage=cache_vintage,
+            audit_sample_definition=audit_sample_definition,
+            compliance_level=compliance_level,
             claim_scope_ceiling=claim_scope_ceiling,
+            allowed_claim_scopes=tuple(content["allowed_claim_scopes"]),
+            prohibited_claim_scopes=tuple(content["prohibited_claim_scopes"]),
             evidence_kinds=tuple(content["evidence_kinds"]),
             audit_evidence_hashes=tuple(content["audit_evidence_hashes"]),
             limitations=tuple(content["limitations"]),
             canonical_hash_spec=hash_spec,
-            field_audit_hash=hash_spec.hash_payload(
-                "provider-field-pit-audit.v1", content
-            ),
+            field_audit_hash=hash_spec.hash_payload("provider-field-pit-audit.v1", content),
         )
 
     def _content_dict(self) -> dict[str, Any]:
@@ -193,7 +240,11 @@ class ProviderFieldPITAuditV1:
             "missingness_policy": self.missingness_policy,
             "rate_limit_retry_behavior": self.rate_limit_retry_behavior,
             "cache_vintage": self.cache_vintage,
+            "audit_sample_definition": self.audit_sample_definition,
+            "compliance_level": self.compliance_level,
             "claim_scope_ceiling": self.claim_scope_ceiling,
+            "allowed_claim_scopes": list(self.allowed_claim_scopes),
+            "prohibited_claim_scopes": list(self.prohibited_claim_scopes),
             "evidence_kinds": list(self.evidence_kinds),
             "audit_evidence_hashes": list(self.audit_evidence_hashes),
             "limitations": list(self.limitations),
@@ -233,9 +284,7 @@ class ProviderInterfacePITAuditV1:
             not self.complete_manifest_eligible or self.completeness != "complete"
         ):
             raise ValueError("strict interface authority requires a complete manifest")
-        expected = self.canonical_hash_spec.hash_payload(
-            "provider-interface-pit-audit.v1", self._content_dict()
-        )
+        expected = self.canonical_hash_spec.hash_payload("provider-interface-pit-audit.v1", self._content_dict())
         if self.interface_audit_hash != expected:
             raise ValueError("provider interface PIT audit hash mismatch")
 
@@ -286,9 +335,7 @@ class ProviderAuthorityDecisionV1:
             and not self.blocker_codes
         ):
             raise ValueError("provider activation eligibility must derive from strict authority")
-        expected = self.canonical_hash_spec.hash_payload(
-            "provider-authority-decision.v1", self._content_dict()
-        )
+        expected = self.canonical_hash_spec.hash_payload("provider-authority-decision.v1", self._content_dict())
         if self.decision_hash != expected:
             raise ValueError("provider authority decision hash mismatch")
 
@@ -323,97 +370,102 @@ def tushare_activation_field_audits_v1(
     catalog cannot mint ``verified_strict``.
     """
 
-    common = {
-        "provider": "tushare-pro",
-        "adapter_id": "tushare-csi300-pit-v1",
-        "evidence_kinds": ("local_implementation_review",),
-        "audit_evidence_hashes": (adapter_registration_event_hash,),
-        "hash_spec": hash_spec,
-    }
-    rows = (
+    official_documentation_hash = hash_spec.hash_payload(
+        "tushare-activation-interface-docs.v1",
         {
-            "interface": "daily",
-            "field_name": "trade_date_ohlcv",
-            "event_or_reporting_time": "trade_date",
-            "effective_time": "exchange_session_close",
-            "provider_availability_time": "provider_row_timestamp_not_exposed",
-            "retrieval_vintage": "source_manifest_source_as_of",
-            "revision_history": "unknown",
-            "cross_interface_consistency": "not_verified",
-            "missingness_policy": "fail_closed",
-            "rate_limit_retry_behavior": "partial_batch_possible",
-            "cache_vintage": "bound_to_manifest",
-            "claim_scope_ceiling": "best_effort",
-            "limitations": (
-                "DAILY_PROVIDER_AVAILABILITY_TIMESTAMP_NOT_EXPOSED",
-                "RATE_LIMIT_COMPLETENESS_NOT_INDEPENDENTLY_AUDITED",
-            ),
-        },
-        {
-            "interface": "dividend",
-            "field_name": "ann_date",
-            "event_or_reporting_time": "ann_date",
-            "effective_time": "ex_date",
-            "provider_availability_time": "provider_row_timestamp_not_exposed",
-            "retrieval_vintage": "source_manifest_source_as_of",
-            "revision_history": "unknown",
-            "cross_interface_consistency": "not_verified",
-            "missingness_policy": "fail_closed",
-            "rate_limit_retry_behavior": "partial_batch_possible",
-            "cache_vintage": "bound_to_manifest",
-            "claim_scope_ceiling": "best_effort",
-            "limitations": ("DIVIDEND_REVISION_HISTORY_UNVERIFIED",),
-        },
-        {
-            "interface": "financial_statements",
-            "field_name": "f_ann_date",
-            "event_or_reporting_time": "f_ann_date",
-            "effective_time": "end_date_period_end",
-            "provider_availability_time": "provider_availability_unknown",
-            "retrieval_vintage": "retrieval_vintage_unbound",
-            "revision_history": "unknown",
-            "cross_interface_consistency": "not_verified",
-            "missingness_policy": "typed_unavailable",
-            "rate_limit_retry_behavior": "unknown",
-            "cache_vintage": "unknown",
-            "claim_scope_ceiling": "unavailable",
-            "limitations": ("FINANCIAL_INTERFACE_NOT_CONSUMED_BY_CURRENT_ADAPTER",),
-        },
-        {
-            "interface": "financial_statements",
-            "field_name": "end_date",
-            "event_or_reporting_time": "financial_reporting_period",
-            "effective_time": "end_date",
-            "provider_availability_time": "provider_availability_unknown",
-            "retrieval_vintage": "retrieval_vintage_unbound",
-            "revision_history": "unknown",
-            "cross_interface_consistency": "not_verified",
-            "missingness_policy": "typed_unavailable",
-            "rate_limit_retry_behavior": "unknown",
-            "cache_vintage": "unknown",
-            "claim_scope_ceiling": "unavailable",
-            "limitations": ("END_DATE_IS_NOT_ANNOUNCEMENT_TIME",),
-        },
-        {
-            "interface": "financial_statements",
-            "field_name": "update_flag",
-            "event_or_reporting_time": "revision_marker",
-            "effective_time": "statement_period_version",
-            "provider_availability_time": "provider_availability_unknown",
-            "retrieval_vintage": "retrieval_vintage_unbound",
-            "revision_history": "unknown",
-            "cross_interface_consistency": "not_verified",
-            "missingness_policy": "typed_unavailable",
-            "rate_limit_retry_behavior": "unknown",
-            "cache_vintage": "unknown",
-            "claim_scope_ceiling": "unavailable",
-            "limitations": ("UPDATE_FLAG_REVISION_CHAIN_NOT_AUDITED",),
+            "adapter_interfaces": [
+                "adj_factor",
+                "daily",
+                "dividend",
+                "index_weight",
+                "namechange",
+                "stk_limit",
+                "stock_basic",
+                "suspend_d",
+                "trade_cal",
+            ],
+            "official_docs": [
+                "https://tushare.pro/document/1?doc_id=27",
+                "https://tushare.pro/document/1?doc_id=108",
+                "https://tushare.pro/document/2?doc_id=26",
+                "https://tushare.pro/document/2?doc_id=130",
+            ],
         },
     )
+    interface_by_field = {
+        "adjustment": "adj_factor",
+        "amount": "daily",
+        "close": "daily",
+        "corporate_action": "dividend",
+        "daily_csi300_membership": "index_weight",
+        "delisting_state": "stock_basic",
+        "high": "daily",
+        "limit_down": "stk_limit",
+        "limit_up": "stk_limit",
+        "listing_date": "stock_basic",
+        "low": "daily",
+        "open": "daily",
+        "reliable_price_availability": "daily",
+        "st_status": "namechange",
+        "suspension": "suspend_d",
+        "trading_calendar": "trade_cal",
+        "volume": "daily",
+    }
+    rows: list[dict[str, Any]] = []
+    for field_name in STRICT_ACTIVATION_REQUIRED_FIELDS_V1:
+        availability_is_missing = field_name == "reliable_price_availability"
+        rows.append(
+            {
+                "provider": "tushare-pro",
+                "adapter_id": "tushare-csi300-pit-v1",
+                "interface": interface_by_field[field_name],
+                "field_name": field_name,
+                "event_or_reporting_time": "provider_trade_or_announcement_date",
+                "effective_time": "market_effective_date",
+                "provider_availability_time": (
+                    "provider_row_timestamp_not_exposed"
+                    if availability_is_missing
+                    else "documented_interface_update_window"
+                ),
+                "retrieval_vintage": "source_manifest_source_as_of",
+                "revision_history": "unknown",
+                "cross_interface_consistency": "not_verified",
+                "missingness_policy": ("typed_unavailable" if availability_is_missing else "fail_closed"),
+                "rate_limit_retry_behavior": "partial_batch_possible",
+                "cache_vintage": "bound_to_manifest",
+                "audit_sample_definition": "not_executed_provider_credential_unavailable",
+                "compliance_level": ("non_compliant" if availability_is_missing else "unknown"),
+                "claim_scope_ceiling": ("unavailable" if availability_is_missing else "best_effort"),
+                "allowed_claim_scopes": ("engineering_schema_validation",),
+                "prohibited_claim_scopes": (
+                    "formal_strict_pit_activation",
+                    "production_snapshot_authority",
+                ),
+                "evidence_kinds": (
+                    "local_implementation_review",
+                    "official_provider_documentation",
+                ),
+                "audit_evidence_hashes": (
+                    adapter_registration_event_hash,
+                    official_documentation_hash,
+                ),
+                "limitations": tuple(
+                    sorted(
+                        {
+                            "PROVIDER_CREDENTIAL_REQUIRED_FOR_EMPIRICAL_AUDIT",
+                            "PROVIDER_REVISION_HISTORY_UNVERIFIED",
+                            "RATE_LIMIT_COMPLETENESS_NOT_INDEPENDENTLY_AUDITED",
+                        }
+                        | ({"DAILY_PROVIDER_AVAILABILITY_TIMESTAMP_NOT_EXPOSED"} if availability_is_missing else set())
+                    )
+                ),
+                "hash_spec": hash_spec,
+            }
+        )
     return tuple(
         sorted(
             (
-                ProviderFieldPITAuditV1.create(**common, **row)  # type: ignore[arg-type]
+                ProviderFieldPITAuditV1.create(**row)  # type: ignore[arg-type]
                 for row in rows
             ),
             key=lambda item: (item.interface, item.field_name),
@@ -496,20 +548,14 @@ class ProviderPITAuditServiceV1:
     ) -> RecordedProviderInterfacePITAuditV1:
         registration = self._registration(adapter_registration_event_hash)
         events = self._events(field_audit_event_hashes, "ProviderFieldPITAuditV1Recorded")
-        if any(
-            event.payload["adapter_registration_event_hash"]
-            != adapter_registration_event_hash
-            for event in events
-        ):
+        if any(event.payload["adapter_registration_event_hash"] != adapter_registration_event_hash for event in events):
             raise EventTransitionError("provider interface mixes adapter registrations")
         interfaces = {str(event.payload["interface"]) for event in events}
         if len(interfaces) != 1:
             raise EventTransitionError("provider interface audit must cover one interface")
         fields = tuple(sorted(str(event.payload["field_name"]) for event in events))
         required = tuple(sorted(set(required_fields)))
-        completeness: Literal["complete", "partial", "unavailable"] = (
-            "complete" if fields == required else "partial"
-        )
+        completeness: Literal["complete", "partial", "unavailable"] = "complete" if fields == required else "partial"
         audits = [event.payload["audit"] for event in events]
         manifest_eligible = completeness == "complete" and all(
             audit["rate_limit_retry_behavior"] == "complete_manifest_required"
@@ -526,18 +572,12 @@ class ProviderPITAuditServiceV1:
             ceiling = "best_effort"
         limitations = tuple(
             sorted(
-                {
-                    str(code)
-                    for audit in audits
-                    for code in audit["limitations"]
-                }
+                {str(code) for audit in audits for code in audit["limitations"]}
                 | ({"PARTIAL_OR_RATE_LIMITED_INTERFACE_MANIFEST"} if not manifest_eligible else set())
             )
         )
         normalized_field_event_hashes = tuple(sorted(field_audit_event_hashes))
-        normalized_field_audit_hashes = tuple(
-            sorted(str(event.payload["field_audit_hash"]) for event in events)
-        )
+        normalized_field_audit_hashes = tuple(sorted(str(event.payload["field_audit_hash"]) for event in events))
         content = {
             "schema_version": "provider_interface_pit_audit.v1",
             "provider": str(registration.payload["provider"]),
@@ -565,9 +605,7 @@ class ProviderPITAuditServiceV1:
             claim_scope_ceiling=ceiling,
             limitations=limitations,
             canonical_hash_spec=DEFAULT_ACTIVATION_HASH_SPEC,
-            interface_audit_hash=DEFAULT_ACTIVATION_HASH_SPEC.hash_payload(
-                "provider-interface-pit-audit.v1", content
-            ),
+            interface_audit_hash=DEFAULT_ACTIVATION_HASH_SPEC.hash_payload("provider-interface-pit-audit.v1", content),
         )
         audit_id = "provider-interface-pit-" + audit.interface_audit_hash[-24:]
         event = self.store._append_producer_event(
@@ -602,9 +640,7 @@ class ProviderPITAuditServiceV1:
         required_interfaces: tuple[str, ...],
     ) -> RecordedProviderAuthorityDecisionV1:
         registration = self._registration(adapter_registration_event_hash)
-        events = self._events(
-            interface_audit_event_hashes, "ProviderInterfacePITAuditV1Recorded"
-        )
+        events = self._events(interface_audit_event_hashes, "ProviderInterfacePITAuditV1Recorded")
         interfaces = {str(event.payload["interface"]) for event in events}
         blockers: set[str] = set()
         if interfaces != set(required_interfaces):
@@ -624,13 +660,9 @@ class ProviderPITAuditServiceV1:
             else "best_effort"
         )
         status: Literal["verified_strict", "best_effort", "blocked"] = (
-            "verified_strict"
-            if not blockers and ceiling == "verified_strict"
-            else "blocked"
+            "verified_strict" if not blockers and ceiling == "verified_strict" else "blocked"
         )
-        normalized_interface_event_hashes = tuple(
-            sorted(interface_audit_event_hashes)
-        )
+        normalized_interface_event_hashes = tuple(sorted(interface_audit_event_hashes))
         normalized_interface_audit_hashes = tuple(
             sorted(str(event.payload["interface_audit_hash"]) for event in events)
         )
@@ -660,9 +692,7 @@ class ProviderPITAuditServiceV1:
             activation_eligible=bool(content["activation_eligible"]),
             blocker_codes=normalized_blockers,
             canonical_hash_spec=DEFAULT_ACTIVATION_HASH_SPEC,
-            decision_hash=DEFAULT_ACTIVATION_HASH_SPEC.hash_payload(
-                "provider-authority-decision.v1", content
-            ),
+            decision_hash=DEFAULT_ACTIVATION_HASH_SPEC.hash_payload("provider-authority-decision.v1", content),
         )
         decision_id = "provider-authority-" + decision.decision_hash[-24:]
         event = self.store._append_producer_event(
@@ -681,9 +711,7 @@ class ProviderPITAuditServiceV1:
                     "claim_scope_ceiling": decision.claim_scope_ceiling,
                     "activation_eligible": decision.activation_eligible,
                     "decision_hash": decision.decision_hash,
-                    "interface_audit_event_hashes": list(
-                        decision.interface_audit_event_hashes
-                    ),
+                    "interface_audit_event_hashes": list(decision.interface_audit_event_hashes),
                     "canonical_hash_spec": decision.canonical_hash_spec.to_dict(),
                     "decision": decision.to_dict(),
                 },
@@ -702,13 +730,8 @@ class ProviderPITAuditServiceV1:
         return matches[0]
 
     @staticmethod
-    def _match_registration(
-        registration: ResearchEventEnvelope, provider: str, adapter_id: str
-    ) -> None:
-        if (
-            registration.payload["provider"] != provider
-            or registration.payload["adapter_id"] != adapter_id
-        ):
+    def _match_registration(registration: ResearchEventEnvelope, provider: str, adapter_id: str) -> None:
+        if registration.payload["provider"] != provider or registration.payload["adapter_id"] != adapter_id:
             raise EventTransitionError("provider PIT audit differs from adapter registration")
 
     def _require_before_snapshot(self, registration_hash: str) -> None:
@@ -718,9 +741,7 @@ class ProviderPITAuditServiceV1:
         ):
             raise EventTransitionError("provider field audit must precede snapshot production")
 
-    def _events(
-        self, hashes: tuple[str, ...], event_type: str
-    ) -> list[ResearchEventEnvelope]:
+    def _events(self, hashes: tuple[str, ...], event_type: str) -> list[ResearchEventEnvelope]:
         _hashes(hashes, event_type)
         by_hash = {event.event_hash: event for event in self.store.query_events()}
         result = [by_hash.get(value) for value in hashes]
@@ -730,6 +751,7 @@ class ProviderPITAuditServiceV1:
 
 
 __all__ = [
+    "PROHIBITED_FINANCIAL_STATEMENT_FIELDS_V1",
     "ProviderAuthorityDecisionV1",
     "ProviderFieldPITAuditV1",
     "ProviderInterfacePITAuditV1",
@@ -737,5 +759,6 @@ __all__ = [
     "RecordedProviderAuthorityDecisionV1",
     "RecordedProviderFieldPITAuditV1",
     "RecordedProviderInterfacePITAuditV1",
+    "STRICT_ACTIVATION_REQUIRED_FIELDS_V1",
     "tushare_activation_field_audits_v1",
 ]

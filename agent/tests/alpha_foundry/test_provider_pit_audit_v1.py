@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import Path
 
 import pytest
 
 from src.alpha_foundry.activation.provider_pit_audit_v1 import (
+    PROHIBITED_FINANCIAL_STATEMENT_FIELDS_V1,
+    STRICT_ACTIVATION_REQUIRED_FIELDS_V1,
     ProviderFieldPITAuditV1,
     ProviderPITAuditServiceV1,
     tushare_activation_field_audits_v1,
@@ -63,12 +66,10 @@ def _setup(tmp_path: Path):
         flags=flags,
         code_version="provider-pit-audit-test",
     )
-    registry = AsharePITAdapterRegistryV1(
-        {"activation-audit-fixture-v1": _AuditFixtureAdapter()}
+    registry = AsharePITAdapterRegistryV1({"activation-audit-fixture-v1": _AuditFixtureAdapter()})
+    registration = AsharePITAdapterRegistrationServiceV1(store, flags=flags, registry=registry).register(
+        adapter_id="activation-audit-fixture-v1", run_id="provider-registry"
     )
-    registration = AsharePITAdapterRegistrationServiceV1(
-        store, flags=flags, registry=registry
-    ).register(adapter_id="activation-audit-fixture-v1", run_id="provider-registry")
     return store, registration.event
 
 
@@ -87,7 +88,11 @@ def _best_effort_field(**overrides: object) -> ProviderFieldPITAuditV1:
         "missingness_policy": "fail_closed",
         "rate_limit_retry_behavior": "partial_batch_possible",
         "cache_vintage": "bound_to_manifest",
+        "audit_sample_definition": "fixture field audit",
+        "compliance_level": "best_effort",
         "claim_scope_ceiling": "best_effort",
+        "allowed_claim_scopes": ("engineering_schema_validation",),
+        "prohibited_claim_scopes": ("formal_strict_pit_activation",),
         "evidence_kinds": ("local_implementation_review",),
         "audit_evidence_hashes": (_hash("implementation"),),
         "limitations": ("ROW_AVAILABILITY_NOT_EXPOSED",),
@@ -96,7 +101,7 @@ def _best_effort_field(**overrides: object) -> ProviderFieldPITAuditV1:
     return ProviderFieldPITAuditV1.create(**values)  # type: ignore[arg-type]
 
 
-def test_provider_field_requires_pit_audit(tmp_path: Path) -> None:
+def test_provider_field_requires_strict_pit_audit(tmp_path: Path) -> None:
     store, registration = _setup(tmp_path)
     service = ProviderPITAuditServiceV1(store)
 
@@ -109,7 +114,7 @@ def test_provider_field_requires_pit_audit(tmp_path: Path) -> None:
         )
 
 
-def test_unknown_or_best_effort_field_cannot_support_strict_pit_claim() -> None:
+def test_best_effort_field_cannot_support_strict_claim() -> None:
     audit = _best_effort_field()
 
     with pytest.raises(ValueError, match="verified_strict"):
@@ -132,51 +137,80 @@ def test_verified_strict_requires_actual_audit_evidence_hash() -> None:
             missingness_policy="fail_closed",
             rate_limit_retry_behavior="complete_manifest_required",
             cache_vintage="bound_to_manifest",
+            audit_sample_definition="fixture strict audit",
+            compliance_level="verified_strict",
             claim_scope_ceiling="verified_strict",
+            allowed_claim_scopes=("formal_strict_pit_activation",),
+            prohibited_claim_scopes=("test_forward",),
             evidence_kinds=("independent_crosscheck",),
             audit_evidence_hashes=(),
             limitations=(),
         )
 
 
-def test_ann_effective_available_and_vintage_times_are_distinct() -> None:
-    audits = tushare_activation_field_audits_v1(
-        adapter_registration_event_hash=_hash("tushare-registration")
-    )
-    ann = next(
-        audit
-        for audit in audits
-        if audit.interface == "dividend" and audit.field_name == "ann_date"
-    )
+def test_event_effective_available_and_vintage_times_are_distinct() -> None:
+    audits = tushare_activation_field_audits_v1(adapter_registration_event_hash=_hash("tushare-registration"))
+    ann = next(audit for audit in audits if audit.field_name == "corporate_action")
 
-    assert len(
-        {
-            ann.event_or_reporting_time,
-            ann.effective_time,
-            ann.provider_availability_time,
-            ann.retrieval_vintage,
-        }
-    ) == 4
-    assert ann.event_or_reporting_time == "ann_date"
-    assert ann.effective_time == "ex_date"
+    assert (
+        len(
+            {
+                ann.event_or_reporting_time,
+                ann.effective_time,
+                ann.provider_availability_time,
+                ann.retrieval_vintage,
+            }
+        )
+        == 4
+    )
+    assert ann.event_or_reporting_time == "provider_trade_or_announcement_date"
+    assert ann.effective_time == "market_effective_date"
 
 
 def test_revision_history_gap_caps_claim_scope() -> None:
-    audits = tushare_activation_field_audits_v1(
-        adapter_registration_event_hash=_hash("tushare-registration")
-    )
+    audits = tushare_activation_field_audits_v1(adapter_registration_event_hash=_hash("tushare-registration"))
 
     assert all(
         audit.claim_scope_ceiling != "verified_strict"
         for audit in audits
         if audit.revision_history in {"partial", "unknown"}
     )
-    assert next(a for a in audits if a.field_name == "end_date").limitations == (
-        "END_DATE_IS_NOT_ANNOUNCEMENT_TIME",
-    )
+    assert set(a.field_name for a in audits) == set(STRICT_ACTIVATION_REQUIRED_FIELDS_V1)
+    assert not set(PROHIBITED_FINANCIAL_STATEMENT_FIELDS_V1).intersection(audit.field_name for audit in audits)
 
 
-def test_rate_limit_partial_batch_cannot_create_complete_manifest(
+def test_narrow_activation_catalog_matches_existing_adapter_interfaces() -> None:
+    audits = tushare_activation_field_audits_v1(adapter_registration_event_hash=_hash("tushare-registration"))
+
+    assert {audit.interface for audit in audits} == {
+        "adj_factor",
+        "daily",
+        "dividend",
+        "index_weight",
+        "namechange",
+        "stk_limit",
+        "stock_basic",
+        "suspend_d",
+        "trade_cal",
+    }
+    assert {audit.compliance_level for audit in audits} == {
+        "non_compliant",
+        "unknown",
+    }
+    assert all(audit.claim_scope_ceiling != "verified_strict" for audit in audits)
+
+
+def test_no_secret_in_provider_artifacts(monkeypatch: pytest.MonkeyPatch) -> None:
+    sentinel = "provider-secret-sentinel-never-persist"
+    monkeypatch.setenv("TUSHARE_TOKEN", sentinel)
+    audits = tushare_activation_field_audits_v1(adapter_registration_event_hash=_hash("tushare-registration"))
+
+    serialized = json.dumps([audit.to_dict() for audit in audits], sort_keys=True)
+    assert sentinel not in serialized
+    assert "TUSHARE_TOKEN" not in serialized
+
+
+def test_partial_batch_cannot_create_complete_manifest(
     tmp_path: Path,
 ) -> None:
     store, registration = _setup(tmp_path)
