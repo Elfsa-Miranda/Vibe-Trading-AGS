@@ -22,6 +22,11 @@ from src.alpha_foundry.activation.governance_v2 import (
     ActivationReadinessV4,
     RecordedActivationGovernanceDecisionV2,
 )
+from src.alpha_foundry.activation.formal_cycle_v1 import (
+    FormalActivationCycleBootstrapV1,
+    FormalActivationCycleConfigV1,
+    FormalActivationCycleV1,
+)
 from src.alpha_foundry.activation.pair_projector_v2 import (
     ActivationArmEventRefsV2,
     ActivationEvidenceProjector,
@@ -84,6 +89,8 @@ __all__ = [
     "PilotDispersionEvidenceV2", "PreregisteredConfirmatoryActivationPlanV2",
     "RecordedActivationStatisticalArtifactV2",
     "RetrieverActivationPolicy", "RetrieverModeResolution", "TrainValidActivationScope",
+    "FormalActivationCycleBootstrapV1", "FormalActivationCycleConfigV1",
+    "FormalActivationCycleV1",
     "holm_adjust",
     "activation_arm_execution_run_id",
 ]

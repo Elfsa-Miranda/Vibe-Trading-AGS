@@ -6,7 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from src.alpha_foundry.activation.release_manifest import ReleaseManifestBuilderV1
+from src.alpha_foundry.activation.release_manifest import (
+    ReleaseManifestBuilderV1,
+    ReleaseManifestBuilderV2,
+)
 from src.research_ledger.hash_utils import canonical_json_hash
 
 
@@ -21,6 +24,7 @@ def _fixture_repository(tmp_path: Path) -> Path:
         Path("agent/research_evidence/activation"),
         Path("docs/alpha-genesis-final-acceptance.md"),
         Path("docs/alpha-genesis-known-limitations.md"),
+        Path("agent/research_evidence/release_manifest.json"),
     ):
         origin = source / relative
         target = root / relative
@@ -78,10 +82,7 @@ def test_release_manifest_rebuild_is_deterministic_and_fail_closed(
     assert all(entry.authority_status == "legacy_unverified" for entry in first.artifacts)
     assert all(entry.source_event_hash is None for entry in first.artifacts)
     assert all(entry.superseded for entry in first.artifacts)
-    assert all(
-        entry.superseded_reason == "TREATMENT_POLICY_HASH_SUPERSEDED"
-        for entry in first.artifacts
-    )
+    assert all(entry.superseded_reason == "TREATMENT_POLICY_HASH_SUPERSEDED" for entry in first.artifacts)
     assert first.to_dict()["verification_records"] == []
 
 
@@ -110,11 +111,7 @@ def test_rehashed_approved_legacy_claim_cannot_become_empirical_authority(
 
 def test_release_manifest_rejects_tampered_or_unbound_artifacts(tmp_path: Path) -> None:
     root = _fixture_repository(tmp_path)
-    result = next(
-        (root / "agent" / "research_evidence" / "activation" / "result").glob(
-            "*/*.json"
-        )
-    )
+    result = next((root / "agent" / "research_evidence" / "activation" / "result").glob("*/*.json"))
     payload = json.loads(result.read_text(encoding="utf-8"))
     payload["effective_sample"] = 12
     result.write_text(json.dumps(payload), encoding="utf-8")
@@ -182,19 +179,32 @@ def test_release_manifest_requires_exact_accepted_commit(tmp_path: Path) -> None
         )
 
 
-def test_tracked_release_manifest_matches_deterministic_rebuild() -> None:
+def test_historical_v1_release_manifest_remains_immutable() -> None:
     root = Path(__file__).resolve().parents[3]
-    tracked = json.loads(
-        (root / "agent/research_evidence/release_manifest.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    tracked = json.loads((root / "agent/research_evidence/release_manifest.json").read_text(encoding="utf-8"))
 
-    rebuilt = ReleaseManifestBuilderV1(
-        root,
-        accepted_code_commit=ACCEPTED_COMMIT,
-        audit_document=Path("D:/Vibe-Trading/problem.md"),
-        audit_document_worktree_commit=AUDIT_COMMIT,
-    ).build()
+    assert tracked["schema_version"] == "ags_release_manifest.v1"
+    assert tracked["audit_input"]["document_name"] == "problem.md"
+    assert tracked["manifest_hash"] == ("sha256:cb7c7fcd4e1c716e120398e730b05c21d712bb925f60fcefab229f0f32568acb")
+
+
+def test_release_manifest_scope_excludes_mutable_user_planning_files(
+    tmp_path: Path,
+) -> None:
+    root = _fixture_repository(tmp_path)
+    first = ReleaseManifestBuilderV2(root, accepted_code_commit=ACCEPTED_COMMIT).build()
+    (root / "problem.md").write_text("changed mutable user planning input\n", encoding="utf-8")
+    second = ReleaseManifestBuilderV2(root, accepted_code_commit=ACCEPTED_COMMIT).build()
+
+    assert first.to_dict() == second.to_dict()
+    assert first.scope.excluded_mutable_paths == ("problem.md",)
+    assert all(item[0] != "problem.md" for item in first.source_blob_hashes)
+
+
+def test_tracked_v2_release_manifest_matches_allowlist_rebuild() -> None:
+    root = Path(__file__).resolve().parents[3]
+    tracked = json.loads((root / "agent/research_evidence/release_manifest_v2.json").read_text(encoding="utf-8"))
+
+    rebuilt = ReleaseManifestBuilderV2(root, accepted_code_commit="508d482efbaa45276d004d15d3d387af7e26fe43").build()
 
     assert tracked == rebuilt.to_dict()

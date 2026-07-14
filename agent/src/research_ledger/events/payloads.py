@@ -1497,6 +1497,25 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "matrix": _mapping,
         },
     ),
+    "FormalActivationCycleV1Bootstrapped": PayloadSpec(
+        "formal_activation_cycle_bootstrapped.v1",
+        {
+            "cycle_bootstrap_id": _string,
+            "research_cycle_id": _string,
+            "protocol_event_hash": _hash,
+            "applicability_event_hash": _hash,
+            "provider_audit_catalog_hash": _hash,
+            "flat_policy_hash": _hash,
+            "topology_policy_hash": _hash,
+            "resource_policy_hash": _hash,
+            "release_manifest_hash": _hash,
+            "release_manifest_scope_hash": _hash,
+            "cycle_manifest_hash": _hash,
+            "artifact_namespace": _string,
+            "promotion_effect": _enum("none"),
+            "artifact_refs": _artifact_list,
+        },
+    ),
     "ProviderFieldPITAuditV1Recorded": PayloadSpec(
         "provider_field_pit_audit_recorded.v1",
         {
