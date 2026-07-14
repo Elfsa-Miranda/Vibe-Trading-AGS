@@ -252,7 +252,7 @@ def _bundle_sources(store: ResearchEventStore, input_event_hash: str) -> dict[st
     raw = dict(_event(store, input_event_hash, "ResearchOnlyActivationRunInputRegistered").payload["bundle"])
     contract = _event(store, str(raw["resolved_contract_event_hash"]), "ResolvedEvaluationContractRegistered")
     return {
-        "contract_hash": str(contract.payload["resolved_contract_hash"]),
+        "contract_hash": str(contract.payload["contract_hash"]),
         "pit_snapshot_event_hash": str(raw["pit_snapshot_event_hash"]),
         "train_snapshot_hash": str(raw["train_snapshot_hash"]),
         "valid_snapshot_hash": str(raw["valid_snapshot_hash"]),
