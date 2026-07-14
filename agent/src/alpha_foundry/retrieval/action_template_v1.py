@@ -310,6 +310,10 @@ class RetrieverActionTemplateServiceV1:
             raise RuntimeError("Retriever action-template capability is disabled")
         self.store = store
         self.projector = DiscoveryEvidenceProjector(flags=flags)
+        # A watermark fixes the complete discovery prefix.  Rebuilding that
+        # immutable projection for every template is semantically redundant
+        # and especially costly for producer-bound Parquet evidence.
+        self._discovery_cache: dict[tuple[str, str], Any] = {}
 
     def freeze(
         self,
@@ -321,11 +325,15 @@ class RetrieverActionTemplateServiceV1:
         data_snapshot_hash: str,
         retrieval_policy_hash: str,
     ) -> RecordedRetrieverActionTemplateV1:
-        discovery = self.projector.project_at_watermark(
-            self.store,
-            data_snapshot_hash=data_snapshot_hash,
-            watermark_event_hash=eligible_event_watermark,
-        )
+        cache_key = (data_snapshot_hash, eligible_event_watermark)
+        discovery = self._discovery_cache.get(cache_key)
+        if discovery is None:
+            discovery = self.projector.project_at_watermark(
+                self.store,
+                data_snapshot_hash=data_snapshot_hash,
+                watermark_event_hash=eligible_event_watermark,
+            )
+            self._discovery_cache[cache_key] = discovery
         if discovery.source_watermark != eligible_event_watermark:
             raise ValueError("Retriever action watermark is not discovery-eligible")
         if parent_factor_spec_id not in discovery.factual.factor_ids():
