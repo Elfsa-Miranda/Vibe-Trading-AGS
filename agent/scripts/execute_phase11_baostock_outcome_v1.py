@@ -464,6 +464,7 @@ def _formal_plan(
 def _prepare_group(
     store: ResearchEventStore, plan: ActivationExperimentPlan, group: str,
     bootstrap: Mapping[str, Any], source: Mapping[str, str],
+    action_service: RetrieverActionTemplateServiceV1 | None = None,
 ) -> dict[str, Any]:
     pair_id = f"{group}:global:all"
     seed_bank = SeedBank(
@@ -482,7 +483,8 @@ def _prepare_group(
     topology_run = activation_arm_execution_run_id(
         plan_hash=plan.plan_hash, run_group_id=group, arm="treatment"
     )
-    action_service = RetrieverActionTemplateServiceV1(store=store, flags=store.flags)
+    if action_service is None:
+        action_service = RetrieverActionTemplateServiceV1(store=store, flags=store.flags)
     actions = tuple(
         action_service.freeze(
             execution_run_id=topology_run,
@@ -909,12 +911,13 @@ def execute(root: Path, incomplete_roots: list[Path]) -> dict[str, Any]:
     )
     _write_json(root / "plans" / "dry_run_formal_v3.json", dry_formal.to_dict())
     _write_json(root / "plans" / "pilot_formal_v3.json", pilot_formal.to_dict())
+    action_service = RetrieverActionTemplateServiceV1(store=store, flags=store.flags)
     prepared_dry = {
-        group: _prepare_group(store, dry_compat, group, bootstrap, sources)
+        group: _prepare_group(store, dry_compat, group, bootstrap, sources, action_service)
         for group in dry_groups
     }
     prepared_pilot = {
-        group: _prepare_group(store, pilot_compat, group, bootstrap, sources)
+        group: _prepare_group(store, pilot_compat, group, bootstrap, sources, action_service)
         for group in pilot_groups
     }
     dry = _run_stage(
