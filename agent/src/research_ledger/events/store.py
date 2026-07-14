@@ -4696,12 +4696,6 @@ class ResearchEventStore:
                 raise EventTransitionError("selection source population is incomplete")
             if payload["trial_count"] != len(starts) or payload["final_access_count"] != len(final_events):
                 raise EventTransitionError("selection population counts differ")
-            prior = conn.execute(
-                "SELECT 1 FROM research_events WHERE event_type = 'SelectionAssessmentRecorded' AND run_id = ?",
-                (draft.run_id,),
-            ).fetchone()
-            if prior is not None:
-                raise EventTransitionError("selection assessment already exists")
             return
         if event_type == "ClaimMatrixRecorded":
             selection = conn.execute(
@@ -7661,7 +7655,6 @@ class ResearchEventStore:
         comparison_pool_hashes: set[str] = set()
         comparison_pool_events: dict[str, ResearchEventEnvelope] = {}
         secondary_evidence_keys: set[tuple[str, str]] = set()
-        selection_assessment_runs: set[str] = set()
         selection_assessment_events: dict[str, ResearchEventEnvelope] = {}
         claim_matrix_keys: set[tuple[str, str]] = set()
         claim_matrix_events: dict[str, ResearchEventEnvelope] = {}
@@ -8095,15 +8088,13 @@ class ResearchEventStore:
                     )
                 )
                 if (
-                    event.run_id in selection_assessment_runs
-                    or len(contracts) != 1
+                    len(contracts) != 1
                     or contracts[0].payload["research_family_id"] != payload["research_family_id"]
                     or payload["source_event_hashes"] != expected_sources
                     or payload["trial_count"] != len(starts_for_run)
                     or payload["final_access_count"] != len(finals_for_run)
                 ):
                     return False
-                selection_assessment_runs.add(event.run_id)
                 selection_assessment_events[event.event_hash] = event
             elif event.event_type == "ClaimMatrixRecorded":
                 key = (event.run_id, str(payload["factor_spec_id"]))
