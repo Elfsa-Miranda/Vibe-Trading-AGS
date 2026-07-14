@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -20,6 +19,7 @@ from src.alpha_foundry.activation.run_input_v1 import (
 from src.alpha_foundry.control_evidence import FlatControlPolicyV1
 from src.alpha_foundry.retrieval.feature_source_v1 import TrainValidSnapshotServiceV1
 from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
+from src.alpha_quality.adapters import baostock_eligible_universe_v1 as baostock_adapter_module
 from src.alpha_quality.adapters.baostock_eligible_universe_v1 import BaoStockAshareEligibleUniverseAdapterV1
 from src.alpha_quality.evaluation_contract import EXECUTION_POLICY_REFERENCES, ResolvedEvaluationContractServiceV1
 from src.alpha_quality.evaluation_registry_v1 import EvaluationPolicyRegistryServiceV1
@@ -92,7 +92,12 @@ def _load_exact_baostock_replay(
 ) -> tuple[_ExactBaoStockRawReplayClientV1, str, str]:
     resolved_root = root.resolve(strict=True)
     artifact_root = resolved_root / "artifacts"
-    scan_root = artifact_root.resolve(strict=True) if artifact_root.is_dir() else resolved_root
+    raw_namespace = artifact_root / "baostock-raw-v1"
+    scan_root = (
+        raw_namespace.resolve(strict=True)
+        if raw_namespace.is_dir()
+        else resolved_root
+    )
     partitions: dict[tuple[str, tuple[tuple[str, str], ...]], dict[str, Any]] = {}
     blob_hashes: list[str] = []
     provider_versions: set[str] = set()
@@ -151,20 +156,23 @@ def _adapter(
     raw_writer: AtomicContentAddressedArtifactWriter,
     replay_raw_root: Path | None,
 ) -> BaoStockAshareEligibleUniverseAdapterV1:
-    live = BaoStockAshareEligibleUniverseAdapterV1.from_environment(
-        artifact_writer=raw_writer
-    )
     if replay_raw_root is None:
-        return live
+        return BaoStockAshareEligibleUniverseAdapterV1.from_environment(
+            artifact_writer=raw_writer
+        )
     client, provider_version, source_as_of = _load_exact_baostock_replay(
         replay_raw_root
     )
-    return replace(
-        live,
+    return BaoStockAshareEligibleUniverseAdapterV1(
         client=client,
         dataset_vintage=f"baostock-{provider_version}-{source_as_of[:10]}",
         source_as_of=source_as_of,
+        artifact_writer=raw_writer,
+        golden_symbol_count=25,
         provider_version=provider_version,
+        # Exact replay preserves the already-typed BaoStock adapter identity;
+        # authority is still decided independently and remains best_effort.
+        _authority_capability=baostock_adapter_module._PRODUCTION_AUTHORITY_CAPABILITY,
     )
 
 
