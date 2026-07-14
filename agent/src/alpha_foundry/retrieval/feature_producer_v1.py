@@ -364,6 +364,7 @@ class RetrieverFeatureSourceServiceV1:
         self.feature_policy = feature_policy or RetrieverFeaturePolicyV1()
         self.projector = DiscoveryEvidenceProjector(flags=flags)
         self.artifacts = RetrieverFeatureSourceArtifactStoreV1(store.artifact_root)
+        self._output_panel_cache: dict[tuple[str, str, str], FactorOutputPanel] = {}
 
     def record(
         self,
@@ -698,13 +699,17 @@ class RetrieverFeatureSourceServiceV1:
         )
         return (evaluation, execution_events[0]), utility, estimated_cost, cost_hash
 
-    @staticmethod
     def _output_panel(
+        self,
         factor_id: str,
         formula: str,
         raw_panel: Mapping[str, Any],
         snapshot_hash: str,
     ) -> FactorOutputPanel:
+        cache_key = (factor_id, formula, snapshot_hash)
+        cached = self._output_panel_cache.get(cache_key)
+        if cached is not None:
+            return cached
         frames = {
             name: frame
             for name, frame in raw_panel.items()
@@ -721,12 +726,14 @@ class RetrieverFeatureSourceServiceV1:
             for date in output.index
             for symbol, value in output.loc[date].items()
         ]
-        return FactorOutputPanel.build(
+        panel = FactorOutputPanel.build(
             factor_id,
             points,
             data_snapshot_hash=snapshot_hash,
             data_scope="train_valid",
         )
+        self._output_panel_cache[cache_key] = panel
+        return panel
 
 
 __all__ = [

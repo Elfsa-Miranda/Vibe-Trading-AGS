@@ -1333,11 +1333,21 @@ class ResearchEventStore:
                 str(references[0]["relative_path"]),
                 str(payload["source_hash"]),
             )
-            rebuilt = RetrieverFeatureSourceServiceV1(
-                self,
-                flags=self.flags,
-                feature_policy=RetrieverFeaturePolicyV1(**dict(source.feature_policy)),
-            ).rebuild(
+            replay_services = self.__dict__.setdefault(
+                "_retriever_feature_replay_services", {}
+            )
+            service_key = canonical_json_hash(dict(source.feature_policy))
+            service = replay_services.get(service_key)
+            if service is None:
+                service = RetrieverFeatureSourceServiceV1(
+                    self,
+                    flags=self.flags,
+                    feature_policy=RetrieverFeaturePolicyV1(
+                        **dict(source.feature_policy)
+                    ),
+                )
+                replay_services[service_key] = service
+            rebuilt = service.rebuild(
                 execution_run_id=source.execution_run_id,
                 snapshot_event_hash=source.snapshot_event_hash,
                 action_event_hashes=source.action_event_hashes,

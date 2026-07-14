@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+import src.alpha_foundry.retrieval.feature_producer_v1 as feature_producer_v1
 from src.alpha_foundry.dsl.identity import FactorIdentityService
 from src.alpha_foundry.retrieval.action_template_v1 import (
     RetrieverActionTemplateServiceV1,
@@ -219,6 +220,42 @@ def test_feature_source_rebuilds_outputs_base_cost_and_missing_semantic(
     assert set(valid_values) == {0.5, 1.0}
     assert recorded.event.payload["semantic_state"] == "unavailable"
     assert store.verify_chain()
+
+
+def test_feature_source_reuses_immutable_output_panels_within_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, _, _, recorded = _record(tmp_path)
+    service = RetrieverFeatureSourceServiceV1(store, flags=store.flags)
+    calls = 0
+    original = feature_producer_v1.evaluate_formula
+
+    def counted_evaluate_formula(formula, frames):
+        nonlocal calls
+        calls += 1
+        return original(formula, frames)
+
+    monkeypatch.setattr(
+        feature_producer_v1,
+        "evaluate_formula",
+        counted_evaluate_formula,
+    )
+    source = recorded.source
+    kwargs = {
+        "execution_run_id": source.execution_run_id,
+        "snapshot_event_hash": source.snapshot_event_hash,
+        "action_event_hashes": source.action_event_hashes,
+        "eligible_event_watermark": source.eligible_event_watermark,
+        "retrieval_policy": ActivationRetrieverPolicy(),
+    }
+    first = service.rebuild(**kwargs)
+    first_call_count = calls
+    second = service.rebuild(**kwargs)
+
+    assert first_call_count > 0
+    assert calls == first_call_count
+    assert second.source_hash == first.source_hash == source.source_hash
 
 
 def test_feature_source_rejects_missing_execution_cost(tmp_path: Path) -> None:
