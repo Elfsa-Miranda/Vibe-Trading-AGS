@@ -191,6 +191,13 @@ def test_baostock_typed_receipts_cannot_mint_strict_or_csi300_authority() -> Non
     assert all("csi300_membership_claim" in audit.prohibited_claim_scopes for audit in audits)
 
 
+def test_best_effort_ceiling_is_not_misreported_as_strict() -> None:
+    audit = _best_effort_field()
+
+    assert audit.claim_scope_ceiling == "best_effort"
+    assert audit.compliance_level == "best_effort"
+
+
 def test_narrow_activation_catalog_matches_existing_adapter_interfaces() -> None:
     audits = tushare_activation_field_audits_v1(adapter_registration_event_hash=_hash("tushare-registration"))
 

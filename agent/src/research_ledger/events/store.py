@@ -335,6 +335,13 @@ _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
         "VIBE_TRADING_FACTOR_DAG",
         "VIBE_TRADING_TOPOLOGY_RETRIEVER",
     ),
+    "ResearchOnlyActivationRunInputRegistered": (
+        "VIBE_TRADING_ALPHA_FOUNDRY",
+        "VIBE_TRADING_ALPHA_SCORECARD",
+        "VIBE_TRADING_RESEARCH_EVENTS",
+        "VIBE_TRADING_FACTOR_DAG",
+        "VIBE_TRADING_TOPOLOGY_RETRIEVER",
+    ),
     "ProductionActivationCandidateFactoryV1Bound": (
         "VIBE_TRADING_ALPHA_FOUNDRY",
         "VIBE_TRADING_ALPHA_SCORECARD",
@@ -548,6 +555,7 @@ _PRODUCER_SCOPED_EVENT_TYPES = frozenset(
         "ProviderAuthorityDecisionV1Recorded",
         "ProductionGoldenSliceReadinessV1Recorded",
         "ProductionActivationRunInputBundleV1Registered",
+        "ResearchOnlyActivationRunInputRegistered",
         "ProductionActivationCandidateFactoryV1Bound",
         "ProductionActivationArmStartedV1Recorded",
         "ProductionActivationArmCompletedV1Recorded",
@@ -1023,6 +1031,7 @@ class ResearchEventStore:
             "ProviderAuthorityDecisionV1Recorded": "decision_id",
             "ProductionGoldenSliceReadinessV1Recorded": "readiness_id",
             "ProductionActivationRunInputBundleV1Registered": "bundle_id",
+            "ResearchOnlyActivationRunInputRegistered": "bundle_id",
             "ProductionActivationCandidateFactoryV1Bound": "binding_id",
             "ProductionActivationArmStartedV1Recorded": "arm_start_id",
             "ProductionActivationArmCompletedV1Recorded": "arm_completion_id",
@@ -4048,6 +4057,64 @@ class ResearchEventStore:
         payload: Mapping[str, Any],
     ) -> None:
         event_type = draft.event_type
+        if event_type == "ResearchOnlyActivationRunInputRegistered":
+            bundle = payload["bundle"]
+            provider = conn.execute(
+                "SELECT payload FROM research_events WHERE event_type = 'ProviderAuthorityDecisionV1Recorded' AND event_hash = ?",
+                (bundle["provider_authority_decision_event_hash"],),
+            ).fetchone()
+            snapshot = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'AsharePITSnapshotRecorded' AND event_hash = ?",
+                (bundle["pit_snapshot_event_hash"],),
+            ).fetchone()
+            contract = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'ResolvedEvaluationContractRegistered' AND event_hash = ?",
+                (bundle["resolved_contract_event_hash"],),
+            ).fetchone()
+            train_valid = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type = 'TrainValidDataSnapshotFrozen' AND event_hash = ?",
+                (bundle["train_valid_snapshot_event_hash"],),
+            ).fetchone()
+            if provider is None or snapshot is None or contract is None or train_valid is None:
+                raise EventTransitionError("research-only Activation input lacks exact frozen sources")
+            authority = json.loads(str(provider["payload"]))
+            if authority.get("authority_status") not in {"best_effort", "verified_strict"}:
+                raise EventTransitionError("research-only Activation provider authority is insufficient")
+            interface_hashes = tuple(authority.get("interface_audit_event_hashes", ()))
+            if not interface_hashes:
+                raise EventTransitionError("research-only Activation input lacks provider interfaces")
+            placeholders = ",".join("?" for _ in interface_hashes)
+            interfaces = conn.execute(
+                f"SELECT event_hash, payload FROM research_events WHERE event_type = 'ProviderInterfacePITAuditV1Recorded' AND event_hash IN ({placeholders})",
+                interface_hashes,
+            ).fetchall()
+            if len(interfaces) != len(interface_hashes):
+                raise EventTransitionError("research-only Activation input lacks exact provider interfaces")
+            field_hashes = tuple(
+                str(event_hash)
+                for row in interfaces
+                for event_hash in json.loads(str(row["payload"])).get("field_audit_event_hashes", ())
+            )
+            if not field_hashes:
+                raise EventTransitionError("research-only Activation input lacks field audits")
+            field_placeholders = ",".join("?" for _ in field_hashes)
+            fields = conn.execute(
+                f"SELECT payload FROM research_events WHERE event_type = 'ProviderFieldPITAuditV1Recorded' AND event_hash IN ({field_placeholders})",
+                field_hashes,
+            ).fetchall()
+            forbidden = conn.execute(
+                "SELECT 1 FROM research_events WHERE event_type LIKE 'Final%' OR event_type LIKE 'Forward%'"
+            ).fetchone()
+            if (
+                len(fields) != len(field_hashes)
+                or any(
+                    not json.loads(str(row["payload"])).get("audit", {}).get("audit_evidence_hashes")
+                    for row in fields
+                )
+                or forbidden is not None
+            ):
+                raise EventTransitionError("research-only Activation input has unresolved authority or scope evidence")
+            return
         if (
             event_type == "FactorDefinitionRecorded"
             and payload.get("metadata", {}).get("identity_schema_version") == "factor_spec.v1"

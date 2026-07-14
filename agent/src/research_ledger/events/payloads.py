@@ -1596,6 +1596,21 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "bundle": _mapping,
         },
     ),
+    "ResearchOnlyActivationRunInputRegistered": PayloadSpec(
+        "research_only_activation_run_input_registered.v1",
+        {
+            "bundle_id": _string,
+            "research_cycle_id": _string,
+            "bundle_hash": _hash,
+            "maximum_promotion": _enum("research_only"),
+            "formal_activation_eligible": _boolean,
+            "formal_readiness_effect": _enum("none"),
+            "official_search_policy_effect": _enum("none"),
+            "live_trading_meaning": _enum("none"),
+            "test_final_forward_access_count": _nonnegative_integer,
+            "bundle": _mapping,
+        },
+    ),
     "ProductionActivationCandidateFactoryV1Bound": PayloadSpec(
         "production_activation_candidate_factory_binding_recorded.v1",
         {
@@ -3300,6 +3315,45 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("decision-grade PIT snapshot has unresolved evidence defects")
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("PIT snapshot requires one manifest artifact")
+    if event_type == "ResearchOnlyActivationRunInputRegistered":
+        bundle = payload["bundle"]
+        ceiling = {
+            "maximum_promotion": "research_only",
+            "formal_activation_eligible": False,
+            "formal_readiness_effect": "none",
+            "official_search_policy_effect": "none",
+            "live_trading_meaning": "none",
+            "test_final_forward_access_count": 0,
+        }
+        if any(payload[key] != value for key, value in ceiling.items()):
+            raise EventValidationError("research-only Activation ceiling differs")
+        expected = {
+            "schema_version", "research_cycle_id", "resolved_contract_event_hash",
+            "provider_authority_decision_event_hash", "pit_snapshot_event_hash",
+            "train_valid_snapshot_event_hash", "train_snapshot_hash", "valid_snapshot_hash",
+            "train_valid_split_plan_hash", "flat_policy_hash", "topology_policy_hash",
+            "candidate_budget", "compute_budget", "source_watermark", "limitation_codes",
+            "bundle_hash",
+        }
+        if not isinstance(bundle, Mapping) or set(bundle) != expected:
+            raise EventValidationError("research-only Activation input bundle schema differs")
+        if bundle["schema_version"] != "research_only_activation_run_input_bundle.v1":
+            raise EventValidationError("research-only Activation input bundle version differs")
+        for key in expected - {"schema_version", "research_cycle_id", "candidate_budget", "compute_budget", "limitation_codes"}:
+            _hash(bundle[key], "research-only bundle." + key)
+        _string(bundle["research_cycle_id"], "research-only bundle.research_cycle_id")
+        _candidate_budget(bundle["candidate_budget"], "research-only bundle.candidate_budget")
+        _candidate_budget(bundle["compute_budget"], "research-only bundle.compute_budget")
+        _string_list(bundle["limitation_codes"], "research-only bundle.limitation_codes")
+        if bundle["candidate_budget"] > bundle["compute_budget"]:
+            raise EventValidationError("research-only Activation compute budget is below candidate budget")
+        if (payload["research_cycle_id"] != bundle["research_cycle_id"]
+                or payload["bundle_hash"] != bundle["bundle_hash"]):
+            raise EventValidationError("research-only Activation input envelope differs from bundle")
+        content = {key: value for key, value in bundle.items() if key != "bundle_hash"}
+        content.update(ceiling)
+        if canonical_json_hash(content) != bundle["bundle_hash"]:
+            raise EventValidationError("research-only Activation input bundle hash differs")
     if event_type == "RetrieverFeatureSourceRecorded":
         expected_identifier = "retriever-feature-source-v1-" + str(payload["source_hash"]).removeprefix("sha256:")[:24]
         if payload["feature_source_id"] != expected_identifier:

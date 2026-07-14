@@ -475,12 +475,196 @@ class ProductionActivationRunInputServiceV1:
         return RecordedProductionActivationRunInputBundleV1(bundle, event)
 
 
+@dataclass(frozen=True)
+class ResearchOnlyActivationRunInputBundleV1:
+    """Frozen empirical input for a permanently non-formal Activation run.
+
+    This is intentionally *not* a variant of the Formal V1 bundle.  In
+    particular, it records the provider's lower authority rather than turning
+    a best-effort receipt into strict PIT evidence.
+    """
+
+    schema_version: Literal["research_only_activation_run_input_bundle.v1"]
+    research_cycle_id: str
+    resolved_contract_event_hash: str
+    provider_authority_decision_event_hash: str
+    pit_snapshot_event_hash: str
+    train_valid_snapshot_event_hash: str
+    train_snapshot_hash: str
+    valid_snapshot_hash: str
+    train_valid_split_plan_hash: str
+    flat_policy_hash: str
+    topology_policy_hash: str
+    candidate_budget: int
+    compute_budget: int
+    source_watermark: str
+    limitation_codes: tuple[str, ...]
+    bundle_hash: str
+
+    @classmethod
+    def create(cls, **values: Any) -> "ResearchOnlyActivationRunInputBundleV1":
+        content = {
+            "schema_version": "research_only_activation_run_input_bundle.v1",
+            **values,
+            "limitation_codes": sorted(set(values["limitation_codes"])),
+            "maximum_promotion": "research_only",
+            "formal_activation_eligible": False,
+            "formal_readiness_effect": "none",
+            "official_search_policy_effect": "none",
+            "live_trading_meaning": "none",
+            "test_final_forward_access_count": 0,
+        }
+        # The immutable ceiling fields above are included in the content hash,
+        # but deliberately are not constructor inputs.
+        public = {key: value for key, value in content.items() if key not in {
+            "maximum_promotion", "formal_activation_eligible",
+            "formal_readiness_effect", "official_search_policy_effect",
+            "live_trading_meaning", "test_final_forward_access_count",
+        }}
+        public["limitation_codes"] = tuple(public["limitation_codes"])
+        return cls(**public, bundle_hash=canonical_json_hash(content))
+
+    def __post_init__(self) -> None:
+        for name in (
+            "resolved_contract_event_hash", "provider_authority_decision_event_hash",
+            "pit_snapshot_event_hash", "train_valid_snapshot_event_hash",
+            "train_snapshot_hash", "valid_snapshot_hash", "train_valid_split_plan_hash",
+            "flat_policy_hash", "topology_policy_hash", "source_watermark", "bundle_hash",
+        ):
+            _hash(str(getattr(self, name)), name)
+        if (not self.research_cycle_id or not self.limitation_codes
+                or self.limitation_codes != tuple(sorted(set(self.limitation_codes)))
+                or not 1 <= self.candidate_budget <= self.compute_budget):
+            raise ValueError("research-only Activation input is invalid")
+        content = {**self.to_dict(), "maximum_promotion": "research_only",
+                   "formal_activation_eligible": False, "formal_readiness_effect": "none",
+                   "official_search_policy_effect": "none", "live_trading_meaning": "none",
+                   "test_final_forward_access_count": 0}
+        content.pop("bundle_hash")
+        if self.bundle_hash != canonical_json_hash(content):
+            raise ValueError("research-only Activation input hash mismatch")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "research_cycle_id": self.research_cycle_id,
+            "resolved_contract_event_hash": self.resolved_contract_event_hash,
+            "provider_authority_decision_event_hash": self.provider_authority_decision_event_hash,
+            "pit_snapshot_event_hash": self.pit_snapshot_event_hash,
+            "train_valid_snapshot_event_hash": self.train_valid_snapshot_event_hash,
+            "train_snapshot_hash": self.train_snapshot_hash,
+            "valid_snapshot_hash": self.valid_snapshot_hash,
+            "train_valid_split_plan_hash": self.train_valid_split_plan_hash,
+            "flat_policy_hash": self.flat_policy_hash,
+            "topology_policy_hash": self.topology_policy_hash,
+            "candidate_budget": self.candidate_budget,
+            "compute_budget": self.compute_budget,
+            "source_watermark": self.source_watermark,
+            "limitation_codes": list(self.limitation_codes),
+            "bundle_hash": self.bundle_hash,
+        }
+
+
+class ResearchOnlyActivationRunInputServiceV1:
+    """Append-only registration for empirical, train/valid-only Activation."""
+
+    def __init__(self, store: ResearchEventStore) -> None:
+        if not isinstance(store, ResearchEventStore):
+            raise TypeError("research-only Activation input requires ResearchEventStore")
+        required = ("VIBE_TRADING_ALPHA_FOUNDRY", "VIBE_TRADING_ALPHA_SCORECARD",
+                    "VIBE_TRADING_RESEARCH_EVENTS", "VIBE_TRADING_FACTOR_DAG",
+                    "VIBE_TRADING_TOPOLOGY_RETRIEVER")
+        if any(not store.flags.enabled(name) for name in required):
+            raise RuntimeError("research-only Activation input capability is disabled")
+        self.store = store
+
+    def register(self, *, run_id: str, bundle: ResearchOnlyActivationRunInputBundleV1) -> ResearchEventEnvelope:
+        if not isinstance(bundle, ResearchOnlyActivationRunInputBundleV1):
+            raise TypeError("research-only Activation requires its closed input bundle")
+        events = self.store.query_events()
+        by_hash = {event.event_hash: event for event in events}
+        provider = by_hash.get(bundle.provider_authority_decision_event_hash)
+        snapshot = by_hash.get(bundle.pit_snapshot_event_hash)
+        contract = by_hash.get(bundle.resolved_contract_event_hash)
+        train_valid = by_hash.get(bundle.train_valid_snapshot_event_hash)
+        if (provider is None or provider.event_type != "ProviderAuthorityDecisionV1Recorded"
+                or provider.payload.get("authority_status") not in {"best_effort", "verified_strict"}):
+            raise EventTransitionError("research-only input requires best-effort-or-higher provider authority")
+        if snapshot is None or snapshot.event_type != "AsharePITSnapshotRecorded":
+            raise EventTransitionError("research-only input requires an exact PIT snapshot")
+        if contract is None or contract.event_type != "ResolvedEvaluationContractRegistered":
+            raise EventTransitionError("research-only input requires a frozen resolved contract")
+        if train_valid is None or train_valid.event_type != "TrainValidDataSnapshotFrozen":
+            raise EventTransitionError("research-only input requires a frozen train/valid snapshot")
+        if not snapshot.payload.get("artifact_refs") or not train_valid.payload.get("artifact_refs"):
+            raise EventTransitionError("research-only input requires content-addressed source artifacts")
+        interface_hashes = tuple(provider.payload.get("interface_audit_event_hashes", ()))
+        interfaces = [by_hash.get(str(event_hash)) for event_hash in interface_hashes]
+        if not interfaces or any(
+            event is None
+            or event.event_type != "ProviderInterfacePITAuditV1Recorded"
+            or event.payload.get("adapter_registration_event_hash")
+            != provider.payload.get("adapter_registration_event_hash")
+            for event in interfaces
+        ):
+            raise EventTransitionError("research-only input requires source-bound provider interfaces")
+        field_hashes = tuple(
+            str(event_hash)
+            for interface in interfaces
+            if interface is not None
+            for event_hash in interface.payload.get("field_audit_event_hashes", ())
+        )
+        fields = [by_hash.get(event_hash) for event_hash in field_hashes]
+        if not fields or any(
+            event is None
+            or event.event_type != "ProviderFieldPITAuditV1Recorded"
+            or event.payload.get("adapter_registration_event_hash")
+            != provider.payload.get("adapter_registration_event_hash")
+            or not event.payload.get("audit", {}).get("audit_evidence_hashes")
+            for event in fields
+        ):
+            raise EventTransitionError("research-only input requires source-bound field audits and typed receipts")
+        if snapshot.payload.get("adapter_registration_event_hash") != provider.payload.get(
+            "adapter_registration_event_hash"
+        ):
+            raise EventTransitionError("research-only input snapshot and provider authority differ")
+        if any(
+            event.event_type.startswith(("Final", "Forward"))
+            for event in events
+        ):
+            raise EventTransitionError("research-only input forbids final or forward access")
+        order = {event.event_hash: index for index, event in enumerate(events)}
+        sources = (bundle.resolved_contract_event_hash, bundle.provider_authority_decision_event_hash,
+                   bundle.pit_snapshot_event_hash, bundle.train_valid_snapshot_event_hash)
+        audit_sources = tuple(interface_hashes) + tuple(field_hashes)
+        if bundle.source_watermark not in order or any(
+            order[source] > order[bundle.source_watermark]
+            for source in sources + audit_sources
+        ):
+            raise EventTransitionError("research-only input source watermark differs")
+        if not self.store.verify_chain():
+            raise EventTransitionError("research-only input sources do not replay")
+        identifier = "research-only-activation-input-v1-" + bundle.bundle_hash.removeprefix("sha256:")[:24]
+        return self.store._append_producer_event(EventDraft(
+            event_type="ResearchOnlyActivationRunInputRegistered", entity_id=identifier,
+            run_id=run_id, payload_schema_version="research_only_activation_run_input_registered.v1",
+            idempotency_key="research-only-activation-input-v1:" + bundle.bundle_hash,
+            payload={"bundle_id": identifier, "research_cycle_id": bundle.research_cycle_id,
+                     "bundle_hash": bundle.bundle_hash, "maximum_promotion": "research_only",
+                     "formal_activation_eligible": False, "formal_readiness_effect": "none",
+                     "official_search_policy_effect": "none", "live_trading_meaning": "none",
+                     "test_final_forward_access_count": 0, "bundle": bundle.to_dict()},
+        ))
+
+
 __all__ = [
     "PRODUCTION_DAG_POLICY_HASH",
     "PRODUCTION_EVALUATOR_FACTORY_MANIFEST_HASH",
     "PRODUCTION_GENERATOR_MANIFEST_HASH",
     "ProductionActivationRunInputBundleV1",
     "ProductionActivationRunInputServiceV1",
+    "ResearchOnlyActivationRunInputBundleV1",
+    "ResearchOnlyActivationRunInputServiceV1",
     "ProductionGoldenSliceReadinessV1",
     "RecordedProductionActivationRunInputBundleV1",
     "RecordedProductionGoldenSliceReadinessV1",

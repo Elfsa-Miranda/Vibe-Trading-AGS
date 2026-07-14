@@ -59,6 +59,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "ProviderAuthorityDecisionV1Recorded",
     "ProductionGoldenSliceReadinessV1Recorded",
     "ProductionActivationRunInputBundleV1Registered",
+    "ResearchOnlyActivationRunInputRegistered",
     "ProductionActivationCandidateFactoryV1Bound",
     "ProductionActivationArmStartedV1Recorded",
     "ProductionActivationArmCompletedV1Recorded",
@@ -120,6 +121,7 @@ _SPECIALIZED_EVENT_TYPES = {
     "ForwardObservationV2Recorded",
     "ForwardPlanRecorded",
     "ForwardObservationRecorded",
+    "FormalActivationCycleV1Bootstrapped",
 }
 
 

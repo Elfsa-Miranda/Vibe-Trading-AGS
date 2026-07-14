@@ -714,12 +714,20 @@ class ProviderPITAuditServiceV1:
         ceiling: AuditStatus = (
             "verified_strict"
             if ceilings == {"verified_strict"}
-            else "unavailable"
-            if "unavailable" in ceilings
             else "best_effort"
+            if "best_effort" in ceilings
+            else "unavailable"
         )
+        structural_blockers = {
+            "PROVIDER_INTERFACE_AUDIT_INCOMPLETE",
+            "ADAPTER_AUTHORITY_NOT_PRODUCTION",
+        }
         status: Literal["verified_strict", "best_effort", "blocked"] = (
-            "verified_strict" if not blockers and ceiling == "verified_strict" else "blocked"
+            "verified_strict"
+            if not blockers and ceiling == "verified_strict"
+            else "best_effort"
+            if ceiling == "best_effort" and not structural_blockers.intersection(blockers)
+            else "blocked"
         )
         normalized_interface_event_hashes = tuple(sorted(interface_audit_event_hashes))
         normalized_interface_audit_hashes = tuple(

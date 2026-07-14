@@ -864,9 +864,15 @@ class PITPredictiveEvidenceServiceV4:
         snapshot_event = _event_by_hash(
             events, pit_snapshot_event_hash, "AsharePITSnapshotRecorded"
         )
-        if any(
-            event.run_id != run_id
-            for event in (contract_event, definition, snapshot_event)
+        shared_activation_sources = PITPredictiveEvidenceServiceV4._shared_activation_sources(
+            events=events,
+            run_id=run_id,
+            contract_event_hash=contract_event.event_hash,
+            snapshot_event_hash=snapshot_event.event_hash,
+        )
+        if definition.run_id != run_id or (
+            not shared_activation_sources
+            and any(event.run_id != run_id for event in (contract_event, snapshot_event))
         ):
             raise EventTransitionError("predictive evidence cannot mix runs")
         validate_factor_definition_payload(definition.payload)
@@ -892,7 +898,7 @@ class PITPredictiveEvidenceServiceV4:
             evaluation_policy_event_hash=str(
                 snapshot_event.payload["evaluation_policy_event_hash"]
             ),
-            run_id=run_id,
+            run_id=snapshot_event.run_id,
         )
         if (
             contract.evaluation_policy_event_hash
@@ -1059,6 +1065,42 @@ class PITPredictiveEvidenceServiceV4:
             channel="pit_scoped",
         )
         return factor_artifact, observed, pit
+
+    @staticmethod
+    def _shared_activation_sources(
+        *,
+        events: list[ResearchEventEnvelope],
+        run_id: str,
+        contract_event_hash: str,
+        snapshot_event_hash: str,
+    ) -> bool:
+        starts = [
+            event
+            for event in events
+            if event.event_type == "ProductionActivationArmStartedV1Recorded"
+            and event.run_id == run_id
+        ]
+        if len(starts) != 1:
+            return False
+        bundle_event_hash = starts[0].payload.get("run_input_bundle_event_hash")
+        bundles = [
+            event
+            for event in events
+            if event.event_hash == bundle_event_hash
+            and event.event_type in {
+                "ProductionActivationRunInputBundleV1Registered",
+                "ResearchOnlyActivationRunInputRegistered",
+            }
+        ]
+        if len(bundles) != 1 or not isinstance(
+            bundles[0].payload.get("bundle"), Mapping
+        ):
+            return False
+        bundle = bundles[0].payload["bundle"]
+        return (
+            bundle.get("resolved_contract_event_hash") == contract_event_hash
+            and bundle.get("pit_snapshot_event_hash") == snapshot_event_hash
+        )
 
     @staticmethod
     def _predictive(

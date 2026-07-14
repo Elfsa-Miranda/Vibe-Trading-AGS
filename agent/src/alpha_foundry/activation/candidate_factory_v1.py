@@ -50,6 +50,7 @@ from .run_input_v1 import (
     PRODUCTION_EVALUATOR_FACTORY_MANIFEST_HASH,
     PRODUCTION_GENERATOR_MANIFEST_HASH,
     ProductionActivationRunInputBundleV1,
+    ResearchOnlyActivationRunInputBundleV1,
 )
 from .protocol_v2 import CanonicalHashSpecV1
 from .runner import activation_arm_execution_run_id
@@ -611,7 +612,25 @@ class ProductionActivationCandidateFactoryV1:
                 "Decision v3 bridge requires one production scorecard event"
             )
         snapshot = self._event(request.snapshot_event_hash, "AsharePITSnapshotRecorded")
-        if snapshot.run_id != request.run_id:
+        contracts = [
+            event
+            for event in by_hash.values()
+            if event.event_type == "ResolvedEvaluationContractRegistered"
+            and event.payload.get("resolved_contract_hash")
+            == request.resolved_contract_hash
+        ]
+        if (
+            snapshot.run_id != request.run_id
+            and (
+                len(contracts) != 1
+                or not self.evaluator._shared_activation_sources(
+                events=list(by_hash.values()),
+                run_id=request.run_id,
+                snapshot_event_hash=snapshot.event_hash,
+                contract_event_hash=contracts[0].event_hash,
+                )
+            )
+        ):
             raise EventTransitionError("Decision v3 snapshot crosses evaluation runs")
         scorecard = scorecards[0]
         scorecard_codes = tuple(
@@ -799,24 +818,28 @@ class ProductionActivationCandidateFactoryV1:
 
     def _bundle(
         self, event_hash: str
-    ) -> tuple[ProductionActivationRunInputBundleV1, ResearchEventEnvelope]:
+    ) -> tuple[ProductionActivationRunInputBundleV1 | ResearchOnlyActivationRunInputBundleV1, ResearchEventEnvelope]:
         _require_hash(event_hash, "run input bundle event")
-        event = self._event(
-            event_hash, "ProductionActivationRunInputBundleV1Registered"
-        )
+        matches = [event for event in self.store.query_events() if event.event_hash == event_hash]
+        if len(matches) != 1 or matches[0].event_type not in {
+            "ProductionActivationRunInputBundleV1Registered",
+            "ResearchOnlyActivationRunInputRegistered",
+        }:
+            raise EventTransitionError("Activation factory requires one registered input bundle")
+        event = matches[0]
         raw = event.payload.get("bundle")
         if not isinstance(raw, Mapping):
             raise EventTransitionError("Activation input bundle payload is unavailable")
-        bundle = ProductionActivationRunInputBundleV1(
-            **{
-                key: value
-                for key, value in raw.items()
-                if key != "canonical_hash_spec"
-            },
-            canonical_hash_spec=CanonicalHashSpecV1(
-                **dict(event.payload["canonical_hash_spec"])
-            ),
-        )
+        if event.event_type == "ResearchOnlyActivationRunInputRegistered":
+            bundle = ResearchOnlyActivationRunInputBundleV1(
+                **{key: value for key, value in raw.items() if key != "limitation_codes"},
+                limitation_codes=tuple(raw["limitation_codes"]),
+            )
+        else:
+            bundle = ProductionActivationRunInputBundleV1(
+                **{key: value for key, value in raw.items() if key != "canonical_hash_spec"},
+                canonical_hash_spec=CanonicalHashSpecV1(**dict(event.payload["canonical_hash_spec"])),
+            )
         return bundle, event
 
     def _event(self, event_hash: str, event_type: str) -> ResearchEventEnvelope:
