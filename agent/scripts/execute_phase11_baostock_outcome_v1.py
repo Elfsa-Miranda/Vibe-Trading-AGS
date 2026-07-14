@@ -325,7 +325,7 @@ def _bootstrap(store: ResearchEventStore, input_event_hash: str) -> dict[str, An
     return {
         "baseline": baseline,
         "seeds": seeds,
-        "eligible_event_watermark": store.query_events()[-1].event_hash,
+        "eligible_event_watermark": seeds[-1]["terminal_event_hash"],
     }
 
 
