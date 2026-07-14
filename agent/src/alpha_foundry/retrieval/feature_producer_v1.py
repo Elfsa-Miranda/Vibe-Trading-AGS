@@ -54,7 +54,10 @@ from src.research_ledger.hash_utils import canonical_json, canonical_json_hash, 
 
 
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-_MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
+# The frozen producer policy may materialize eight candidate panels plus the
+# all-other-factor reference panels.  Keep a bounded JSON artifact while
+# allowing that production-sized, schema-v1 payload to replay exactly.
+_MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
 
 
 def _strict_json_object(raw: bytes, *, label: str) -> Mapping[str, Any]:
