@@ -120,8 +120,8 @@ def freeze(*, root: Path, start: str, train_end: str, valid_end: str, test_end: 
         period=f"{valid_window[0]}/{valid_window[-1]}", source_config={"pit_snapshot_hash": snapshot.snapshot.snapshot_hash, "scope": "valid"}, run_id=CYCLE + ":valid",
     )
     combined = TrainValidSnapshotServiceV1(store, flags=store.flags).freeze(
-        _panel(source_bundle, dates=train_dates + valid_dates), universe="A_SHARE_ELIGIBLE_GOLDEN_COHORT_V1",
-        period=f"{train_dates[0]}/{valid_dates[-1]}", source_config={"pit_snapshot_hash": snapshot.snapshot.snapshot_hash, "scope": "train_valid"}, run_id=CYCLE + ":train-valid",
+        _panel(source_bundle, dates=train_window + valid_window), universe="A_SHARE_ELIGIBLE_GOLDEN_COHORT_V1",
+        period=f"{train_window[0]}/{valid_window[-1]}", source_config={"pit_snapshot_hash": snapshot.snapshot.snapshot_hash, "scope": "train_valid"}, run_id=CYCLE + ":train-valid",
     )
     tail = store.query_events()[-1].event_hash
     bundle = ResearchOnlyActivationRunInputBundleV1.create(
