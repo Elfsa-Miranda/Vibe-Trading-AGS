@@ -18,7 +18,7 @@ from src.alpha_foundry.control_evidence import FlatControlPolicyV1
 from src.alpha_foundry.retrieval.feature_source_v1 import TrainValidSnapshotServiceV1
 from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 from src.alpha_quality.adapters.baostock_eligible_universe_v1 import BaoStockAshareEligibleUniverseAdapterV1
-from src.alpha_quality.evaluation_contract import PIT_SCORECARD_POLICY_REFERENCES, ResolvedEvaluationContractServiceV1
+from src.alpha_quality.evaluation_contract import EXECUTION_POLICY_REFERENCES, ResolvedEvaluationContractServiceV1
 from src.alpha_quality.evaluation_registry_v1 import EvaluationPolicyRegistryServiceV1
 from src.alpha_quality.flags import ResolvedAGSFlags
 from src.alpha_quality.pit_adapter_v1 import AsharePITAdapterRegistryV1
@@ -83,7 +83,7 @@ def freeze(*, root: Path, start: str, train_end: str, valid_end: str, test_end: 
     registration = AsharePITAdapterRegistrationServiceV1(store, flags=store.flags, registry=registry).register(adapter_id=adapter.descriptor().adapter_id, run_id=CYCLE + ":provider")
     contract = ResolvedEvaluationContractServiceV1(store, flags=store.flags).register(
         run_id=CYCLE, evaluation_policy_event_hash=policy.event.event_hash,
-        profile_id="production_candidate", profile_version="1", policy_references=PIT_SCORECARD_POLICY_REFERENCES,
+        profile_id="production_candidate", profile_version="1", policy_references=EXECUTION_POLICY_REFERENCES,
     )
     # Field authority is registered before snapshot production.  The calendar
     # receipt is already a typed, content-addressed provider partition; the

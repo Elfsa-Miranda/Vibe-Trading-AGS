@@ -19,6 +19,16 @@ from src.alpha_foundry.memory.utility import (
     SCORECARD_MEDIA_TYPE,
     mean_valid_rank_icir_utility,
 )
+from src.alpha_quality.execution_evidence_v1 import (
+    ExecutionEvidenceArtifactStoreV1,
+    ExecutionEvidenceServiceV1,
+)
+from src.alpha_quality.predictive_evidence_v4 import (
+    PREDICTIVE_EVIDENCE_MEDIA_TYPE,
+    SCORECARD_V4_MEDIA_TYPE,
+    PredictiveEvidenceV1,
+    ScorecardDecisionEvidenceV4,
+)
 from src.alpha_foundry.retrieval.action_template_v1 import (
     FrozenRetrieverActionTemplateV1,
 )
@@ -499,8 +509,8 @@ class RetrieverFeatureSourceServiceV1:
                 for reference_id in factor_ids
                 if reference_id != factor_id
             )[: self.feature_policy.maximum_reference_factors]
-            evaluation, utility, estimated_cost, cost_hash = scorecards[factor_id]
-            cited_scorecards.append(evaluation.event_hash)
+            source_events, utility, estimated_cost, cost_hash = scorecards[factor_id]
+            cited_scorecards.extend(event.event_hash for event in source_events)
             context_hash = canonical_json_hash(
                 {
                     "parent_factor_spec_id": factor_id,
@@ -553,7 +563,7 @@ class RetrieverFeatureSourceServiceV1:
         events: list[ResearchEventEnvelope],
         order: Mapping[str, int],
         watermark: str,
-    ) -> tuple[ResearchEventEnvelope, float, float, str]:
+    ) -> tuple[tuple[ResearchEventEnvelope, ...], float, float, str]:
         evaluations = [
             event
             for event in events
@@ -571,41 +581,119 @@ class RetrieverFeatureSourceServiceV1:
             if reference["media_type"] == SCORECARD_MEDIA_TYPE
             and reference["artifact_hash"] == evaluation.payload["scorecard_hash"]
         ]
-        if len(refs) != 1:
+        if len(refs) == 1:
+            path = self.store.artifact_root.joinpath(*str(refs[0]["relative_path"]).split("/"))
+            if hash_artifact(path) != evaluation.payload["scorecard_hash"]:
+                raise ValueError("Retriever feature scorecard changed after evaluation")
+            utility = mean_valid_rank_icir_utility(
+                path,
+                expected_factor_spec_id=factor_id,
+                expected_data_snapshot_hash=snapshot_hash,
+            )
+            raw = _strict_json_object(path.read_bytes(), label="Retriever discovery scorecard")
+            execution = raw.get("execution")
+            if (
+                not isinstance(execution, Mapping)
+                or execution.get("uses_execution_return") is not True
+                or isinstance(execution.get("cost_bps_mean"), bool)
+                or not isinstance(execution.get("cost_bps_mean"), (int, float))
+                or not math.isfinite(float(execution["cost_bps_mean"]))
+                or float(execution["cost_bps_mean"]) < 0.0
+            ):
+                raise ValueError("Retriever feature requires execution cost evidence")
+            estimated_cost = float(execution["cost_bps_mean"]) / 10_000.0
+            cost_hash = canonical_json_hash(
+                {
+                    "schema_version": "retriever_cost_evidence.v1",
+                    "scorecard_event_hash": evaluation.event_hash,
+                    "scorecard_hash": evaluation.payload["scorecard_hash"],
+                    "cost_metric": self.feature_policy.cost_metric,
+                    "estimated_cost": estimated_cost,
+                }
+            )
+            return (evaluation,), utility, estimated_cost, cost_hash
+
+        v4_refs = [
+            reference
+            for reference in evaluation.payload["artifact_refs"]
+            if reference["media_type"] == SCORECARD_V4_MEDIA_TYPE
+        ]
+        if len(v4_refs) != 1:
             raise ValueError("Retriever feature scorecard artifact is missing")
-        path = self.store.artifact_root.joinpath(*str(refs[0]["relative_path"]).split("/"))
-        if hash_artifact(path) != evaluation.payload["scorecard_hash"]:
-            raise ValueError("Retriever feature scorecard changed after evaluation")
-        utility = mean_valid_rank_icir_utility(
-            path,
-            expected_factor_spec_id=factor_id,
-            expected_data_snapshot_hash=snapshot_hash,
+        scorecard_path = self.store.artifact_root.joinpath(
+            *str(v4_refs[0]["relative_path"]).split("/")
         )
-        raw = _strict_json_object(
-            path.read_bytes(),
-            label="Retriever discovery scorecard",
+        if hash_artifact(scorecard_path) != v4_refs[0]["artifact_hash"]:
+            raise ValueError("Retriever feature v4 scorecard changed after evaluation")
+        scorecard = ScorecardDecisionEvidenceV4.from_dict(
+            _strict_json_object(scorecard_path.read_bytes(), label="Retriever v4 scorecard")
         )
-        execution = raw.get("execution")
         if (
-            not isinstance(execution, Mapping)
-            or execution.get("uses_execution_return") is not True
-            or isinstance(execution.get("cost_bps_mean"), bool)
-            or not isinstance(execution.get("cost_bps_mean"), (int, float))
-            or not math.isfinite(float(execution["cost_bps_mean"]))
-            or float(execution["cost_bps_mean"]) < 0.0
+            scorecard.factor_spec_id != factor_id
+            or scorecard.scorecard_evidence_hash != evaluation.payload["scorecard_hash"]
         ):
-            raise ValueError("Retriever feature requires execution cost evidence")
-        estimated_cost = float(execution["cost_bps_mean"]) / 10_000.0
+            raise ValueError("Retriever feature v4 scorecard identity differs")
+        by_hash = {event.event_hash: event for event in events}
+        observed = by_hash.get(scorecard.observed_event_hash)
+        if (
+            observed is None
+            or observed.event_type != "ObservedPanelPredictiveEvidenceRecorded"
+            or observed.payload["factor_spec_id"] != factor_id
+            or order[observed.event_hash] > order[watermark]
+        ):
+            raise ValueError("Retriever feature observed evidence is unavailable")
+        observed_refs = [
+            reference
+            for reference in observed.payload["artifact_refs"]
+            if reference["media_type"] == PREDICTIVE_EVIDENCE_MEDIA_TYPE
+        ]
+        if len(observed_refs) != 1:
+            raise ValueError("Retriever feature observed artifact is missing")
+        observed_path = self.store.artifact_root.joinpath(
+            *str(observed_refs[0]["relative_path"]).split("/")
+        )
+        if hash_artifact(observed_path) != observed_refs[0]["artifact_hash"]:
+            raise ValueError("Retriever feature observed artifact changed")
+        predictive = PredictiveEvidenceV1.from_dict(
+            _strict_json_object(observed_path.read_bytes(), label="Retriever observed evidence")
+        )
+        try:
+            utility = float(predictive.split_metrics["valid"]["rank_icir"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Retriever feature lacks v4 validation utility") from exc
+        if not math.isfinite(utility):
+            raise ValueError("Retriever feature v4 utility is non-finite")
+        execution_events = [
+            event
+            for event in events
+            if event.event_type == "ExecutionEvidenceRecorded"
+            and event.payload["factor_spec_id"] == factor_id
+            and order[event.event_hash] <= order[watermark]
+        ]
+        if len(execution_events) != 1:
+            raise ValueError("Retriever feature requires one execution evidence event")
+        recorded_execution = ExecutionEvidenceServiceV1(self.store)._read_event(
+            execution_events[0]
+        )
+        _, aggregate = ExecutionEvidenceArtifactStoreV1(
+            self.store.artifact_root
+        ).read_tables(recorded_execution.artifact)
+        costs = aggregate["cost_return"].astype(float)
+        if costs.empty or not costs.map(math.isfinite).all() or (costs < 0.0).any():
+            raise ValueError("Retriever feature execution costs are invalid")
+        estimated_cost = float(costs.mean())
         cost_hash = canonical_json_hash(
             {
                 "schema_version": "retriever_cost_evidence.v1",
                 "scorecard_event_hash": evaluation.event_hash,
                 "scorecard_hash": evaluation.payload["scorecard_hash"],
+                "execution_event_hash": execution_events[0].event_hash,
+                "execution_artifact_hash": recorded_execution.artifact.execution_artifact_hash,
                 "cost_metric": self.feature_policy.cost_metric,
                 "estimated_cost": estimated_cost,
             }
         )
-        return evaluation, utility, estimated_cost, cost_hash
+        return (evaluation, execution_events[0]), utility, estimated_cost, cost_hash
 
     @staticmethod
     def _output_panel(

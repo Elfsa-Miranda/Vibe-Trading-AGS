@@ -251,12 +251,20 @@ class _Scope:
 def _bundle_sources(store: ResearchEventStore, input_event_hash: str) -> dict[str, str]:
     raw = dict(_event(store, input_event_hash, "ResearchOnlyActivationRunInputRegistered").payload["bundle"])
     contract = _event(store, str(raw["resolved_contract_event_hash"]), "ResolvedEvaluationContractRegistered")
+    train_events = [
+        event
+        for event in store.query_events(event_type="TrainValidDataSnapshotFrozen")
+        if event.payload["snapshot_hash"] == raw["train_snapshot_hash"]
+    ]
+    if len(train_events) != 1:
+        raise ValueError("research-only bundle lacks one exact train snapshot event")
     return {
         "contract_hash": str(contract.payload["contract_hash"]),
         "pit_snapshot_event_hash": str(raw["pit_snapshot_event_hash"]),
         "train_snapshot_hash": str(raw["train_snapshot_hash"]),
         "valid_snapshot_hash": str(raw["valid_snapshot_hash"]),
         "train_valid_snapshot_event_hash": str(raw["train_valid_snapshot_event_hash"]),
+        "retrieval_snapshot_event_hash": train_events[0].event_hash,
         "flat_policy_hash": str(raw["flat_policy_hash"]),
         "topology_policy_hash": str(raw["topology_policy_hash"]),
     }
@@ -499,7 +507,7 @@ def _prepare_group(
     )
     feature = RetrieverFeatureSourceServiceV1(store, flags=store.flags).record(
         execution_run_id=topology_run,
-        snapshot_event_hash=source["train_valid_snapshot_event_hash"],
+        snapshot_event_hash=source["retrieval_snapshot_event_hash"],
         action_event_hashes=tuple(item.event.event_hash for item in actions),
         eligible_event_watermark=bootstrap["eligible_event_watermark"],
         retrieval_policy=ActivationRetrieverPolicy(),
