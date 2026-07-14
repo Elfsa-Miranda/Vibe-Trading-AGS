@@ -2490,16 +2490,31 @@ class ResearchEventStore:
                 for event in by_hash.values()
                 if event.event_type == "ResolvedEvaluationContractRegistered"
                 and event.payload["contract_hash"] == dossier.resolved_contract_hash
-                and event.run_id == dossier.run_id
             ]
             snapshot = by_hash[dossier.snapshot_event_hash]
             watermark = by_hash[dossier.source_watermark_event_hash]
+            shared_activation_sources = (
+                len(contract_matches) == 1
+                and ProductionCandidateEvaluatorV1._shared_activation_sources(
+                    events=list(by_hash.values()),
+                    run_id=dossier.run_id,
+                    snapshot_event_hash=snapshot.event_hash,
+                    contract_event_hash=contract_matches[0].event_hash,
+                )
+            )
             if (
                 dict(payload) != expected
                 or expected_bundle_hash != dossier.evidence_bundle_hash
                 or len(contract_matches) != 1
+                or (
+                    contract_matches[0].run_id != dossier.run_id
+                    and not shared_activation_sources
+                )
                 or snapshot.event_type != "AsharePITSnapshotRecorded"
-                or snapshot.run_id != dossier.run_id
+                or (
+                    snapshot.run_id != dossier.run_id
+                    and not shared_activation_sources
+                )
                 or watermark.event_type != "FactorDefinitionRecorded"
                 or watermark.entity_id != dossier.factor_spec_id
                 or watermark.run_id != dossier.run_id

@@ -9,6 +9,8 @@ import src.alpha_quality.adapters.baostock_eligible_universe_v1 as baostock_modu
 from src.alpha_foundry.activation.candidate_factory_v1 import (
     ProductionActivationCandidateFactoryV1,
 )
+from src.alpha_foundry.candidate_pool import make_candidate
+from src.alpha_foundry.dsl.identity import FactorSpecSemantics
 from src.alpha_foundry.activation.provider_pit_audit_v1 import (
     ProviderPITAuditServiceV1,
     baostock_golden_cohort_field_audits_v1,
@@ -39,6 +41,8 @@ from src.alpha_quality.pit_service_v2 import (
     AsharePITAdapterRegistrationServiceV1,
     AsharePITSnapshotServiceV2,
 )
+from src.alpha_quality.production_evaluator_v1 import ProductionEvaluationRequestV1
+from src.alpha_quality.secondary_evidence_v1 import ComparisonPoolServiceV1
 from src.research_ledger.events import (
     EventDraft,
     EventValidationError,
@@ -51,6 +55,20 @@ from tests.alpha_quality.test_pit_service_v2 import ServiceFixturePITAdapterV1
 
 def _hash(name: str) -> str:
     return canonical_json_hash({"research-only-activation-fixture": name})
+
+
+def _factor_semantics() -> FactorSpecSemantics:
+    return FactorSpecSemantics(
+        transform_pipeline_hash=_hash("transform"),
+        field_semantics={"close": "baostock-daily-best-effort"},
+        signal_time="close-t",
+        order_time="open-t+1",
+        entry_price_time="open-t+1",
+        execution_lag=1,
+        return_horizon=1,
+        universe_mask_hash=_hash("universe"),
+        tradability_mask_hash=_hash("tradability"),
+    )
 
 
 def _flags() -> ResolvedAGSFlags:
@@ -209,6 +227,95 @@ def test_baostock_best_effort_is_preserved_without_formal_eligibility(
     assert recorded.payload["official_search_policy_effect"] == "none"
     assert recorded.payload["live_trading_meaning"] == "none"
     assert recorded.payload["test_final_forward_access_count"] == 0
+    assert store.verify_chain()
+
+
+def test_shared_research_bundle_sources_materialize_arm_terminal_dossier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, _, _, bundle = _setup(tmp_path, monkeypatch)
+    registered = ResearchOnlyActivationRunInputServiceV1(store).register(
+        run_id="research-only-cycle", bundle=bundle
+    )
+    arm_run_id = "research-only-shared-source-arm"
+    arm_start_hash = _hash("shared-source-arm-start")
+    store._append_producer_event(
+        EventDraft(
+            event_type="ProductionActivationArmStartedV1Recorded",
+            entity_id="production-activation-arm-start-shared-source",
+            run_id=arm_run_id,
+            payload_schema_version="production_activation_arm_started_recorded.v1",
+            idempotency_key="shared-source-arm-start",
+            payload={
+                "arm_start_id": "production-activation-arm-start-shared-source",
+                "arm_start_hash": arm_start_hash,
+                "run_input_bundle_event_hash": registered.event_hash,
+                "plan_hash": _hash("shared-source-plan"),
+                "pair_id": "shared-source-pair",
+                "run_group_id": "shared-source-group",
+                "arm": "flat",
+                "retriever_policy_hash": bundle.flat_policy_hash,
+                "retrieval_authority_event_hash": _hash("shared-source-retrieval"),
+            },
+        )
+    )
+    factory = ProductionActivationCandidateFactoryV1(
+        store=store,
+        quality_decision_v3=QualityDecisionV3Service(
+            store=store,
+            flags=store.flags,
+            policy=DecisionV2Policy(
+                schema_version="decision_v2_policy.v1",
+                policy_version="shared-research-source-test",
+            ),
+            repository=DecisionEvidenceRepository(
+                store.artifact_root / "decision-evidence-v2"
+            ),
+        ),
+    )
+    trial_id = "shared-research-source-trial"
+    identity = factory.record_generated_identity(
+        candidate=make_candidate(
+            "shared-source-parent", "rank(close)", mutation="rank_wrap"
+        ),
+        semantics=_factor_semantics(),
+        trial_id=trial_id,
+        run_id=arm_run_id,
+    )
+    definition = next(
+        event
+        for event in store.query_events(event_type="FactorDefinitionRecorded")
+        if event.entity_id == identity.factor_spec_id and event.run_id == arm_run_id
+    )
+    pool, _ = ComparisonPoolServiceV1(store).freeze(
+        run_id=arm_run_id,
+        source_watermark_event_hash=definition.event_hash,
+        members=(),
+    )
+    contract = next(
+        event
+        for event in store.query_events(event_type="ResolvedEvaluationContractRegistered")
+        if event.event_hash == bundle.resolved_contract_event_hash
+    )
+
+    refs = factory.evaluate_recorded_candidate(
+        request=ProductionEvaluationRequestV1(
+            run_id=arm_run_id,
+            trial_id=trial_id,
+            factor_definition_event_hash=definition.event_hash,
+            resolved_contract_hash=str(contract.payload["contract_hash"]),
+            snapshot_event_hash=bundle.pit_snapshot_event_hash,
+            source_watermark_event_hash=definition.event_hash,
+            frozen_comparison_pool_hash=pool.comparison_pool_hash,
+        )
+    )
+
+    assert refs.terminal_dossier_event_hash is not None
+    assert any(
+        event.event_hash == refs.terminal_dossier_event_hash
+        for event in store.query_events(event_type="TrialTerminalDossierRecorded")
+    )
+    assert not store.query_events(event_type="ReportMaterializationFailed")
     assert store.verify_chain()
 
 
