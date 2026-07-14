@@ -701,10 +701,20 @@ class PITPredictiveEvidenceServiceV4:
         factor_definition_event_hash: str,
         pit_snapshot_event_hash: str,
     ) -> RecordedPredictiveEvidenceV4:
+        definitions = [
+            event
+            for event in self.store.query_events(event_type="FactorDefinitionRecorded")
+            if event.event_hash == factor_definition_event_hash
+        ]
+        if len(definitions) != 1:
+            raise EventTransitionError("predictive factor definition is unavailable")
+        factor_spec_id = definitions[0].entity_id
         existing = [
             event
             for event in self.store.query_events(event_type=SCORECARD_V4_EVENT_TYPE)
-            if event.run_id == run_id and event.payload["source_event_hashes"]
+            if event.run_id == run_id
+            and event.payload["factor_spec_id"] == factor_spec_id
+            and event.payload["source_event_hashes"]
         ]
         if existing:
             if len(existing) != 1:
