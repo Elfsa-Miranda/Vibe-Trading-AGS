@@ -1413,22 +1413,28 @@ class ResearchEventStore:
         if len(references) != 1:
             raise EventValidationError("Retriever feature source requires one artifact")
         try:
-            from src.alpha_foundry.retrieval.evidence_v3 import (
-                _candidate_to_dict,
-            )
             from src.alpha_foundry.retrieval.feature_producer_v1 import (
                 RetrieverFeaturePolicyV1,
                 RetrieverFeatureSourceArtifactStoreV1,
                 RetrieverFeatureSourceServiceV1,
+                _json_value_hash,
             )
             from src.alpha_foundry.retrieval.policy import (
                 ActivationRetrieverPolicy,
             )
 
-            source = RetrieverFeatureSourceArtifactStoreV1(self.artifact_root).read(
+            raw_source = RetrieverFeatureSourceArtifactStoreV1(
+                self.artifact_root
+            )._read_payload(
                 str(references[0]["relative_path"]),
                 str(payload["source_hash"]),
             )
+            if (
+                not isinstance(raw_source.get("feature_policy"), Mapping)
+                or not isinstance(raw_source.get("retrieval_policy"), Mapping)
+                or not isinstance(raw_source.get("action_event_hashes"), list)
+            ):
+                raise ValueError("retriever feature source has invalid inputs")
             replay_services = (
                 verification.feature_replay_services
                 if verification is not None
@@ -1436,28 +1442,35 @@ class ResearchEventStore:
                     "_retriever_feature_replay_services", {}
                 )
             )
-            service_key = canonical_json_hash(dict(source.feature_policy))
+            service_key = canonical_json_hash(dict(raw_source["feature_policy"]))
             service = replay_services.get(service_key)
             if service is None:
                 service = RetrieverFeatureSourceServiceV1(
                     self,
                     flags=self.flags,
                     feature_policy=RetrieverFeaturePolicyV1(
-                        **dict(source.feature_policy)
+                        **dict(raw_source["feature_policy"])
                     ),
                 )
                 replay_services[service_key] = service
             rebuilt = service.rebuild(
-                execution_run_id=source.execution_run_id,
-                snapshot_event_hash=source.snapshot_event_hash,
-                action_event_hashes=source.action_event_hashes,
-                eligible_event_watermark=source.eligible_event_watermark,
-                retrieval_policy=ActivationRetrieverPolicy(**dict(source.retrieval_policy)),
+                execution_run_id=str(raw_source["execution_run_id"]),
+                snapshot_event_hash=str(raw_source["snapshot_event_hash"]),
+                action_event_hashes=tuple(
+                    str(item) for item in raw_source["action_event_hashes"]
+                ),
+                eligible_event_watermark=str(
+                    raw_source["eligible_event_watermark"]
+                ),
+                retrieval_policy=ActivationRetrieverPolicy(
+                    **dict(raw_source["retrieval_policy"])
+                ),
             )
         except (KeyError, OSError, TypeError, ValueError, RuntimeError) as exc:
             raise EventValidationError("Retriever feature source cannot be independently rebuilt") from exc
-        if rebuilt != source:
+        if rebuilt.to_dict() != dict(raw_source):
             raise EventValidationError("Retriever feature source differs from deterministic rebuild")
+        source = rebuilt
         expected = {
             "source_hash": source.source_hash,
             "execution_run_id": source.execution_run_id,
@@ -1469,7 +1482,10 @@ class ResearchEventStore:
             "action_event_hashes": list(source.action_event_hashes),
             "scorecard_event_hashes": list(source.scorecard_event_hashes),
             "candidate_count": len(source.candidates),
-            "candidate_hashes": [canonical_json_hash(_candidate_to_dict(candidate)) for candidate in source.candidates],
+            "candidate_hashes": [
+                _json_value_hash(candidate)
+                for candidate in raw_source["candidates"]
+            ],
             "semantic_state": "unavailable",
         }
         if any(payload[name] != value for name, value in expected.items()):

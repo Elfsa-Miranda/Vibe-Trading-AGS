@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -50,7 +51,13 @@ from src.alpha_quality.flags import ResolvedAGSFlags
 from src.alpha_quality.scope import DiscoveryEvidenceProjector
 from src.research_ledger.events import EventDraft, ResearchEventEnvelope, ResearchEventStore
 from src.research_ledger.events.artifacts import hash_artifact
-from src.research_ledger.hash_utils import canonical_json, canonical_json_hash, redact_secrets
+from src.research_ledger.hash_utils import (
+    _REDACTED,
+    _redact_string,
+    canonical_json,
+    canonical_json_hash,
+    is_sensitive_key,
+)
 
 
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -58,6 +65,53 @@ _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 # all-other-factor reference panels.  Keep a bounded JSON artifact while
 # allowing that production-sized, schema-v1 payload to replay exactly.
 _MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
+
+
+def _json_value_hash(value: Any) -> str:
+    """Canonical hash for a producer-owned, already JSON-shaped value."""
+
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _json_redaction_would_change(value: Any) -> bool:
+    """Exact redaction-identity check without materializing a second panel."""
+
+    safe_strings: set[tuple[str | None, str]] = set()
+
+    def visit(item: Any) -> bool:
+        if isinstance(item, Mapping):
+            for raw_key, child in item.items():
+                key = str(raw_key)
+                if is_sensitive_key(key):
+                    if child != _REDACTED:
+                        return True
+                elif isinstance(child, str):
+                    marker = (key, child)
+                    if marker not in safe_strings:
+                        if _redact_string(child, key=key) != child:
+                            return True
+                        safe_strings.add(marker)
+                elif visit(child):
+                    return True
+            return False
+        if isinstance(item, (list, tuple)):
+            return any(visit(child) for child in item)
+        if isinstance(item, str):
+            marker = (None, item)
+            if marker not in safe_strings:
+                if _redact_string(item) != item:
+                    return True
+                safe_strings.add(marker)
+        return False
+
+    return visit(value)
 
 
 def _strict_json_object(raw: bytes, *, label: str) -> Mapping[str, Any]:
@@ -79,7 +133,7 @@ def _strict_json_object(raw: bytes, *, label: str) -> Mapping[str, Any]:
     )
     if not isinstance(payload, Mapping):
         raise ValueError(f"{label} must be an object")
-    if canonical_json(payload) != canonical_json(redact_secrets(payload)):
+    if _json_redaction_would_change(payload):
         raise ValueError(f"{label} contains unsafe material")
     return payload
 
@@ -175,7 +229,7 @@ class RetrieverFeatureSourceV1:
             != len(set(self.scorecard_event_hashes))
         ):
             raise ValueError("Retriever feature source identities are inconsistent")
-        if self.source_hash != canonical_json_hash(self._content_dict()):
+        if self.source_hash != _json_value_hash(self._content_dict()):
             raise ValueError("Retriever feature source hash mismatch")
         object.__setattr__(self, "feature_policy", MappingProxyType(policy.to_dict()))
         object.__setattr__(
@@ -223,7 +277,7 @@ class RetrieverFeatureSourceV1:
             action_event_hashes=action_event_hashes,
             scorecard_event_hashes=scorecard_event_hashes,
             candidates=candidates,
-            source_hash=canonical_json_hash(content),
+            source_hash=_json_value_hash(content),
         )
 
     @classmethod
@@ -300,7 +354,7 @@ class RetrieverFeatureSourceArtifactStoreV1:
 
     def write(self, source: RetrieverFeatureSourceV1) -> dict[str, str]:
         payload = source.to_dict()
-        if canonical_json(payload) != canonical_json(redact_secrets(payload)):
+        if _json_redaction_would_change(payload):
             raise ValueError("Retriever feature source contains unsafe material")
         if len(canonical_json(payload).encode("utf-8")) > _MAX_ARTIFACT_BYTES:
             raise ValueError("Retriever feature source exceeds byte budget")
@@ -317,17 +371,30 @@ class RetrieverFeatureSourceArtifactStoreV1:
             "media_type": self.media_type,
         }
 
-    def read(self, relative_path: str, expected_source_hash: str) -> RetrieverFeatureSourceV1:
+    def _read_payload(
+        self,
+        relative_path: str,
+        expected_source_hash: str,
+    ) -> Mapping[str, Any]:
         target = safe_artifact_path(self.root, relative_path)
         raw = target.read_bytes()
         if len(raw) > _MAX_ARTIFACT_BYTES:
             raise ValueError("Retriever feature source exceeds byte budget")
         payload = _strict_json_object(raw, label="Retriever feature source")
-        source = RetrieverFeatureSourceV1.from_dict(payload)
-        if source.source_hash != expected_source_hash:
+        if payload.get("source_hash") != expected_source_hash:
             raise ValueError("Retriever feature source identity differs")
-        if self.relative_path(source.source_hash) != relative_path.replace("\\", "/"):
+        content = dict(payload)
+        content.pop("source_hash", None)
+        if _json_value_hash(content) != expected_source_hash:
+            raise ValueError("Retriever feature source content hash differs")
+        if self.relative_path(expected_source_hash) != relative_path.replace("\\", "/"):
             raise ValueError("Retriever feature source path is not content addressed")
+        return payload
+
+    def read(self, relative_path: str, expected_source_hash: str) -> RetrieverFeatureSourceV1:
+        source = RetrieverFeatureSourceV1.from_dict(
+            self._read_payload(relative_path, expected_source_hash)
+        )
         return source
 
     @staticmethod
@@ -413,7 +480,7 @@ class RetrieverFeatureSourceServiceV1:
                     "scorecard_event_hashes": list(source.scorecard_event_hashes),
                     "candidate_count": len(source.candidates),
                     "candidate_hashes": [
-                        canonical_json_hash(_candidate_to_dict(candidate))
+                        _json_value_hash(_candidate_to_dict(candidate))
                         for candidate in source.candidates
                     ],
                     "semantic_state": "unavailable",

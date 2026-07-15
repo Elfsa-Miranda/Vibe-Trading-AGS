@@ -19,7 +19,12 @@ from src.alpha_foundry.retrieval.feature_producer_v1 import (
 from src.alpha_foundry.retrieval.feature_source_v1 import TrainValidSnapshotServiceV1
 from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 from src.research_ledger.events import EventDraft, ResearchEventStore
-from src.research_ledger.hash_utils import utc_now_iso
+from src.research_ledger.hash_utils import (
+    canonical_json,
+    canonical_json_hash,
+    redact_secrets,
+    utc_now_iso,
+)
 from test_process_memory import _semantics
 from test_retriever_shadow import _flags
 
@@ -300,3 +305,25 @@ def test_feature_source_reader_rejects_duplicate_json_keys(tmp_path: Path) -> No
             relative,
             recorded.source.source_hash,
         )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {"safe": ["2025-01-01", "AAA", {"value": 1.0}]},
+        {"api_key": "plain-text-secret"},
+        {"api_key": "[REDACTED]"},
+        {"artifact_path": r"C:\\private\\panel.json"},
+        {"description": "sk-proj-abcdefghijklmnopqrstuvwxyz"},
+    ),
+)
+def test_fast_redaction_identity_matches_canonical_contract(payload) -> None:
+    expected = canonical_json(payload) != canonical_json(redact_secrets(payload))
+    assert feature_producer_v1._json_redaction_would_change(payload) is expected
+
+
+def test_json_value_hash_matches_canonical_source_identity(tmp_path: Path) -> None:
+    _, _, _, _, _, recorded = _record(tmp_path)
+    content = recorded.source._content_dict()
+    assert feature_producer_v1._json_value_hash(content) == canonical_json_hash(content)
+    assert recorded.source.source_hash == canonical_json_hash(content)

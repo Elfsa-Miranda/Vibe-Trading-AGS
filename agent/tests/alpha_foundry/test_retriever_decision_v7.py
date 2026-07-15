@@ -281,7 +281,7 @@ def test_chain_verify_reuses_directly_validated_feature_source_object(
     store, _, _, _, _, _ = _record(tmp_path)
     reads = 0
     maximum_resident_sources = 0
-    original = RetrieverFeatureSourceArtifactStoreV1.read
+    original = RetrieverFeatureSourceArtifactStoreV1._read_payload
     original_consume = store._consume_verified_retriever_feature_source
 
     class CallerMapping(dict):
@@ -299,7 +299,7 @@ def test_chain_verify_reuses_directly_validated_feature_source_object(
 
     monkeypatch.setattr(
         RetrieverFeatureSourceArtifactStoreV1,
-        "read",
+        "_read_payload",
         counted_read,
     )
 
