@@ -229,18 +229,26 @@ def test_feature_source_reuses_immutable_output_panels_within_service(
     store, _, _, _, _, recorded = _record(tmp_path)
     service = RetrieverFeatureSourceServiceV1(store, flags=store.flags)
     calls = 0
+    projection_calls = 0
     original = feature_producer_v1.evaluate_formula
+    original_project = service.projector.project_at_watermark
 
     def counted_evaluate_formula(formula, frames):
         nonlocal calls
         calls += 1
         return original(formula, frames)
 
+    def counted_project(*args, **kwargs):
+        nonlocal projection_calls
+        projection_calls += 1
+        return original_project(*args, **kwargs)
+
     monkeypatch.setattr(
         feature_producer_v1,
         "evaluate_formula",
         counted_evaluate_formula,
     )
+    monkeypatch.setattr(service.projector, "project_at_watermark", counted_project)
     source = recorded.source
     kwargs = {
         "execution_run_id": source.execution_run_id,
@@ -255,6 +263,7 @@ def test_feature_source_reuses_immutable_output_panels_within_service(
 
     assert first_call_count > 0
     assert calls == first_call_count
+    assert projection_calls == 1
     assert second.source_hash == first.source_hash == source.source_hash
 
 

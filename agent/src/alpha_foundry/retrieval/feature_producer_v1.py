@@ -364,6 +364,8 @@ class RetrieverFeatureSourceServiceV1:
         self.feature_policy = feature_policy or RetrieverFeaturePolicyV1()
         self.projector = DiscoveryEvidenceProjector(flags=flags)
         self.artifacts = RetrieverFeatureSourceArtifactStoreV1(store.artifact_root)
+        self._discovery_cache: dict[tuple[str, str], Any] = {}
+        self._raw_panel_cache: dict[str, Mapping[str, Any]] = {}
         self._output_panel_cache: dict[tuple[str, str, str], FactorOutputPanel] = {}
 
     def record(
@@ -448,11 +450,15 @@ class RetrieverFeatureSourceServiceV1:
             str(refs[0]["relative_path"]),
             str(snapshot_event.payload["snapshot_hash"]),
         )
-        discovery = self.projector.project_at_watermark(
-            self.store,
-            data_snapshot_hash=snapshot.snapshot_hash,
-            watermark_event_hash=eligible_event_watermark,
-        )
+        replay_key = (snapshot.snapshot_hash, eligible_event_watermark)
+        discovery = self._discovery_cache.get(replay_key)
+        if discovery is None:
+            discovery = self.projector.project_at_watermark(
+                self.store,
+                data_snapshot_hash=snapshot.snapshot_hash,
+                watermark_event_hash=eligible_event_watermark,
+            )
+            self._discovery_cache[replay_key] = discovery
         actions: list[FrozenRetrieverActionTemplateV1] = []
         for event_hash in action_event_hashes:
             event = by_hash.get(event_hash)
@@ -482,7 +488,10 @@ class RetrieverFeatureSourceServiceV1:
             if event.event_type == "FactorDefinitionRecorded"
             and order[event.event_hash] <= order[eligible_event_watermark]
         }
-        panel = snapshot.to_panel()
+        panel = self._raw_panel_cache.get(snapshot.snapshot_hash)
+        if panel is None:
+            panel = snapshot.to_panel()
+            self._raw_panel_cache[snapshot.snapshot_hash] = panel
         output_panels = {
             factor_id: self._output_panel(
                 factor_id,

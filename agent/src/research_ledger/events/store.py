@@ -1885,7 +1885,11 @@ class ResearchEventStore:
             ]
             if len(historical) > 1:
                 raise ValueError("retriever v7 historical identity is ambiguous")
-            decision, rebuilt_bundle, schedule, source, _ = RetrieverDecisionV7Service(self).rebuild(
+            service = self.__dict__.get("_retriever_v7_replay_service")
+            if service is None:
+                service = RetrieverDecisionV7Service(self)
+                self.__dict__["_retriever_v7_replay_service"] = service
+            decision, rebuilt_bundle, schedule, source, _ = service.rebuild(
                 schedule_event_hash=bundle.schedule_event_hash,
                 feature_source_event_hash=bundle.feature_source_event_hash,
                 decision_event_hash=(None if not historical else historical[0].event_hash),

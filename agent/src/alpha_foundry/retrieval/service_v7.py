@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Any, Mapping
 
 from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
 from src.alpha_foundry.activation.runner import activation_arm_execution_run_id
@@ -79,6 +79,7 @@ class RetrieverDecisionV7Service:
         self.store = store
         self.artifacts = RetrieverDecisionInputArtifactStoreV7(store.artifact_root)
         self.projector = DiscoveryEvidenceProjector(flags=store.flags)
+        self._discovery_cache: dict[tuple[str, str], Any] = {}
 
     def record(
         self, *, schedule_event_hash: str, feature_source_event_hash: str,
@@ -217,11 +218,15 @@ class RetrieverDecisionV7Service:
             raise ValueError("Retriever v7 decision must precede both arm outcomes")
         policy = ActivationRetrieverPolicy(**dict(source.retrieval_policy))
         actions = self._actions(source, by_hash, run_id)
-        evidence = self.projector.project_at_watermark(
-            self.store,
-            data_snapshot_hash=source.snapshot_hash,
-            watermark_event_hash=source.eligible_event_watermark,
-        )
+        replay_key = (source.snapshot_hash, source.eligible_event_watermark)
+        evidence = self._discovery_cache.get(replay_key)
+        if evidence is None:
+            evidence = self.projector.project_at_watermark(
+                self.store,
+                data_snapshot_hash=source.snapshot_hash,
+                watermark_event_hash=source.eligible_event_watermark,
+            )
+            self._discovery_cache[replay_key] = evidence
         official_ids = tuple(str(item["candidate_id"]) for item in schedule.candidates)
         decision = ActionShadowRetrieverV5(
             flags=self.store.flags, policy=policy

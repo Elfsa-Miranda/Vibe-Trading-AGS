@@ -473,6 +473,8 @@ def _prepare_group(
     store: ResearchEventStore, plan: ActivationExperimentPlan, group: str,
     bootstrap: Mapping[str, Any], source: Mapping[str, str],
     action_service: RetrieverActionTemplateServiceV1 | None = None,
+    feature_service: RetrieverFeatureSourceServiceV1 | None = None,
+    decision_service: RetrieverDecisionV7Service | None = None,
 ) -> dict[str, Any]:
     pair_id = f"{group}:global:all"
     seed_bank = SeedBank(
@@ -505,14 +507,18 @@ def _prepare_group(
         for item in bootstrap["seeds"]
         for template in NONIDENTITY_TEMPLATES
     )
-    feature = RetrieverFeatureSourceServiceV1(store, flags=store.flags).record(
+    if feature_service is None:
+        feature_service = RetrieverFeatureSourceServiceV1(store, flags=store.flags)
+    feature = feature_service.record(
         execution_run_id=topology_run,
         snapshot_event_hash=source["retrieval_snapshot_event_hash"],
         action_event_hashes=tuple(item.event.event_hash for item in actions),
         eligible_event_watermark=bootstrap["eligible_event_watermark"],
         retrieval_policy=ActivationRetrieverPolicy(),
     )
-    decision = RetrieverDecisionV7Service(store).record(
+    if decision_service is None:
+        decision_service = RetrieverDecisionV7Service(store)
+    decision = decision_service.record(
         schedule_event_hash=flat.event.event_hash,
         feature_source_event_hash=feature.event.event_hash,
     )
@@ -920,12 +926,20 @@ def execute(root: Path, incomplete_roots: list[Path]) -> dict[str, Any]:
     _write_json(root / "plans" / "dry_run_formal_v3.json", dry_formal.to_dict())
     _write_json(root / "plans" / "pilot_formal_v3.json", pilot_formal.to_dict())
     action_service = RetrieverActionTemplateServiceV1(store=store, flags=store.flags)
+    feature_service = RetrieverFeatureSourceServiceV1(store, flags=store.flags)
+    decision_service = RetrieverDecisionV7Service(store)
     prepared_dry = {
-        group: _prepare_group(store, dry_compat, group, bootstrap, sources, action_service)
+        group: _prepare_group(
+            store, dry_compat, group, bootstrap, sources,
+            action_service, feature_service, decision_service,
+        )
         for group in dry_groups
     }
     prepared_pilot = {
-        group: _prepare_group(store, pilot_compat, group, bootstrap, sources, action_service)
+        group: _prepare_group(
+            store, pilot_compat, group, bootstrap, sources,
+            action_service, feature_service, decision_service,
+        )
         for group in pilot_groups
     }
     dry = _run_stage(

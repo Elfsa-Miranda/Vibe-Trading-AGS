@@ -125,6 +125,34 @@ def test_v7_has_no_caller_seed_or_budget_channel(tmp_path: Path) -> None:
         )
 
 
+def test_v7_reuses_immutable_discovery_projection_within_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, source, schedule, recorded = _record(tmp_path)
+    service = RetrieverDecisionV7Service(store)
+    projection_calls = 0
+    original_project = service.projector.project_at_watermark
+
+    def counted_project(*args, **kwargs):
+        nonlocal projection_calls
+        projection_calls += 1
+        return original_project(*args, **kwargs)
+
+    monkeypatch.setattr(service.projector, "project_at_watermark", counted_project)
+    kwargs = {
+        "schedule_event_hash": schedule.event.event_hash,
+        "feature_source_event_hash": source.event.event_hash,
+        "decision_event_hash": recorded.event.event_hash,
+    }
+    first = service.rebuild(**kwargs)
+    second = service.rebuild(**kwargs)
+
+    assert projection_calls == 1
+    assert second[0].decision_hash == first[0].decision_hash
+    assert second[1].bundle_hash == first[1].bundle_hash
+
+
 def test_v7_rejects_schedule_chosen_after_treatment_features(tmp_path: Path) -> None:
     store, _, _, _, schedule, _ = _record(tmp_path)
     earlier_source = store.query_events(
