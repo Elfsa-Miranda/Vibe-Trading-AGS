@@ -82,9 +82,7 @@ class ReleaseArtifactEntry:
 class LegacyClaimDocument:
     relative_path: str
     normalized_content_hash: str
-    authority_status: Literal["historical_claim_unverified"] = (
-        "historical_claim_unverified"
-    )
+    authority_status: Literal["historical_claim_unverified"] = "historical_claim_unverified"
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -100,9 +98,7 @@ class AuditInputRecord:
     blob_hash: str
     document_worktree_commit: str
     tracked_in_document_worktree: Literal[False] = False
-    authority_status: Literal["audit_input_not_code_truth"] = (
-        "audit_input_not_code_truth"
-    )
+    authority_status: Literal["audit_input_not_code_truth"] = "audit_input_not_code_truth"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -135,9 +131,7 @@ class ReleaseManifestV1:
             "audit_input": self.audit_input.to_dict(),
             "current_retriever_policy_hash": self.current_retriever_policy_hash,
             "artifacts": [entry.to_dict() for entry in self.artifacts],
-            "legacy_claim_documents": [
-                document.to_dict() for document in self.legacy_claim_documents
-            ],
+            "legacy_claim_documents": [document.to_dict() for document in self.legacy_claim_documents],
             "activation_status": self.activation_status,
             "engineering_status": self.engineering_status,
             "empirical_status": self.empirical_status,
@@ -169,9 +163,7 @@ class ReleaseManifestBuilderV1:
         if _COMMIT_RE.fullmatch(accepted_code_commit) is None:
             raise ValueError("accepted_code_commit must be a full lowercase git commit")
         if _COMMIT_RE.fullmatch(audit_document_worktree_commit) is None:
-            raise ValueError(
-                "audit_document_worktree_commit must be a full lowercase git commit"
-            )
+            raise ValueError("audit_document_worktree_commit must be a full lowercase git commit")
         self._accepted_code_commit = accepted_code_commit
         audit_path = Path(audit_document).resolve(strict=True)
         if audit_path.name != "problem.md" or not audit_path.is_file():
@@ -181,9 +173,9 @@ class ReleaseManifestBuilderV1:
             blob_hash=_blob_hash(audit_path),
             document_worktree_commit=audit_document_worktree_commit,
         )
-        self._activation_root = (
-            self._repository_root / "agent" / "research_evidence" / "activation"
-        ).resolve(strict=True)
+        self._activation_root = (self._repository_root / "agent" / "research_evidence" / "activation").resolve(
+            strict=True
+        )
         _relative_to(self._activation_root, self._repository_root)
         self._store = ActivationArtifactStore(self._activation_root)
 
@@ -199,9 +191,7 @@ class ReleaseManifestBuilderV1:
             "MARKET_EMPIRICAL_EVIDENCE_NOT_ESTABLISHED",
         }
         plan = payloads["plan"][0]
-        policy_superseded = (
-            plan["provenance"]["treatment_policy_hash"] != current_policy_hash
-        )
+        policy_superseded = plan["provenance"]["treatment_policy_hash"] != current_policy_hash
         if policy_superseded:
             limitations.add("TREATMENT_POLICY_HASH_SUPERSEDED")
             entries = tuple(
@@ -258,9 +248,7 @@ class ReleaseManifestBuilderV1:
         self,
     ) -> tuple[tuple[ReleaseArtifactEntry, ...], dict[str, list[dict[str, Any]]]]:
         entries: list[ReleaseArtifactEntry] = []
-        payloads: dict[str, list[dict[str, Any]]] = {
-            kind: [] for kind in _ARTIFACT_KINDS
-        }
+        payloads: dict[str, list[dict[str, Any]]] = {kind: [] for kind in _ARTIFACT_KINDS}
         for kind in _ARTIFACT_KINDS:
             directory = self._activation_root / kind
             files = sorted(directory.glob("*/*.json")) if directory.exists() else []
@@ -300,10 +288,7 @@ class ReleaseManifestBuilderV1:
                 raise ValueError("activation result is not bound to an indexed plan")
         for decision in payloads["decision"]:
             matched_result = results.get(decision.get("result_hash"))
-            if (
-                matched_result is None
-                or decision.get("plan_hash") != matched_result.get("plan_hash")
-            ):
+            if matched_result is None or decision.get("plan_hash") != matched_result.get("plan_hash"):
                 raise ValueError("activation decision is not bound to its plan and result")
 
     @staticmethod
@@ -327,8 +312,7 @@ class ReleaseManifestBuilderV1:
     ) -> Literal["preflight_invalidated", "legacy_unverified_claim"]:
         decisions = payloads["decision"]
         if decisions and all(
-            decision.get("verdict") == "invalidated"
-            and decision.get("active_research_only") is False
+            decision.get("verdict") == "invalidated" and decision.get("active_research_only") is False
             for decision in decisions
         ):
             return "preflight_invalidated"
@@ -351,10 +335,151 @@ class ReleaseManifestBuilderV1:
         return tuple(documents)
 
 
+@dataclass(frozen=True)
+class ReleaseManifestScopeV2:
+    """Closed release-attestation allowlist.
+
+    Mutable user planning inputs are deliberately named as exclusions so a
+    checkout-local ``problem.md`` can never change release identity.
+    """
+
+    included_paths: tuple[str, ...]
+    excluded_mutable_paths: tuple[str, ...]
+    scope_hash: str
+    schema_version: Literal["ags_release_manifest_scope.v2"] = "ags_release_manifest_scope.v2"
+
+    @classmethod
+    def create_default(cls) -> "ReleaseManifestScopeV2":
+        included = (
+            "agent/research_evidence/activation",
+            "docs/alpha-genesis-final-acceptance.md",
+            "docs/alpha-genesis-known-limitations.md",
+        )
+        excluded = ("problem.md",)
+        content = {
+            "schema_version": "ags_release_manifest_scope.v2",
+            "included_paths": list(included),
+            "excluded_mutable_paths": list(excluded),
+        }
+        return cls(
+            included_paths=included,
+            excluded_mutable_paths=excluded,
+            scope_hash=canonical_json_hash(content),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "included_paths": list(self.included_paths),
+            "excluded_mutable_paths": list(self.excluded_mutable_paths),
+            "scope_hash": self.scope_hash,
+        }
+
+
+@dataclass(frozen=True)
+class ReleaseManifestV2:
+    accepted_code_commit: str
+    scope: ReleaseManifestScopeV2
+    source_blob_hashes: tuple[tuple[str, str], ...]
+    predecessor_manifest_hash: str
+    current_retriever_policy_hash: str
+    manifest_hash: str
+    schema_version: Literal["ags_release_manifest.v2"] = "ags_release_manifest.v2"
+
+    def _content_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "accepted_code_commit": self.accepted_code_commit,
+            "scope": self.scope.to_dict(),
+            "source_blob_hashes": [
+                {"relative_path": path, "blob_hash": blob_hash} for path, blob_hash in self.source_blob_hashes
+            ],
+            "predecessor_manifest_hash": self.predecessor_manifest_hash,
+            "current_retriever_policy_hash": self.current_retriever_policy_hash,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._content_dict(), "manifest_hash": self.manifest_hash}
+
+
+class ReleaseManifestBuilderV2:
+    """Build the versioned allowlist attestation without reading planning files."""
+
+    def __init__(
+        self,
+        repository_root: str | Path,
+        *,
+        accepted_code_commit: str,
+        scope: ReleaseManifestScopeV2 | None = None,
+    ) -> None:
+        self._repository_root = Path(repository_root).resolve(strict=True)
+        if _COMMIT_RE.fullmatch(accepted_code_commit) is None:
+            raise ValueError("accepted_code_commit must be a full lowercase git commit")
+        self._accepted_code_commit = accepted_code_commit
+        self._scope = scope or ReleaseManifestScopeV2.create_default()
+        if "problem.md" not in self._scope.excluded_mutable_paths:
+            raise ValueError("release scope must explicitly exclude problem.md")
+        if set(self._scope.included_paths) & set(self._scope.excluded_mutable_paths):
+            raise ValueError("release scope include and exclude sets overlap")
+        expected_scope = canonical_json_hash(
+            {
+                "schema_version": self._scope.schema_version,
+                "included_paths": list(self._scope.included_paths),
+                "excluded_mutable_paths": list(self._scope.excluded_mutable_paths),
+            }
+        )
+        if self._scope.scope_hash != expected_scope:
+            raise ValueError("release manifest scope hash mismatch")
+
+    def build(self) -> ReleaseManifestV2:
+        sources: list[tuple[str, str]] = []
+        for relative in self._scope.included_paths:
+            path = (self._repository_root / relative).resolve(strict=True)
+            _relative_to(path, self._repository_root)
+            paths = sorted(item for item in path.rglob("*") if item.is_file()) if path.is_dir() else [path]
+            for item in paths:
+                item_relative = _relative_to(item, self._repository_root)
+                if item_relative in self._scope.excluded_mutable_paths:
+                    raise ValueError("mutable planning input entered release allowlist")
+                sources.append((item_relative, _blob_hash(item)))
+        sources.sort()
+        predecessor = self._repository_root / "agent/research_evidence/release_manifest.json"
+        predecessor_hash = _blob_hash(predecessor.resolve(strict=True))
+        provisional = ReleaseManifestV2(
+            accepted_code_commit=self._accepted_code_commit,
+            scope=self._scope,
+            source_blob_hashes=tuple(sources),
+            predecessor_manifest_hash=predecessor_hash,
+            current_retriever_policy_hash=ActivationRetrieverPolicy().policy_hash,
+            manifest_hash="sha256:" + "0" * 64,
+        )
+        return ReleaseManifestV2(
+            accepted_code_commit=provisional.accepted_code_commit,
+            scope=provisional.scope,
+            source_blob_hashes=provisional.source_blob_hashes,
+            predecessor_manifest_hash=provisional.predecessor_manifest_hash,
+            current_retriever_policy_hash=provisional.current_retriever_policy_hash,
+            manifest_hash=canonical_json_hash(provisional._content_dict()),
+        )
+
+    def write(
+        self,
+        relative_path: str = "agent/research_evidence/release_manifest_v2.json",
+    ) -> Path:
+        return safe_artifact_write_json(
+            self._repository_root,
+            relative_path,
+            self.build().to_dict(),
+        )
+
+
 __all__ = [
     "AuditInputRecord",
     "LegacyClaimDocument",
     "ReleaseArtifactEntry",
     "ReleaseManifestBuilderV1",
+    "ReleaseManifestBuilderV2",
     "ReleaseManifestV1",
+    "ReleaseManifestV2",
+    "ReleaseManifestScopeV2",
 ]

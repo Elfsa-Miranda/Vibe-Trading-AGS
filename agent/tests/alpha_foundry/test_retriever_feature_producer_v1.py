@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+import src.alpha_foundry.retrieval.feature_producer_v1 as feature_producer_v1
 from src.alpha_foundry.dsl.identity import FactorIdentityService
 from src.alpha_foundry.retrieval.action_template_v1 import (
     RetrieverActionTemplateServiceV1,
@@ -18,7 +19,12 @@ from src.alpha_foundry.retrieval.feature_producer_v1 import (
 from src.alpha_foundry.retrieval.feature_source_v1 import TrainValidSnapshotServiceV1
 from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 from src.research_ledger.events import EventDraft, ResearchEventStore
-from src.research_ledger.hash_utils import utc_now_iso
+from src.research_ledger.hash_utils import (
+    canonical_json,
+    canonical_json_hash,
+    redact_secrets,
+    utc_now_iso,
+)
 from test_process_memory import _semantics
 from test_retriever_shadow import _flags
 
@@ -221,6 +227,52 @@ def test_feature_source_rebuilds_outputs_base_cost_and_missing_semantic(
     assert store.verify_chain()
 
 
+def test_feature_source_reuses_immutable_output_panels_within_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, _, _, recorded = _record(tmp_path)
+    store.__dict__["_immutable_discovery_projection_cache"].clear()
+    service = RetrieverFeatureSourceServiceV1(store, flags=store.flags)
+    calls = 0
+    projection_calls = 0
+    original = feature_producer_v1.evaluate_formula
+    original_project = service.projector.project_at_watermark
+
+    def counted_evaluate_formula(formula, frames):
+        nonlocal calls
+        calls += 1
+        return original(formula, frames)
+
+    def counted_project(*args, **kwargs):
+        nonlocal projection_calls
+        projection_calls += 1
+        return original_project(*args, **kwargs)
+
+    monkeypatch.setattr(
+        feature_producer_v1,
+        "evaluate_formula",
+        counted_evaluate_formula,
+    )
+    monkeypatch.setattr(service.projector, "project_at_watermark", counted_project)
+    source = recorded.source
+    kwargs = {
+        "execution_run_id": source.execution_run_id,
+        "snapshot_event_hash": source.snapshot_event_hash,
+        "action_event_hashes": source.action_event_hashes,
+        "eligible_event_watermark": source.eligible_event_watermark,
+        "retrieval_policy": ActivationRetrieverPolicy(),
+    }
+    first = service.rebuild(**kwargs)
+    first_call_count = calls
+    second = service.rebuild(**kwargs)
+
+    assert first_call_count > 0
+    assert calls == first_call_count
+    assert projection_calls == 1
+    assert second.source_hash == first.source_hash == source.source_hash
+
+
 def test_feature_source_rejects_missing_execution_cost(tmp_path: Path) -> None:
     store, _, _, _, _, recorded = _record(tmp_path)
     scorecard_event = next(
@@ -253,3 +305,25 @@ def test_feature_source_reader_rejects_duplicate_json_keys(tmp_path: Path) -> No
             relative,
             recorded.source.source_hash,
         )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {"safe": ["2025-01-01", "AAA", {"value": 1.0}]},
+        {"api_key": "plain-text-secret"},
+        {"api_key": "[REDACTED]"},
+        {"artifact_path": r"C:\\private\\panel.json"},
+        {"description": "sk-proj-abcdefghijklmnopqrstuvwxyz"},
+    ),
+)
+def test_fast_redaction_identity_matches_canonical_contract(payload) -> None:
+    expected = canonical_json(payload) != canonical_json(redact_secrets(payload))
+    assert feature_producer_v1._json_redaction_would_change(payload) is expected
+
+
+def test_json_value_hash_matches_canonical_source_identity(tmp_path: Path) -> None:
+    _, _, _, _, _, recorded = _record(tmp_path)
+    content = recorded.source._content_dict()
+    assert feature_producer_v1._json_value_hash(content) == canonical_json_hash(content)
+    assert recorded.source.source_hash == canonical_json_hash(content)

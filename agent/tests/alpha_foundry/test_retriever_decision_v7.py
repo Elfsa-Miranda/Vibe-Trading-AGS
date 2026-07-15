@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import src.alpha_foundry.retrieval.shadow as retrieval_shadow
 
 from src.alpha_foundry.activation import ActivationEvidenceService, ActivationExperimentPlan
 from src.alpha_foundry.activation.runner import activation_arm_execution_run_id
@@ -12,7 +13,11 @@ from src.alpha_foundry.control_evidence import FlatControlPolicyV1
 from src.alpha_foundry.flat_schedule_v1 import PreArmFlatScheduleServiceV1
 from src.alpha_foundry.mutators import SeedMutator
 from src.alpha_foundry.retrieval.action_template_v1 import RetrieverActionTemplateServiceV1
-from src.alpha_foundry.retrieval.feature_producer_v1 import RetrieverFeatureSourceServiceV1
+from src.alpha_foundry.retrieval.feature_producer_v1 import (
+    RetrieverFeatureSourceArtifactStoreV1,
+    RetrieverFeatureSourceServiceV1,
+)
+from src.alpha_foundry.retrieval.model import DiscoveryEvidenceView
 from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 from src.alpha_foundry.retrieval.service_v7 import RetrieverDecisionV7Service
 from src.alpha_foundry.search import AlphaFoundrySearch
@@ -125,6 +130,206 @@ def test_v7_has_no_caller_seed_or_budget_channel(tmp_path: Path) -> None:
         )
 
 
+def test_v7_reuses_immutable_discovery_projection_within_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, source, schedule, recorded = _record(tmp_path)
+    store.__dict__["_immutable_discovery_projection_cache"].clear()
+    service = RetrieverDecisionV7Service(store)
+    projection_calls = 0
+    original_project = service.projector.project_at_watermark
+
+    def counted_project(*args, **kwargs):
+        nonlocal projection_calls
+        projection_calls += 1
+        return original_project(*args, **kwargs)
+
+    monkeypatch.setattr(service.projector, "project_at_watermark", counted_project)
+    kwargs = {
+        "schedule_event_hash": schedule.event.event_hash,
+        "feature_source_event_hash": source.event.event_hash,
+        "decision_event_hash": recorded.event.event_hash,
+    }
+    first = service.rebuild(**kwargs)
+    second = service.rebuild(**kwargs)
+
+    assert projection_calls == 1
+    assert second[0].decision_hash == first[0].decision_hash
+    assert second[1].bundle_hash == first[1].bundle_hash
+
+
+def test_feature_and_v7_services_share_store_bound_immutable_projection_cache(
+    tmp_path: Path,
+) -> None:
+    store, _, _, _, _, _ = _record(tmp_path)
+
+    feature = RetrieverFeatureSourceServiceV1(store, flags=store.flags)
+    decision = RetrieverDecisionV7Service(store)
+
+    assert feature._discovery_cache is decision._discovery_cache
+    assert feature._discovery_cache is store.__dict__[
+        "_immutable_discovery_projection_cache"
+    ]
+
+
+def test_v7_verifies_same_immutable_evidence_once_per_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, source, schedule, recorded = _record(tmp_path)
+    store.__dict__["_immutable_discovery_projection_cache"].clear()
+    service = RetrieverDecisionV7Service(store)
+    calls = 0
+    original = DiscoveryEvidenceView.verify_integrity
+
+    def counted_verify(self):
+        nonlocal calls
+        calls += 1
+        return original(self)
+
+    monkeypatch.setattr(DiscoveryEvidenceView, "verify_integrity", counted_verify)
+    kwargs = {
+        "schedule_event_hash": schedule.event.event_hash,
+        "feature_source_event_hash": source.event.event_hash,
+        "decision_event_hash": recorded.event.event_hash,
+    }
+
+    service.rebuild(**kwargs)
+    service.rebuild(**kwargs)
+
+    assert calls == 1
+
+
+def test_v7_reuses_action_independent_retrieval_features_across_groups(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, source, schedule, recorded = _record(tmp_path)
+    store.__dict__["_immutable_discovery_projection_cache"].clear()
+    service = RetrieverDecisionV7Service(store)
+    calls = 0
+    original = retrieval_shadow.build_retrieval_features
+
+    def counted_build(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        retrieval_shadow,
+        "build_retrieval_features",
+        counted_build,
+    )
+    kwargs = {
+        "schedule_event_hash": schedule.event.event_hash,
+        "feature_source_event_hash": source.event.event_hash,
+        "decision_event_hash": recorded.event.event_hash,
+    }
+
+    first = service.rebuild(**kwargs)
+    second = service.rebuild(**kwargs)
+
+    assert calls == len({item.factor_spec_id for item in first[0].components})
+    assert second[0].decision_hash == first[0].decision_hash
+
+
+def test_chain_verify_memoizes_only_nested_exact_upstream_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, _, _, _ = _record(tmp_path)
+    feature_rebuilds = 0
+    decision_rebuilds = 0
+    original_feature_rebuild = RetrieverFeatureSourceServiceV1.rebuild
+    original_decision_rebuild = RetrieverDecisionV7Service.rebuild
+
+    def counted_feature_rebuild(self, *args, **kwargs):
+        nonlocal feature_rebuilds
+        feature_rebuilds += 1
+        return original_feature_rebuild(self, *args, **kwargs)
+
+    def counted_decision_rebuild(self, *args, **kwargs):
+        nonlocal decision_rebuilds
+        decision_rebuilds += 1
+        return original_decision_rebuild(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        RetrieverFeatureSourceServiceV1,
+        "rebuild",
+        counted_feature_rebuild,
+    )
+    monkeypatch.setattr(
+        RetrieverDecisionV7Service,
+        "rebuild",
+        counted_decision_rebuild,
+    )
+
+    assert store.verify_chain()
+    assert feature_rebuilds == len(
+        store.query_events(event_type="RetrieverFeatureSourceRecorded")
+    )
+    assert decision_rebuilds == len(
+        store.query_events(event_type="RetrieverDecisionV7Recorded")
+    )
+
+
+def test_chain_verify_reuses_directly_validated_feature_source_object(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, _, _, _ = _record(tmp_path)
+    reads = 0
+    maximum_resident_sources = 0
+    original = RetrieverFeatureSourceArtifactStoreV1._read_payload
+    original_consume = store._consume_verified_retriever_feature_source
+
+    class CallerMapping(dict):
+        def get(self, *args, **kwargs):
+            raise AssertionError("caller mapping must not be an active verify cache")
+
+    class CallerSet(set):
+        def __contains__(self, item):
+            raise AssertionError("caller set must not be an active verify cache")
+
+    def counted_read(self, *args, **kwargs):
+        nonlocal reads
+        reads += 1
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        RetrieverFeatureSourceArtifactStoreV1,
+        "_read_payload",
+        counted_read,
+    )
+
+    def counted_consume(source_hash: str):
+        nonlocal maximum_resident_sources
+        verification = store._chain_verification_caches()
+        assert verification is not None
+        maximum_resident_sources = max(
+            maximum_resident_sources,
+            len(verification.retriever_feature_sources),
+        )
+        return original_consume(source_hash)
+
+    monkeypatch.setattr(
+        store,
+        "_consume_verified_retriever_feature_source",
+        counted_consume,
+    )
+    store.__dict__["_active_external_validation_cache"] = CallerSet()
+    store.__dict__["_active_retriever_feature_source_objects"] = CallerMapping()
+    store.__dict__["_active_retriever_scorecard_source_cache"] = CallerMapping()
+
+    assert store.verify_chain()
+    assert reads == len(
+        store.query_events(event_type="RetrieverFeatureSourceRecorded")
+    )
+    assert maximum_resident_sources <= 1
+    assert store._chain_verification_caches() is None
+
+
 def test_v7_rejects_schedule_chosen_after_treatment_features(tmp_path: Path) -> None:
     store, _, _, _, schedule, _ = _record(tmp_path)
     earlier_source = store.query_events(
@@ -198,7 +403,7 @@ def test_retriever_decision_replays_projection_before_append(tmp_path: Path) -> 
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(
         (EventValidationError, ResearchEventAppendError),
-        match="upstream|feature source|invalid historical prefix",
+        match="upstream|feature source|invalid historical prefix|pre-arm decision",
     ):
         RetrieverDecisionV7Service(store).record(
             schedule_event_hash=schedule.event.event_hash,

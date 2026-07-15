@@ -23,6 +23,10 @@ _BUILT_IN_PRODUCTION_ADAPTER_TYPES = frozenset(
             "src.alpha_quality.adapters.tushare_csi300_pit_v1",
             "TushareCSI300PITAdapterV1",
         ),
+        (
+            "src.alpha_quality.adapters.baostock_eligible_universe_v1",
+            "BaoStockAshareEligibleUniverseAdapterV1",
+        ),
     }
 )
 _PRODUCTION_REGISTRATION_AUTHORITY = object()
@@ -174,8 +178,8 @@ class AsharePITSnapshotRequestV1:
             or self.required_fields != tuple(sorted(set(self.required_fields)))
         ):
             raise ValueError("PIT request fields must be sorted and unique")
-        for field in self.required_fields:
-            _require_identifier(field, "required_field")
+        for field_name in self.required_fields:
+            _require_identifier(field_name, "required_field")
 
     @property
     def request_hash(self) -> str:

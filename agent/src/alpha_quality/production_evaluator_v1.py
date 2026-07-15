@@ -707,7 +707,16 @@ class ProductionCandidateEvaluatorV1:
             raise EventValidationError("production evaluation sources are incomplete")
         contract = contracts[0]
         core = (factor, snapshot, contract)
-        if any(event.run_id != request.run_id for event in core):
+        shared_activation_sources = self._shared_activation_sources(
+            events=events,
+            run_id=request.run_id,
+            snapshot_event_hash=snapshot.event_hash,
+            contract_event_hash=contract.event_hash,
+        )
+        if factor.run_id != request.run_id or (
+            not shared_activation_sources
+            and any(event.run_id != request.run_id for event in (snapshot, contract))
+        ):
             raise EventTransitionError("production evaluation cannot mix runs")
         starts = self.store.query_events(
             event_type="TrialStarted",
@@ -750,6 +759,42 @@ class ProductionCandidateEvaluatorV1:
                 raise EventValidationError("frozen comparison pool is unavailable or ambiguous")
             result["comparison_pool"] = pools[0]
         return result
+
+    @staticmethod
+    def _shared_activation_sources(
+        *,
+        events: list[ResearchEventEnvelope],
+        run_id: str,
+        snapshot_event_hash: str,
+        contract_event_hash: str,
+    ) -> bool:
+        starts = [
+            event
+            for event in events
+            if event.event_type == "ProductionActivationArmStartedV1Recorded"
+            and event.run_id == run_id
+        ]
+        if len(starts) != 1:
+            return False
+        bundle_hash = starts[0].payload.get("run_input_bundle_event_hash")
+        bundles = [
+            event
+            for event in events
+            if event.event_hash == bundle_hash
+            and event.event_type in {
+                "ProductionActivationRunInputBundleV1Registered",
+                "ResearchOnlyActivationRunInputRegistered",
+            }
+        ]
+        if len(bundles) != 1 or not isinstance(
+            bundles[0].payload.get("bundle"), Mapping
+        ):
+            return False
+        bundle = bundles[0].payload["bundle"]
+        return (
+            bundle.get("pit_snapshot_event_hash") == snapshot_event_hash
+            and bundle.get("resolved_contract_event_hash") == contract_event_hash
+        )
 
     def _node(
         self,

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, cast
 
 import pandas as pd  # type: ignore[import-untyped]
 
@@ -18,6 +20,16 @@ from src.alpha_foundry.memory.service import ValidationUtilityPolicy
 from src.alpha_foundry.memory.utility import (
     SCORECARD_MEDIA_TYPE,
     mean_valid_rank_icir_utility,
+)
+from src.alpha_quality.execution_evidence_v1 import (
+    ExecutionEvidenceArtifactStoreV1,
+    ExecutionEvidenceServiceV1,
+)
+from src.alpha_quality.predictive_evidence_v4 import (
+    PREDICTIVE_EVIDENCE_MEDIA_TYPE,
+    SCORECARD_V4_MEDIA_TYPE,
+    PredictiveEvidenceV1,
+    ScorecardDecisionEvidenceV4,
 )
 from src.alpha_foundry.retrieval.action_template_v1 import (
     FrozenRetrieverActionTemplateV1,
@@ -40,11 +52,81 @@ from src.alpha_quality.flags import ResolvedAGSFlags
 from src.alpha_quality.scope import DiscoveryEvidenceProjector
 from src.research_ledger.events import EventDraft, ResearchEventEnvelope, ResearchEventStore
 from src.research_ledger.events.artifacts import hash_artifact
-from src.research_ledger.hash_utils import canonical_json, canonical_json_hash, redact_secrets
+from src.research_ledger.hash_utils import (
+    _REDACTED,
+    _redact_string,
+    canonical_json,
+    canonical_json_hash,
+    is_sensitive_key,
+)
 
 
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-_MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
+# The frozen producer policy may materialize eight candidate panels plus the
+# all-other-factor reference panels.  Keep a bounded JSON artifact while
+# allowing that production-sized, schema-v1 payload to replay exactly.
+_MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
+
+
+def _json_value_hash(value: Any) -> str:
+    """Canonical hash for a producer-owned, already JSON-shaped value."""
+
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _json_redaction_would_change(value: Any) -> bool:
+    """Exact redaction-identity check without materializing a second panel."""
+
+    safe_strings: set[tuple[str | None, str]] = set()
+    sensitive_keys: dict[str, bool] = {}
+    pending: list[Any] = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, Mapping):
+            for raw_key, child in item.items():
+                key = str(raw_key)
+                sensitive = sensitive_keys.get(key)
+                if sensitive is None:
+                    sensitive = is_sensitive_key(key)
+                    sensitive_keys[key] = sensitive
+                if sensitive:
+                    if child != _REDACTED:
+                        return True
+                    continue
+                if isinstance(child, str):
+                    marker = (key, child)
+                    if marker not in safe_strings:
+                        if _redact_string(child, key=key) != child:
+                            return True
+                        safe_strings.add(marker)
+                elif isinstance(child, (Mapping, list, tuple)):
+                    pending.append(child)
+            continue
+        if isinstance(item, (list, tuple)):
+            for child in item:
+                if isinstance(child, str):
+                    marker = (None, child)
+                    if marker not in safe_strings:
+                        if _redact_string(child) != child:
+                            return True
+                        safe_strings.add(marker)
+                elif isinstance(child, (Mapping, list, tuple)):
+                    pending.append(child)
+            continue
+        if isinstance(item, str):
+            marker = (None, item)
+            if marker not in safe_strings:
+                if _redact_string(item) != item:
+                    return True
+                safe_strings.add(marker)
+    return False
 
 
 def _strict_json_object(raw: bytes, *, label: str) -> Mapping[str, Any]:
@@ -66,7 +148,7 @@ def _strict_json_object(raw: bytes, *, label: str) -> Mapping[str, Any]:
     )
     if not isinstance(payload, Mapping):
         raise ValueError(f"{label} must be an object")
-    if canonical_json(payload) != canonical_json(redact_secrets(payload)):
+    if _json_redaction_would_change(payload):
         raise ValueError(f"{label} contains unsafe material")
     return payload
 
@@ -162,7 +244,7 @@ class RetrieverFeatureSourceV1:
             != len(set(self.scorecard_event_hashes))
         ):
             raise ValueError("Retriever feature source identities are inconsistent")
-        if self.source_hash != canonical_json_hash(self._content_dict()):
+        if self.source_hash != _json_value_hash(self._content_dict()):
             raise ValueError("Retriever feature source hash mismatch")
         object.__setattr__(self, "feature_policy", MappingProxyType(policy.to_dict()))
         object.__setattr__(
@@ -210,7 +292,7 @@ class RetrieverFeatureSourceV1:
             action_event_hashes=action_event_hashes,
             scorecard_event_hashes=scorecard_event_hashes,
             candidates=candidates,
-            source_hash=canonical_json_hash(content),
+            source_hash=_json_value_hash(content),
         )
 
     @classmethod
@@ -234,8 +316,9 @@ class RetrieverFeatureSourceV1:
             )
         ):
             raise ValueError("Retriever feature source has an invalid schema")
+        panel_cache: dict[str, tuple[str, FactorOutputPanel]] = {}
         candidates = tuple(
-            _candidate_from_dict(item)
+            _candidate_from_dict(item, panel_cache=panel_cache)
             for item in raw["candidates"]
             if isinstance(item, Mapping)
         )
@@ -287,7 +370,7 @@ class RetrieverFeatureSourceArtifactStoreV1:
 
     def write(self, source: RetrieverFeatureSourceV1) -> dict[str, str]:
         payload = source.to_dict()
-        if canonical_json(payload) != canonical_json(redact_secrets(payload)):
+        if _json_redaction_would_change(payload):
             raise ValueError("Retriever feature source contains unsafe material")
         if len(canonical_json(payload).encode("utf-8")) > _MAX_ARTIFACT_BYTES:
             raise ValueError("Retriever feature source exceeds byte budget")
@@ -304,17 +387,30 @@ class RetrieverFeatureSourceArtifactStoreV1:
             "media_type": self.media_type,
         }
 
-    def read(self, relative_path: str, expected_source_hash: str) -> RetrieverFeatureSourceV1:
+    def _read_payload(
+        self,
+        relative_path: str,
+        expected_source_hash: str,
+    ) -> Mapping[str, Any]:
         target = safe_artifact_path(self.root, relative_path)
         raw = target.read_bytes()
         if len(raw) > _MAX_ARTIFACT_BYTES:
             raise ValueError("Retriever feature source exceeds byte budget")
         payload = _strict_json_object(raw, label="Retriever feature source")
-        source = RetrieverFeatureSourceV1.from_dict(payload)
-        if source.source_hash != expected_source_hash:
+        if payload.get("source_hash") != expected_source_hash:
             raise ValueError("Retriever feature source identity differs")
-        if self.relative_path(source.source_hash) != relative_path.replace("\\", "/"):
+        content = dict(payload)
+        content.pop("source_hash", None)
+        if _json_value_hash(content) != expected_source_hash:
+            raise ValueError("Retriever feature source content hash differs")
+        if self.relative_path(expected_source_hash) != relative_path.replace("\\", "/"):
             raise ValueError("Retriever feature source path is not content addressed")
+        return payload
+
+    def read(self, relative_path: str, expected_source_hash: str) -> RetrieverFeatureSourceV1:
+        source = RetrieverFeatureSourceV1.from_dict(
+            self._read_payload(relative_path, expected_source_hash)
+        )
         return source
 
     @staticmethod
@@ -351,6 +447,13 @@ class RetrieverFeatureSourceServiceV1:
         self.feature_policy = feature_policy or RetrieverFeaturePolicyV1()
         self.projector = DiscoveryEvidenceProjector(flags=flags)
         self.artifacts = RetrieverFeatureSourceArtifactStoreV1(store.artifact_root)
+        # A frozen watermark identifies an immutable discovery projection.  Share
+        # it across the producer and decision replay services bound to this one
+        # store instance so append-time validation does not replay the same
+        # prefix for every downstream artifact.
+        self._discovery_cache = store._retriever_discovery_projection_cache()
+        self._raw_panel_cache: dict[str, Mapping[str, Any]] = {}
+        self._output_panel_cache: dict[tuple[str, str, str], FactorOutputPanel] = {}
 
     def record(
         self,
@@ -393,7 +496,7 @@ class RetrieverFeatureSourceServiceV1:
                     "scorecard_event_hashes": list(source.scorecard_event_hashes),
                     "candidate_count": len(source.candidates),
                     "candidate_hashes": [
-                        canonical_json_hash(_candidate_to_dict(candidate))
+                        _json_value_hash(_candidate_to_dict(candidate))
                         for candidate in source.candidates
                     ],
                     "semantic_state": "unavailable",
@@ -434,11 +537,15 @@ class RetrieverFeatureSourceServiceV1:
             str(refs[0]["relative_path"]),
             str(snapshot_event.payload["snapshot_hash"]),
         )
-        discovery = self.projector.project_at_watermark(
-            self.store,
-            data_snapshot_hash=snapshot.snapshot_hash,
-            watermark_event_hash=eligible_event_watermark,
-        )
+        replay_key = (snapshot.snapshot_hash, eligible_event_watermark)
+        discovery = self._discovery_cache.get(replay_key)
+        if discovery is None:
+            discovery = self.projector.project_at_watermark(
+                self.store,
+                data_snapshot_hash=snapshot.snapshot_hash,
+                watermark_event_hash=eligible_event_watermark,
+            )
+            self._discovery_cache[replay_key] = discovery
         actions: list[FrozenRetrieverActionTemplateV1] = []
         for event_hash in action_event_hashes:
             event = by_hash.get(event_hash)
@@ -468,7 +575,10 @@ class RetrieverFeatureSourceServiceV1:
             if event.event_type == "FactorDefinitionRecorded"
             and order[event.event_hash] <= order[eligible_event_watermark]
         }
-        panel = snapshot.to_panel()
+        panel = self._raw_panel_cache.get(snapshot.snapshot_hash)
+        if panel is None:
+            panel = snapshot.to_panel()
+            self._raw_panel_cache[snapshot.snapshot_hash] = panel
         output_panels = {
             factor_id: self._output_panel(
                 factor_id,
@@ -499,8 +609,8 @@ class RetrieverFeatureSourceServiceV1:
                 for reference_id in factor_ids
                 if reference_id != factor_id
             )[: self.feature_policy.maximum_reference_factors]
-            evaluation, utility, estimated_cost, cost_hash = scorecards[factor_id]
-            cited_scorecards.append(evaluation.event_hash)
+            source_events, utility, estimated_cost, cost_hash = scorecards[factor_id]
+            cited_scorecards.extend(event.event_hash for event in source_events)
             context_hash = canonical_json_hash(
                 {
                     "parent_factor_spec_id": factor_id,
@@ -553,7 +663,19 @@ class RetrieverFeatureSourceServiceV1:
         events: list[ResearchEventEnvelope],
         order: Mapping[str, int],
         watermark: str,
-    ) -> tuple[ResearchEventEnvelope, float, float, str]:
+    ) -> tuple[tuple[ResearchEventEnvelope, ...], float, float, str]:
+        cache_key = (
+            self.feature_policy.policy_hash,
+            factor_id,
+            snapshot_hash,
+            watermark,
+        )
+        cached = self.store._active_retriever_scorecard_source(cache_key)
+        if cached is not None:
+            return cast(
+                tuple[tuple[ResearchEventEnvelope, ...], float, float, str],
+                cached,
+            )
         evaluations = [
             event
             for event in events
@@ -571,49 +693,139 @@ class RetrieverFeatureSourceServiceV1:
             if reference["media_type"] == SCORECARD_MEDIA_TYPE
             and reference["artifact_hash"] == evaluation.payload["scorecard_hash"]
         ]
-        if len(refs) != 1:
+        if len(refs) == 1:
+            path = self.store.artifact_root.joinpath(*str(refs[0]["relative_path"]).split("/"))
+            if hash_artifact(path) != evaluation.payload["scorecard_hash"]:
+                raise ValueError("Retriever feature scorecard changed after evaluation")
+            utility = mean_valid_rank_icir_utility(
+                path,
+                expected_factor_spec_id=factor_id,
+                expected_data_snapshot_hash=snapshot_hash,
+            )
+            raw = _strict_json_object(path.read_bytes(), label="Retriever discovery scorecard")
+            execution = raw.get("execution")
+            if (
+                not isinstance(execution, Mapping)
+                or execution.get("uses_execution_return") is not True
+                or isinstance(execution.get("cost_bps_mean"), bool)
+                or not isinstance(execution.get("cost_bps_mean"), (int, float))
+                or not math.isfinite(float(execution["cost_bps_mean"]))
+                or float(execution["cost_bps_mean"]) < 0.0
+            ):
+                raise ValueError("Retriever feature requires execution cost evidence")
+            estimated_cost = float(execution["cost_bps_mean"]) / 10_000.0
+            cost_hash = canonical_json_hash(
+                {
+                    "schema_version": "retriever_cost_evidence.v1",
+                    "scorecard_event_hash": evaluation.event_hash,
+                    "scorecard_hash": evaluation.payload["scorecard_hash"],
+                    "cost_metric": self.feature_policy.cost_metric,
+                    "estimated_cost": estimated_cost,
+                }
+            )
+            result = ((evaluation,), utility, estimated_cost, cost_hash)
+            self.store._cache_active_retriever_scorecard_source(
+                cache_key, result
+            )
+            return result
+
+        v4_refs = [
+            reference
+            for reference in evaluation.payload["artifact_refs"]
+            if reference["media_type"] == SCORECARD_V4_MEDIA_TYPE
+        ]
+        if len(v4_refs) != 1:
             raise ValueError("Retriever feature scorecard artifact is missing")
-        path = self.store.artifact_root.joinpath(*str(refs[0]["relative_path"]).split("/"))
-        if hash_artifact(path) != evaluation.payload["scorecard_hash"]:
-            raise ValueError("Retriever feature scorecard changed after evaluation")
-        utility = mean_valid_rank_icir_utility(
-            path,
-            expected_factor_spec_id=factor_id,
-            expected_data_snapshot_hash=snapshot_hash,
+        scorecard_path = self.store.artifact_root.joinpath(
+            *str(v4_refs[0]["relative_path"]).split("/")
         )
-        raw = _strict_json_object(
-            path.read_bytes(),
-            label="Retriever discovery scorecard",
+        if hash_artifact(scorecard_path) != v4_refs[0]["artifact_hash"]:
+            raise ValueError("Retriever feature v4 scorecard changed after evaluation")
+        scorecard = ScorecardDecisionEvidenceV4.from_dict(
+            _strict_json_object(scorecard_path.read_bytes(), label="Retriever v4 scorecard")
         )
-        execution = raw.get("execution")
         if (
-            not isinstance(execution, Mapping)
-            or execution.get("uses_execution_return") is not True
-            or isinstance(execution.get("cost_bps_mean"), bool)
-            or not isinstance(execution.get("cost_bps_mean"), (int, float))
-            or not math.isfinite(float(execution["cost_bps_mean"]))
-            or float(execution["cost_bps_mean"]) < 0.0
+            scorecard.factor_spec_id != factor_id
+            or scorecard.scorecard_evidence_hash != evaluation.payload["scorecard_hash"]
         ):
-            raise ValueError("Retriever feature requires execution cost evidence")
-        estimated_cost = float(execution["cost_bps_mean"]) / 10_000.0
+            raise ValueError("Retriever feature v4 scorecard identity differs")
+        by_hash = {event.event_hash: event for event in events}
+        observed = by_hash.get(scorecard.observed_event_hash)
+        if (
+            observed is None
+            or observed.event_type != "ObservedPanelPredictiveEvidenceRecorded"
+            or observed.payload["factor_spec_id"] != factor_id
+            or order[observed.event_hash] > order[watermark]
+        ):
+            raise ValueError("Retriever feature observed evidence is unavailable")
+        observed_refs = [
+            reference
+            for reference in observed.payload["artifact_refs"]
+            if reference["media_type"] == PREDICTIVE_EVIDENCE_MEDIA_TYPE
+        ]
+        if len(observed_refs) != 1:
+            raise ValueError("Retriever feature observed artifact is missing")
+        observed_path = self.store.artifact_root.joinpath(
+            *str(observed_refs[0]["relative_path"]).split("/")
+        )
+        if hash_artifact(observed_path) != observed_refs[0]["artifact_hash"]:
+            raise ValueError("Retriever feature observed artifact changed")
+        predictive = PredictiveEvidenceV1.from_dict(
+            _strict_json_object(observed_path.read_bytes(), label="Retriever observed evidence")
+        )
+        try:
+            utility = float(predictive.split_metrics["valid"]["rank_icir"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Retriever feature lacks v4 validation utility") from exc
+        if not math.isfinite(utility):
+            raise ValueError("Retriever feature v4 utility is non-finite")
+        execution_events = [
+            event
+            for event in events
+            if event.event_type == "ExecutionEvidenceRecorded"
+            and event.payload["factor_spec_id"] == factor_id
+            and order[event.event_hash] <= order[watermark]
+        ]
+        if len(execution_events) != 1:
+            raise ValueError("Retriever feature requires one execution evidence event")
+        recorded_execution = ExecutionEvidenceServiceV1(self.store)._read_event(
+            execution_events[0]
+        )
+        _, aggregate = ExecutionEvidenceArtifactStoreV1(
+            self.store.artifact_root
+        ).read_tables(recorded_execution.artifact)
+        costs = aggregate["cost_return"].astype(float)
+        if costs.empty or not costs.map(math.isfinite).all() or (costs < 0.0).any():
+            raise ValueError("Retriever feature execution costs are invalid")
+        estimated_cost = float(costs.mean())
         cost_hash = canonical_json_hash(
             {
                 "schema_version": "retriever_cost_evidence.v1",
                 "scorecard_event_hash": evaluation.event_hash,
                 "scorecard_hash": evaluation.payload["scorecard_hash"],
+                "execution_event_hash": execution_events[0].event_hash,
+                "execution_artifact_hash": recorded_execution.artifact.execution_artifact_hash,
                 "cost_metric": self.feature_policy.cost_metric,
                 "estimated_cost": estimated_cost,
             }
         )
-        return evaluation, utility, estimated_cost, cost_hash
+        result = (
+            (evaluation, execution_events[0]), utility, estimated_cost, cost_hash
+        )
+        self.store._cache_active_retriever_scorecard_source(cache_key, result)
+        return result
 
-    @staticmethod
     def _output_panel(
+        self,
         factor_id: str,
         formula: str,
         raw_panel: Mapping[str, Any],
         snapshot_hash: str,
     ) -> FactorOutputPanel:
+        cache_key = (factor_id, formula, snapshot_hash)
+        cached = self._output_panel_cache.get(cache_key)
+        if cached is not None:
+            return cached
         frames = {
             name: frame
             for name, frame in raw_panel.items()
@@ -630,12 +842,14 @@ class RetrieverFeatureSourceServiceV1:
             for date in output.index
             for symbol, value in output.loc[date].items()
         ]
-        return FactorOutputPanel.build(
+        panel = FactorOutputPanel.build(
             factor_id,
             points,
             data_snapshot_hash=snapshot_hash,
             data_scope="train_valid",
         )
+        self._output_panel_cache[cache_key] = panel
+        return panel
 
 
 __all__ = [

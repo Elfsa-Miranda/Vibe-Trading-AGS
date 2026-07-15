@@ -52,13 +52,12 @@ def _panel_to_dict(panel: FactorOutputPanel) -> dict[str, Any]:
     }
 
 
-def _panel_from_dict(raw: Mapping[str, Any]) -> FactorOutputPanel:
+def _validate_panel_raw_shape(raw: Mapping[str, Any]) -> None:
     expected = {
         "factor_spec_id", "data_snapshot_hash", "data_scope", "points", "panel_hash",
     }
     if set(raw) != expected or not isinstance(raw["points"], list):
         raise ValueError("retriever panel artifact has an invalid closed schema")
-    points_list: list[OutputPoint] = []
     for item in raw["points"]:
         if (
             not isinstance(item, Mapping)
@@ -70,6 +69,12 @@ def _panel_from_dict(raw: Mapping[str, Any]) -> FactorOutputPanel:
             or not isinstance(item["valid"], bool)
         ):
             raise ValueError("retriever panel contains an invalid point")
+
+
+def _panel_from_dict(raw: Mapping[str, Any]) -> FactorOutputPanel:
+    _validate_panel_raw_shape(raw)
+    points_list: list[OutputPoint] = []
+    for item in raw["points"]:
         points_list.append(
             OutputPoint(
                 date=item["date"],
@@ -163,7 +168,58 @@ def _candidate_to_dict(candidate: RetrievalCandidate) -> dict[str, Any]:
     }
 
 
-def _candidate_from_dict(raw: Mapping[str, Any]) -> RetrievalCandidate:
+def _cached_panel_from_dict(
+    raw: Mapping[str, Any],
+    cache: dict[str, tuple[str, FactorOutputPanel]],
+) -> FactorOutputPanel:
+    _validate_panel_raw_shape(raw)
+    panel_hash = str(raw.get("panel_hash"))
+    # Fingerprint the exact normalized semantics consumed by
+    # ``_panel_from_dict``.  Generic JSON normalization would collapse, for
+    # example, list and tuple values even though their legacy ``str(...)``
+    # identities differ for top-level fields.
+    canonical = canonical_json(
+        {
+            "factor_spec_id": str(raw["factor_spec_id"]),
+            "data_snapshot_hash": str(raw["data_snapshot_hash"]),
+            "data_scope": str(raw["data_scope"]),
+            "points": [
+                {
+                    "date": item["date"],
+                    "symbol": item["symbol"],
+                    "value": float(item["value"]),
+                    "valid": item["valid"],
+                }
+                for item in raw["points"]
+            ],
+            "panel_hash": panel_hash,
+        }
+    )
+    cached = cache.get(panel_hash)
+    if cached is not None:
+        if cached[0] != canonical:
+            raise ValueError("reused retriever panel hash has different content")
+        return cached[1]
+    panel = _panel_from_dict(raw)
+    cache[panel.panel_hash] = (canonical, panel)
+    return panel
+
+
+def _plain_json_tree(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _plain_json_tree(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_plain_json_tree(child) for child in value]
+    if isinstance(value, tuple):
+        return [_plain_json_tree(child) for child in value]
+    return value
+
+
+def _candidate_from_dict(
+    raw: Mapping[str, Any],
+    *,
+    panel_cache: dict[str, tuple[str, FactorOutputPanel]] | None = None,
+) -> RetrievalCandidate:
     expected = {
         "factor_spec_id", "action_id", "motif", "parent_context_hash",
         "base_ledger_score", "output_panel", "reference_panels", "canonical_ast",
@@ -187,8 +243,9 @@ def _candidate_from_dict(raw: Mapping[str, Any]) -> RetrievalCandidate:
         for name in ("base_ledger_score", "estimated_cost")
     ):
         raise ValueError("retriever candidate score or cost is invalid")
+    cache = {} if panel_cache is None else panel_cache
     reference_panels = tuple(
-        _panel_from_dict(item)
+        _cached_panel_from_dict(item, cache)
         for item in raw["reference_panels"]
         if isinstance(item, Mapping)
     )
@@ -206,7 +263,7 @@ def _candidate_from_dict(raw: Mapping[str, Any]) -> RetrievalCandidate:
         motif=str(raw["motif"]),
         parent_context_hash=str(raw["parent_context_hash"]),
         base_ledger_score=float(raw["base_ledger_score"]),
-        output_panel=_panel_from_dict(raw["output_panel"]),
+        output_panel=_cached_panel_from_dict(raw["output_panel"], cache),
         reference_panels=reference_panels,
         canonical_ast=dict(raw["canonical_ast"]),
         reference_asts=reference_asts,

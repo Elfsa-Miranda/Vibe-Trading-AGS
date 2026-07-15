@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Any, Mapping
 
 from src.alpha_foundry.activation.artifacts import ActivationArtifactStore
 from src.alpha_foundry.activation.runner import activation_arm_execution_run_id
@@ -79,6 +79,11 @@ class RetrieverDecisionV7Service:
         self.store = store
         self.artifacts = RetrieverDecisionInputArtifactStoreV7(store.artifact_root)
         self.projector = DiscoveryEvidenceProjector(flags=store.flags)
+        # Feature production and v7 selection consume the exact same immutable
+        # snapshot/watermark projection.  Keep one cache on the bound store
+        # instance so deterministic append/replay validation can reuse it.
+        self._discovery_cache = store._retriever_discovery_projection_cache()
+        self._action_retrievers: dict[str, ActionShadowRetrieverV5] = {}
 
     def record(
         self, *, schedule_event_hash: str, feature_source_event_hash: str,
@@ -217,15 +222,23 @@ class RetrieverDecisionV7Service:
             raise ValueError("Retriever v7 decision must precede both arm outcomes")
         policy = ActivationRetrieverPolicy(**dict(source.retrieval_policy))
         actions = self._actions(source, by_hash, run_id)
-        evidence = self.projector.project_at_watermark(
-            self.store,
-            data_snapshot_hash=source.snapshot_hash,
-            watermark_event_hash=source.eligible_event_watermark,
-        )
+        replay_key = (source.snapshot_hash, source.eligible_event_watermark)
+        evidence = self._discovery_cache.get(replay_key)
+        if evidence is None:
+            evidence = self.projector.project_at_watermark(
+                self.store,
+                data_snapshot_hash=source.snapshot_hash,
+                watermark_event_hash=source.eligible_event_watermark,
+            )
+            self._discovery_cache[replay_key] = evidence
         official_ids = tuple(str(item["candidate_id"]) for item in schedule.candidates)
-        decision = ActionShadowRetrieverV5(
-            flags=self.store.flags, policy=policy
-        ).decide(
+        action_retriever = self._action_retrievers.get(policy.policy_hash)
+        if action_retriever is None:
+            action_retriever = ActionShadowRetrieverV5(
+                flags=self.store.flags, policy=policy
+            )
+            self._action_retrievers[policy.policy_hash] = action_retriever
+        decision = action_retriever.decide(
             official_candidate_ids=official_ids,
             evidence=evidence,
             query=FactorDAGQuery(evidence.factual.dag),
@@ -255,12 +268,16 @@ class RetrieverDecisionV7Service:
         )
 
     def _source(self, event: ResearchEventEnvelope) -> RetrieverFeatureSourceV1:
+        source_hash = str(event.payload["source_hash"])
+        cached = self.store._consume_verified_retriever_feature_source(source_hash)
+        if isinstance(cached, RetrieverFeatureSourceV1):
+            return cached
         refs = [reference for reference in event.payload["artifact_refs"]
                 if reference["media_type"] == RetrieverFeatureSourceArtifactStoreV1.media_type]
         if len(refs) != 1:
             raise ValueError("Retriever v7 feature artifact is missing")
         return RetrieverFeatureSourceArtifactStoreV1(self.store.artifact_root).read(
-            str(refs[0]["relative_path"]), str(event.payload["source_hash"])
+            str(refs[0]["relative_path"]), source_hash
         )
 
     @staticmethod

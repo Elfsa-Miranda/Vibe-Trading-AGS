@@ -1473,6 +1473,274 @@ _PAYLOAD_SPECS: dict[str, PayloadSpec] = {
             "artifact_refs": _artifact_list,
         },
     ),
+    "ActivationStatisticalProtocolV2Registered": PayloadSpec(
+        "activation_statistical_protocol_registered.v2",
+        {
+            "protocol_id": _string,
+            "research_cycle_id": _string,
+            "protocol_hash": _hash,
+            "registration_event_hash": _hash,
+            "code_manifest_hash": _hash,
+            "canonical_hash_spec": _mapping,
+            "protocol": _mapping,
+        },
+    ),
+    "ActivationApplicabilityMatrixV1Registered": PayloadSpec(
+        "activation_applicability_matrix_registered.v1",
+        {
+            "matrix_id": _string,
+            "research_cycle_id": _string,
+            "matrix_hash": _hash,
+            "frozen_before_event_hash": _hash,
+            "code_manifest_hash": _hash,
+            "canonical_hash_spec": _mapping,
+            "matrix": _mapping,
+        },
+    ),
+    "FormalActivationCycleV1Bootstrapped": PayloadSpec(
+        "formal_activation_cycle_bootstrapped.v1",
+        {
+            "cycle_bootstrap_id": _string,
+            "research_cycle_id": _string,
+            "protocol_event_hash": _hash,
+            "applicability_event_hash": _hash,
+            "provider_audit_catalog_hash": _hash,
+            "flat_policy_hash": _hash,
+            "topology_policy_hash": _hash,
+            "resource_policy_hash": _hash,
+            "release_manifest_hash": _hash,
+            "release_manifest_scope_hash": _hash,
+            "cycle_manifest_hash": _hash,
+            "artifact_namespace": _string,
+            "promotion_effect": _enum("none"),
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ProviderFieldPITAuditV1Recorded": PayloadSpec(
+        "provider_field_pit_audit_recorded.v1",
+        {
+            "audit_id": _string,
+            "adapter_registration_event_hash": _hash,
+            "provider": _string,
+            "adapter_id": _string,
+            "interface": _string,
+            "field_name": _string,
+            "claim_scope_ceiling": _enum(
+                "verified_strict", "best_effort", "unavailable"
+            ),
+            "field_audit_hash": _hash,
+            "canonical_hash_spec": _mapping,
+            "audit": _mapping,
+        },
+    ),
+    "ProviderInterfacePITAuditV1Recorded": PayloadSpec(
+        "provider_interface_pit_audit_recorded.v1",
+        {
+            "audit_id": _string,
+            "adapter_registration_event_hash": _hash,
+            "provider": _string,
+            "adapter_id": _string,
+            "interface": _string,
+            "claim_scope_ceiling": _enum(
+                "verified_strict", "best_effort", "unavailable"
+            ),
+            "interface_audit_hash": _hash,
+            "field_audit_event_hashes": _nonempty_hash_list,
+            "canonical_hash_spec": _mapping,
+            "audit": _mapping,
+        },
+    ),
+    "ProviderAuthorityDecisionV1Recorded": PayloadSpec(
+        "provider_authority_decision_recorded.v1",
+        {
+            "decision_id": _string,
+            "provider": _string,
+            "adapter_id": _string,
+            "adapter_registration_event_hash": _hash,
+            "authority_status": _enum("verified_strict", "best_effort", "blocked"),
+            "claim_scope_ceiling": _enum(
+                "verified_strict", "best_effort", "unavailable"
+            ),
+            "activation_eligible": _boolean,
+            "decision_hash": _hash,
+            "interface_audit_event_hashes": _nonempty_hash_list,
+            "canonical_hash_spec": _mapping,
+            "decision": _mapping,
+        },
+    ),
+    "ProductionGoldenSliceReadinessV1Recorded": PayloadSpec(
+        "production_golden_slice_readiness_recorded.v1",
+        {
+            "readiness_id": _string,
+            "research_cycle_id": _string,
+            "provider_authority_decision_event_hash": _hash,
+            "ready": _boolean,
+            "blocker_codes": _string_list,
+            "readiness_hash": _hash,
+            "canonical_hash_spec": _mapping,
+            "readiness": _mapping,
+        },
+    ),
+    "ProductionActivationRunInputBundleV1Registered": PayloadSpec(
+        "production_activation_run_input_bundle_registered.v1",
+        {
+            "bundle_id": _string,
+            "research_cycle_id": _string,
+            "bundle_hash": _hash,
+            "resolved_contract_event_hash": _hash,
+            "provider_authority_decision_event_hash": _hash,
+            "golden_slice_readiness_event_hash": _hash,
+            "pit_snapshot_event_hash": _hash,
+            "source_watermark": _hash,
+            "canonical_hash_spec": _mapping,
+            "bundle": _mapping,
+        },
+    ),
+    "ResearchOnlyActivationRunInputRegistered": PayloadSpec(
+        "research_only_activation_run_input_registered.v1",
+        {
+            "bundle_id": _string,
+            "research_cycle_id": _string,
+            "bundle_hash": _hash,
+            "maximum_promotion": _enum("research_only"),
+            "formal_activation_eligible": _boolean,
+            "formal_readiness_effect": _enum("none"),
+            "official_search_policy_effect": _enum("none"),
+            "live_trading_meaning": _enum("none"),
+            "test_final_forward_access_count": _nonnegative_integer,
+            "bundle": _mapping,
+        },
+    ),
+    "ProductionActivationCandidateFactoryV1Bound": PayloadSpec(
+        "production_activation_candidate_factory_binding_recorded.v1",
+        {
+            "binding_id": _string,
+            "binding_hash": _hash,
+            "run_input_bundle_event_hash": _hash,
+            "run_input_bundle_hash": _hash,
+            "generator_manifest_hash": _hash,
+            "evaluator_factory_manifest_hash": _hash,
+            "dag_policy_hash": _hash,
+            "identity_service": _string,
+            "quality_decision_service": _string,
+            "same_factory_both_arms": _boolean,
+            "only_arm_difference": _string,
+            "returns_refs_only": _boolean,
+            "blocker_codes": _string_list,
+        },
+    ),
+    "ProductionActivationArmStartedV1Recorded": PayloadSpec(
+        "production_activation_arm_started_recorded.v1",
+        {
+            "arm_start_id": _string,
+            "arm_start_hash": _hash,
+            "run_input_bundle_event_hash": _hash,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
+            "arm": _enum("flat", "topology"),
+            "retriever_policy_hash": _hash,
+            "retrieval_authority_event_hash": _hash,
+        },
+    ),
+    "ProductionActivationArmCompletedV1Recorded": PayloadSpec(
+        "production_activation_arm_completed_recorded.v1",
+        {
+            "arm_completion_id": _string,
+            "arm_completion_hash": _hash,
+            "arm_started_event_hash": _hash,
+            "run_input_bundle_event_hash": _hash,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
+            "arm": _enum("flat", "topology"),
+            "retrieval_authority_event_hashes": _nonempty_hash_list,
+            "trial_terminal_event_hashes": _nonempty_hash_list,
+            "evaluation_event_hashes": _unique_hash_list,
+            "quality_decision_event_hashes": _unique_hash_list,
+            # Identity-invalid/duplicate trials terminate before a factor
+            # definition exists and therefore correctly have no dossier.
+            "terminal_dossier_event_hashes": _unique_hash_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ActivationPairEvidenceV2Recorded": PayloadSpec(
+        "activation_pair_evidence_recorded.v2",
+        {
+            "pair_evidence_id": _string,
+            "pair_evidence_hash": _hash,
+            "projection_hash": _hash,
+            "plan_hash": _hash,
+            "pair_id": _string,
+            "run_group_id": _string,
+            "flat_source_audit_hash": _hash,
+            "topology_source_audit_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "source_failure_codes": _string_list,
+            "source_complete": _boolean,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ActivationPilotDispersionV2Recorded": PayloadSpec(
+        "activation_pilot_dispersion_recorded.v2",
+        {
+            "statistical_artifact_id": _string,
+            "artifact_kind": _enum("pilot"),
+            "semantic_hash": _hash,
+            "artifact_hash": _hash,
+            "protocol_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ActivationConfirmatoryPlanV2Registered": PayloadSpec(
+        "activation_confirmatory_plan_registered.v2",
+        {
+            "statistical_artifact_id": _string,
+            "artifact_kind": _enum("confirmatory_plan"),
+            "semantic_hash": _hash,
+            "artifact_hash": _hash,
+            "protocol_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ActivationStatisticalAnalysisV2Recorded": PayloadSpec(
+        "activation_statistical_analysis_recorded.v2",
+        {
+            "statistical_artifact_id": _string,
+            "artifact_kind": _enum("analysis"),
+            "semantic_hash": _hash,
+            "artifact_hash": _hash,
+            "protocol_hash": _hash,
+            "source_event_hashes": _nonempty_hash_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ActivationGovernanceDecisionV2Recorded": PayloadSpec(
+        "activation_governance_decision_recorded.v2",
+        {
+            "governance_decision_id": _string,
+            "governance_hash": _hash,
+            "artifact_hash": _hash,
+            "protocol_hash": _hash,
+            "analysis_hash": _hash,
+            "verdict": _enum("invalidated", "inconclusive", "rejected", "approved"),
+            "source_event_hashes": _nonempty_hash_list,
+            "artifact_refs": _artifact_list,
+        },
+    ),
+    "ActivationReadinessV4Recorded": PayloadSpec(
+        "activation_readiness_recorded.v4",
+        {
+            "readiness_id": _string,
+            "research_cycle_id": _string,
+            "ready_for_pilot_outcome_access": _boolean,
+            "blocker_codes": _string_list,
+            "readiness_hash": _hash,
+            "readiness": _mapping,
+        },
+    ),
     "ActivationPairExecutionScheduled": PayloadSpec(
         "activation_pair_execution_scheduled.v1",
         {
@@ -3047,6 +3315,45 @@ def _validate_cross_field_rules(event_type: str, payload: Mapping[str, Any]) -> 
             raise EventValidationError("decision-grade PIT snapshot has unresolved evidence defects")
         if len(payload["artifact_refs"]) != 1:
             raise EventValidationError("PIT snapshot requires one manifest artifact")
+    if event_type == "ResearchOnlyActivationRunInputRegistered":
+        bundle = payload["bundle"]
+        ceiling = {
+            "maximum_promotion": "research_only",
+            "formal_activation_eligible": False,
+            "formal_readiness_effect": "none",
+            "official_search_policy_effect": "none",
+            "live_trading_meaning": "none",
+            "test_final_forward_access_count": 0,
+        }
+        if any(payload[key] != value for key, value in ceiling.items()):
+            raise EventValidationError("research-only Activation ceiling differs")
+        expected = {
+            "schema_version", "research_cycle_id", "resolved_contract_event_hash",
+            "provider_authority_decision_event_hash", "pit_snapshot_event_hash",
+            "train_valid_snapshot_event_hash", "train_snapshot_hash", "valid_snapshot_hash",
+            "train_valid_split_plan_hash", "flat_policy_hash", "topology_policy_hash",
+            "candidate_budget", "compute_budget", "source_watermark", "limitation_codes",
+            "bundle_hash",
+        }
+        if not isinstance(bundle, Mapping) or set(bundle) != expected:
+            raise EventValidationError("research-only Activation input bundle schema differs")
+        if bundle["schema_version"] != "research_only_activation_run_input_bundle.v1":
+            raise EventValidationError("research-only Activation input bundle version differs")
+        for key in expected - {"schema_version", "research_cycle_id", "candidate_budget", "compute_budget", "limitation_codes"}:
+            _hash(bundle[key], "research-only bundle." + key)
+        _string(bundle["research_cycle_id"], "research-only bundle.research_cycle_id")
+        _candidate_budget(bundle["candidate_budget"], "research-only bundle.candidate_budget")
+        _candidate_budget(bundle["compute_budget"], "research-only bundle.compute_budget")
+        _string_list(bundle["limitation_codes"], "research-only bundle.limitation_codes")
+        if bundle["candidate_budget"] > bundle["compute_budget"]:
+            raise EventValidationError("research-only Activation compute budget is below candidate budget")
+        if (payload["research_cycle_id"] != bundle["research_cycle_id"]
+                or payload["bundle_hash"] != bundle["bundle_hash"]):
+            raise EventValidationError("research-only Activation input envelope differs from bundle")
+        content = {key: value for key, value in bundle.items() if key != "bundle_hash"}
+        content.update(ceiling)
+        if canonical_json_hash(content) != bundle["bundle_hash"]:
+            raise EventValidationError("research-only Activation input bundle hash differs")
     if event_type == "RetrieverFeatureSourceRecorded":
         expected_identifier = "retriever-feature-source-v1-" + str(payload["source_hash"]).removeprefix("sha256:")[:24]
         if payload["feature_source_id"] != expected_identifier:

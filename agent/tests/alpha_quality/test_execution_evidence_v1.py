@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from src.alpha_foundry.dsl.identity import FactorIdentityService, FactorSpecSemantics
 from src.alpha_quality.evaluation_contract import EXECUTION_POLICY_REFERENCES
 from src.alpha_quality.execution_evidence_v1 import (
     EXECUTION_EVENT_TYPE,
@@ -20,7 +21,12 @@ from src.alpha_quality.production_evaluator_v1 import (
     ProductionEvaluationRequestV1,
 )
 from src.research_ledger.events import EventDraft, EventValidationError
+from src.research_ledger.hash_utils import canonical_json_hash
 from tests.alpha_quality.test_predictive_evidence_v4 import _setup
+
+
+def _hash(label: str) -> str:
+    return canonical_json_hash({"label": label})
 
 
 def _inputs() -> dict[str, object]:
@@ -309,6 +315,64 @@ def test_actual_execution_replay_matches_artifact_hash(tmp_path) -> None:
         ],
     )
     assert retry.event.event_hash == recorded.event.event_hash
+    assert store.verify_chain()
+
+
+def test_two_factors_in_one_production_run_have_independent_execution_evidence(
+    tmp_path,
+) -> None:
+    flags, store, contract, snapshot, definition = _setup(
+        tmp_path,
+        EXECUTION_POLICY_REFERENCES,
+    )
+    service = PITPredictiveEvidenceServiceV4(store)
+    first_predictive = service.record(
+        run_id="predictive-run",
+        contract_event_hash=contract.event.event_hash,
+        factor_definition_event_hash=definition.event_hash,
+        pit_snapshot_event_hash=snapshot.event.event_hash,
+    )
+    first = ExecutionEvidenceServiceV1(store).record(
+        run_id="predictive-run",
+        factor_output_event_hash=first_predictive.factor_event.event_hash,
+        observed_predictive_event_hash=first_predictive.observed_event.event_hash,
+    )
+    second_identity = FactorIdentityService(store=store, flags=flags).record_attempt(
+        trial_id="predictive-trial-2",
+        run_id="predictive-run",
+        candidate_id="predictive-candidate-2",
+        formula="rank(open)",
+        semantics=FactorSpecSemantics(
+            transform_pipeline_hash=_hash("identity-transform"),
+            field_semantics={"close": "close_t", "open": "open_t"},
+            signal_time="close_t",
+            order_time="close_t_plus_1",
+            entry_price_time="open_t_plus_1",
+            execution_lag=1,
+            return_horizon=1,
+            universe_mask_hash=_hash("pit-universe-mask"),
+            tradability_mask_hash=_hash("pit-tradability-mask"),
+        ),
+    )
+    second_definition = store.query_events(
+        event_type="FactorDefinitionRecorded",
+        entity_id=str(second_identity.factor_spec_id),
+    )[0]
+    second_predictive = service.record(
+        run_id="predictive-run",
+        contract_event_hash=contract.event.event_hash,
+        factor_definition_event_hash=second_definition.event_hash,
+        pit_snapshot_event_hash=snapshot.event.event_hash,
+    )
+    second = ExecutionEvidenceServiceV1(store).record(
+        run_id="predictive-run",
+        factor_output_event_hash=second_predictive.factor_event.event_hash,
+        observed_predictive_event_hash=second_predictive.observed_event.event_hash,
+    )
+
+    assert second.event.event_hash != first.event.event_hash
+    assert second.artifact.factor_spec_id == second_definition.entity_id
+    assert len(store.query_events(event_type=EXECUTION_EVENT_TYPE)) == 2
     assert store.verify_chain()
 
 

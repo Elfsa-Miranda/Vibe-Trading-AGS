@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from src.alpha_foundry.dsl.identity import FactorIdentityService, FactorSpecSemantics
 from src.alpha_quality.claim_decision_v1 import (
     TIER_INVARIANT_MANIFEST_HASH,
     ClaimDecisionServiceV1,
@@ -407,6 +408,84 @@ def test_exact_bundle_replays_same_claim_and_decision_hashes(tmp_path: Path) -> 
     )
     assert second[1].payload["claim_matrix_hash"] == first[1].payload["claim_matrix_hash"]
     assert second[2].payload["decision_hash"] == first[2].payload["decision_hash"]
+
+
+def test_two_candidates_in_one_production_run_get_independent_decisions(
+    tmp_path: Path,
+) -> None:
+    flags, store, contract, snapshot, _ = _setup(tmp_path, enable_decision=True)
+
+    decisions = []
+    for ordinal, formula in enumerate(("rank(high)", "rank(open)"), start=1):
+        trial_id = f"predictive-trial-{ordinal}"
+        identity = FactorIdentityService(store=store, flags=flags).record_attempt(
+            trial_id=trial_id,
+            run_id="predictive-run",
+            candidate_id=f"predictive-candidate-{ordinal}",
+            formula=formula,
+            semantics=FactorSpecSemantics(
+                transform_pipeline_hash=_hash("identity-transform"),
+                field_semantics={
+                    "close": "close_t",
+                    "open": "open_t",
+                    "high": "high_t",
+                },
+                signal_time="close_t",
+                order_time="close_t_plus_1",
+                entry_price_time="open_t_plus_1",
+                execution_lag=1,
+                return_horizon=1,
+                universe_mask_hash=_hash("pit-universe-mask"),
+                tradability_mask_hash=_hash("pit-tradability-mask"),
+            ),
+        )
+        definition = store.query_events(
+            event_type="FactorDefinitionRecorded",
+            entity_id=str(identity.factor_spec_id),
+        )[0]
+        predictive = PITPredictiveEvidenceServiceV4(store).record(
+            run_id="predictive-run",
+            contract_event_hash=contract.event.event_hash,
+            factor_definition_event_hash=definition.event_hash,
+            pit_snapshot_event_hash=snapshot.event.event_hash,
+        )
+        applicability = ApplicabilityAssessmentServiceV1(store, flags=flags).assess(
+            run_id="predictive-run",
+            contract_event_hash=contract.event.event_hash,
+            factor_definition_event_hash=definition.event_hash,
+            claim_type="mechanism",
+        )
+        pool, _ = ComparisonPoolServiceV1(store).freeze(
+            run_id="predictive-run",
+            source_watermark_event_hash=applicability.event.event_hash,
+            members=(),
+        )
+        secondary = SecondaryEvidenceServiceV1(store).record(
+            run_id="predictive-run",
+            factor_definition_event_hash=definition.event_hash,
+            comparison_pool_hash=pool.comparison_pool_hash,
+            factor_output_event_hash=predictive.factor_event.event_hash,
+            execution_event_hash=None,
+            applicability_event_hash=applicability.event.event_hash,
+        )
+        decisions.append(
+            ClaimDecisionServiceV1(store).record(
+                run_id="predictive-run",
+                trial_id=trial_id,
+                factor_spec_id=definition.entity_id,
+                contract_event_hash=contract.event.event_hash,
+                observed_event_hash=predictive.observed_event.event_hash,
+                pit_event_hash=predictive.pit_event.event_hash,
+                execution_event_hash=None,
+                secondary_event_hash=secondary.event_hash,
+            )
+        )
+
+    assert decisions[0][0].event_hash != decisions[1][0].event_hash
+    assert decisions[0][2].event_hash != decisions[1][2].event_hash
+    assert len(store.query_events(event_type="SelectionAssessmentRecorded")) == 2
+    assert len(store.query_events(event_type="QualityDecisionV4Recorded")) == 2
+    assert store.verify_chain()
 
 
 def test_production_evaluator_emits_unique_narrow_decision(tmp_path: Path) -> None:

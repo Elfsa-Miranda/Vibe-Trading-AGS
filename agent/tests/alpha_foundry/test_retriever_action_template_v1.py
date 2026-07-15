@@ -125,6 +125,36 @@ def test_identity_action_has_no_placeholder_diff_or_motif(tmp_path: Path) -> Non
     assert store.verify_chain()
 
 
+def test_same_frozen_watermark_projection_is_reused_within_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, _, discovery = _views(tmp_path)
+    parent_id = discovery.factual.factor_ids()[0]
+    service = _service(store)
+    original = service.projector.project_at_watermark
+    calls = 0
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(service.projector, "project_at_watermark", counted)
+    common = {
+        "execution_run_id": "cached-action-template-run",
+        "parent_factor_spec_id": parent_id,
+        "eligible_event_watermark": discovery.source_watermark,
+        "data_snapshot_hash": discovery.data_snapshot_hash,
+        "retrieval_policy_hash": canonical_json_hash({"policy": "cached"}),
+    }
+    first = service.freeze(template_id="rank_wrap", **common)
+    second = service.freeze(template_id="zscore_wrap", **common)
+
+    assert calls == 1
+    assert first.action.action_hash != second.action.action_hash
+    assert store.verify_chain()
+
+
 def test_unknown_template_ineligible_parent_and_nondiscovery_watermark_fail(
     tmp_path: Path,
 ) -> None:

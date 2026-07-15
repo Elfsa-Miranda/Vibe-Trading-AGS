@@ -8,6 +8,38 @@ from src.alpha_foundry.activation.capability import (
     ActiveRetrieverResolver,
     RetrieverModeResolution,
 )
+from src.alpha_foundry.activation.candidate_factory_v1 import (
+    ProductionActivationCandidateFactoryV1,
+    ProductionActivationCandidateRefsV1,
+    ProductionActivationFactoryArmRequestV1,
+    ProductionActivationFactoryArmResultV1,
+)
+from src.alpha_foundry.activation.coordinator_v2 import ActivationPairCoordinatorV2
+from src.alpha_foundry.activation.governance_v2 import (
+    ActivationGovernanceDecisionV2,
+    ActivationGovernanceService,
+    ActivationReadinessServiceV4,
+    ActivationReadinessV4,
+    RecordedActivationGovernanceDecisionV2,
+)
+from src.alpha_foundry.activation.formal_cycle_v1 import (
+    FormalActivationCycleBootstrapV1,
+    FormalActivationCycleConfigV1,
+    FormalActivationCycleV1,
+)
+from src.alpha_foundry.activation.pair_projector_v2 import (
+    ActivationArmEventRefsV2,
+    ActivationEvidenceProjector,
+    ActivationPairEvidenceV2,
+    RecordedActivationPairEvidenceV2,
+)
+from src.alpha_foundry.activation.statistical_v2 import (
+    ActivationStatisticalAnalysisV2,
+    ActivationStatisticalAnalyzerV2,
+    PilotDispersionEvidenceV2,
+    PreregisteredConfirmatoryActivationPlanV2,
+    RecordedActivationStatisticalArtifactV2,
+)
 from src.alpha_foundry.activation.model import (
     ActivationAnalysisPolicy,
     ActivationDesign,
@@ -45,7 +77,20 @@ __all__ = [
     "ActivationResourceEvidenceV1", "MeasuredActivationPairV1",
     "ActiveRetrieverCapability", "ActiveRetrieverResolver", "PairedEffect",
     "PairedActivationRunner", "RegisteredActivationPlan", "RetrieverActivationDecision",
+    "ProductionActivationCandidateFactoryV1", "ProductionActivationCandidateRefsV1",
+    "ProductionActivationFactoryArmRequestV1", "ProductionActivationFactoryArmResultV1",
+    "ActivationArmEventRefsV2", "ActivationEvidenceProjector",
+    "ActivationPairCoordinatorV2", "ActivationPairEvidenceV2",
+    "RecordedActivationPairEvidenceV2",
+    "ActivationReadinessServiceV4", "ActivationReadinessV4",
+    "ActivationStatisticalAnalysisV2", "ActivationStatisticalAnalyzerV2",
+    "ActivationGovernanceDecisionV2", "ActivationGovernanceService",
+    "RecordedActivationGovernanceDecisionV2",
+    "PilotDispersionEvidenceV2", "PreregisteredConfirmatoryActivationPlanV2",
+    "RecordedActivationStatisticalArtifactV2",
     "RetrieverActivationPolicy", "RetrieverModeResolution", "TrainValidActivationScope",
+    "FormalActivationCycleBootstrapV1", "FormalActivationCycleConfigV1",
+    "FormalActivationCycleV1",
     "holm_adjust",
     "activation_arm_execution_run_id",
 ]

@@ -997,6 +997,7 @@ class ExecutionEvidenceServiceV1:
             event
             for event in self.store.query_events(event_type=EXECUTION_EVENT_TYPE)
             if event.run_id == run_id
+            and event.payload["factor_output_event_hash"] == factor_output_event_hash
         ]
         if existing:
             if len(existing) != 1:

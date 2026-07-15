@@ -325,6 +325,76 @@ def test_factor_output_partition_replay_matches_content_hash(tmp_path: Path) -> 
     assert retry.scorecard_event.event_hash == recorded.scorecard_event.event_hash
 
 
+def test_two_factors_in_one_production_run_have_independent_scorecards(
+    tmp_path: Path,
+) -> None:
+    flags, store, contract, snapshot, _, first = _record(tmp_path)
+    second_identity = FactorIdentityService(store=store, flags=flags).record_attempt(
+        trial_id="predictive-trial-2",
+        run_id="predictive-run",
+        candidate_id="predictive-candidate-2",
+        formula="rank(open)",
+        semantics=FactorSpecSemantics(
+            transform_pipeline_hash=_hash("identity-transform"),
+            field_semantics={"close": "close_t", "open": "open_t"},
+            signal_time="close_t",
+            order_time="close_t_plus_1",
+            entry_price_time="open_t_plus_1",
+            execution_lag=1,
+            return_horizon=1,
+            universe_mask_hash=_hash("pit-universe-mask"),
+            tradability_mask_hash=_hash("pit-tradability-mask"),
+        ),
+    )
+    second_definition = store.query_events(
+        event_type="FactorDefinitionRecorded",
+        entity_id=str(second_identity.factor_spec_id),
+    )[0]
+    second = PITPredictiveEvidenceServiceV4(store).record(
+        run_id="predictive-run",
+        contract_event_hash=contract.event.event_hash,
+        factor_definition_event_hash=second_definition.event_hash,
+        pit_snapshot_event_hash=snapshot.event.event_hash,
+    )
+
+    assert second.scorecard_event.event_hash != first.scorecard_event.event_hash
+    assert second.scorecard.factor_spec_id == second_definition.entity_id
+    assert len(store.query_events(event_type="ScorecardDecisionEvidenceV4Recorded")) == 2
+    assert store.verify_chain()
+
+
+def test_chain_verify_rebuilds_one_predictive_source_once_per_invocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, store, _, _, _, _ = _record(tmp_path)
+    calls = 0
+    original = PITPredictiveEvidenceServiceV4.rebuild
+
+    def counted_rebuild(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        PITPredictiveEvidenceServiceV4,
+        "rebuild",
+        counted_rebuild,
+    )
+
+    class CallerMapping(dict):
+        def get(self, *args, **kwargs):
+            raise AssertionError("caller mapping must not be an active verify cache")
+
+    store.__dict__["_active_predictive_v4_rebuild_cache"] = CallerMapping()
+
+    assert store.verify_chain()
+    assert calls == 1
+    assert store._chain_verification_caches() is None
+    assert store.verify_chain()
+    assert calls == 2
+
+
 def test_test_price_changes_do_not_change_any_discovery_evidence(
     tmp_path: Path,
 ) -> None:
