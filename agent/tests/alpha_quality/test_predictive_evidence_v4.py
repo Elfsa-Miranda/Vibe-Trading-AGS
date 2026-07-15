@@ -363,6 +363,38 @@ def test_two_factors_in_one_production_run_have_independent_scorecards(
     assert store.verify_chain()
 
 
+def test_chain_verify_rebuilds_one_predictive_source_once_per_invocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, store, _, _, _, _ = _record(tmp_path)
+    calls = 0
+    original = PITPredictiveEvidenceServiceV4.rebuild
+
+    def counted_rebuild(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        PITPredictiveEvidenceServiceV4,
+        "rebuild",
+        counted_rebuild,
+    )
+
+    class CallerMapping(dict):
+        def get(self, *args, **kwargs):
+            raise AssertionError("caller mapping must not be an active verify cache")
+
+    store.__dict__["_active_predictive_v4_rebuild_cache"] = CallerMapping()
+
+    assert store.verify_chain()
+    assert calls == 1
+    assert store._chain_verification_caches() is None
+    assert store.verify_chain()
+    assert calls == 2
+
+
 def test_test_price_changes_do_not_change_any_discovery_evidence(
     tmp_path: Path,
 ) -> None:

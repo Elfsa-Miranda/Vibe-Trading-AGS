@@ -13,7 +13,10 @@ from src.alpha_foundry.control_evidence import FlatControlPolicyV1
 from src.alpha_foundry.flat_schedule_v1 import PreArmFlatScheduleServiceV1
 from src.alpha_foundry.mutators import SeedMutator
 from src.alpha_foundry.retrieval.action_template_v1 import RetrieverActionTemplateServiceV1
-from src.alpha_foundry.retrieval.feature_producer_v1 import RetrieverFeatureSourceServiceV1
+from src.alpha_foundry.retrieval.feature_producer_v1 import (
+    RetrieverFeatureSourceArtifactStoreV1,
+    RetrieverFeatureSourceServiceV1,
+)
 from src.alpha_foundry.retrieval.model import DiscoveryEvidenceView
 from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 from src.alpha_foundry.retrieval.service_v7 import RetrieverDecisionV7Service
@@ -269,6 +272,62 @@ def test_chain_verify_memoizes_only_nested_exact_upstream_validation(
     assert decision_rebuilds == len(
         store.query_events(event_type="RetrieverDecisionV7Recorded")
     )
+
+
+def test_chain_verify_reuses_directly_validated_feature_source_object(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, _, _, _ = _record(tmp_path)
+    reads = 0
+    maximum_resident_sources = 0
+    original = RetrieverFeatureSourceArtifactStoreV1.read
+    original_consume = store._consume_verified_retriever_feature_source
+
+    class CallerMapping(dict):
+        def get(self, *args, **kwargs):
+            raise AssertionError("caller mapping must not be an active verify cache")
+
+    class CallerSet(set):
+        def __contains__(self, item):
+            raise AssertionError("caller set must not be an active verify cache")
+
+    def counted_read(self, *args, **kwargs):
+        nonlocal reads
+        reads += 1
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        RetrieverFeatureSourceArtifactStoreV1,
+        "read",
+        counted_read,
+    )
+
+    def counted_consume(source_hash: str):
+        nonlocal maximum_resident_sources
+        verification = store._chain_verification_caches()
+        assert verification is not None
+        maximum_resident_sources = max(
+            maximum_resident_sources,
+            len(verification.retriever_feature_sources),
+        )
+        return original_consume(source_hash)
+
+    monkeypatch.setattr(
+        store,
+        "_consume_verified_retriever_feature_source",
+        counted_consume,
+    )
+    store.__dict__["_active_external_validation_cache"] = CallerSet()
+    store.__dict__["_active_retriever_feature_source_objects"] = CallerMapping()
+    store.__dict__["_active_retriever_scorecard_source_cache"] = CallerMapping()
+
+    assert store.verify_chain()
+    assert reads == len(
+        store.query_events(event_type="RetrieverFeatureSourceRecorded")
+    )
+    assert maximum_resident_sources <= 1
+    assert store._chain_verification_caches() is None
 
 
 def test_v7_rejects_schedule_chosen_after_treatment_features(tmp_path: Path) -> None:

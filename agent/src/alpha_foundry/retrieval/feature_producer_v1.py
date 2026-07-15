@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 import pandas as pd  # type: ignore[import-untyped]
 
@@ -368,9 +368,7 @@ class RetrieverFeatureSourceServiceV1:
         # it across the producer and decision replay services bound to this one
         # store instance so append-time validation does not replay the same
         # prefix for every downstream artifact.
-        self._discovery_cache = store.__dict__.setdefault(
-            "_immutable_discovery_projection_cache", {}
-        )
+        self._discovery_cache = store._retriever_discovery_projection_cache()
         self._raw_panel_cache: dict[str, Mapping[str, Any]] = {}
         self._output_panel_cache: dict[tuple[str, str, str], FactorOutputPanel] = {}
 
@@ -583,6 +581,18 @@ class RetrieverFeatureSourceServiceV1:
         order: Mapping[str, int],
         watermark: str,
     ) -> tuple[tuple[ResearchEventEnvelope, ...], float, float, str]:
+        cache_key = (
+            self.feature_policy.policy_hash,
+            factor_id,
+            snapshot_hash,
+            watermark,
+        )
+        cached = self.store._active_retriever_scorecard_source(cache_key)
+        if cached is not None:
+            return cast(
+                tuple[tuple[ResearchEventEnvelope, ...], float, float, str],
+                cached,
+            )
         evaluations = [
             event
             for event in events
@@ -630,7 +640,11 @@ class RetrieverFeatureSourceServiceV1:
                     "estimated_cost": estimated_cost,
                 }
             )
-            return (evaluation,), utility, estimated_cost, cost_hash
+            result = ((evaluation,), utility, estimated_cost, cost_hash)
+            self.store._cache_active_retriever_scorecard_source(
+                cache_key, result
+            )
+            return result
 
         v4_refs = [
             reference
@@ -712,7 +726,11 @@ class RetrieverFeatureSourceServiceV1:
                 "estimated_cost": estimated_cost,
             }
         )
-        return (evaluation, execution_events[0]), utility, estimated_cost, cost_hash
+        result = (
+            (evaluation, execution_events[0]), utility, estimated_cost, cost_hash
+        )
+        self.store._cache_active_retriever_scorecard_source(cache_key, result)
+        return result
 
     def _output_panel(
         self,

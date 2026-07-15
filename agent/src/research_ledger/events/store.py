@@ -8,6 +8,7 @@ import random
 import sqlite3
 import time
 from collections import Counter
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Mapping, cast
@@ -45,6 +46,47 @@ from src.research_ledger.hash_utils import (
 
 
 DurabilityProfile = Literal["authoritative", "balanced"]
+
+
+class _ChainVerificationCaches:
+    """Invocation-local memoization for one deterministic chain replay."""
+
+    __slots__ = (
+        "discovery_projections",
+        "external_validation",
+        "feature_replay_services",
+        "predictive_v4_rebuilds",
+        "retriever_feature_sources",
+        "retriever_scorecard_sources",
+        "v7_replay_service",
+    )
+
+    def __init__(self) -> None:
+        self.discovery_projections: dict[tuple[str, str], Any] = {}
+        self.external_validation: set[tuple[str, str]] = set()
+        self.feature_replay_services: dict[str, Any] = {}
+        self.predictive_v4_rebuilds: dict[
+            tuple[str, str, str, str], tuple[Any, Any, Any]
+        ] = {}
+        self.retriever_feature_sources: dict[str, Any] = {}
+        self.retriever_scorecard_sources: dict[
+            tuple[str, str, str, str], Any
+        ] = {}
+        self.v7_replay_service: Any | None = None
+
+    def clear(self) -> None:
+        self.discovery_projections.clear()
+        self.external_validation.clear()
+        self.feature_replay_services.clear()
+        self.predictive_v4_rebuilds.clear()
+        self.retriever_feature_sources.clear()
+        self.retriever_scorecard_sources.clear()
+        self.v7_replay_service = None
+
+
+_ACTIVE_CHAIN_VERIFICATION: ContextVar[
+    tuple[object, _ChainVerificationCaches] | None
+] = ContextVar("research_event_chain_verification", default=None)
 
 
 _EVENT_CAPABILITY_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
@@ -606,6 +648,50 @@ class ResearchEventStore:
         self.artifact_root.mkdir(parents=True, exist_ok=True)
         self.artifact_root = self.artifact_root.resolve(strict=True)
         self._initialize_schema()
+
+    def _chain_verification_caches(self) -> _ChainVerificationCaches | None:
+        active = _ACTIVE_CHAIN_VERIFICATION.get()
+        if active is None or active[0] is not self:
+            return None
+        return active[1]
+
+    def _retriever_discovery_projection_cache(self) -> dict[tuple[str, str], Any]:
+        verification = self._chain_verification_caches()
+        if verification is not None:
+            return verification.discovery_projections
+        cache = self.__dict__.setdefault(
+            "_immutable_discovery_projection_cache", {}
+        )
+        if not isinstance(cache, dict):
+            raise RuntimeError("Retriever discovery cache has invalid state")
+        return cache
+
+    def _active_retriever_scorecard_source(
+        self,
+        cache_key: tuple[str, str, str, str],
+    ) -> Any | None:
+        verification = self._chain_verification_caches()
+        if verification is None:
+            return None
+        return verification.retriever_scorecard_sources.get(cache_key)
+
+    def _cache_active_retriever_scorecard_source(
+        self,
+        cache_key: tuple[str, str, str, str],
+        value: Any,
+    ) -> None:
+        verification = self._chain_verification_caches()
+        if verification is not None:
+            verification.retriever_scorecard_sources[cache_key] = value
+
+    def _consume_verified_retriever_feature_source(
+        self,
+        source_hash: str,
+    ) -> Any | None:
+        verification = self._chain_verification_caches()
+        if verification is None:
+            return None
+        return verification.retriever_feature_sources.pop(source_hash, None)
 
     @staticmethod
     def hash_artifact(path: str | Path) -> str:
@@ -1309,7 +1395,10 @@ class ResearchEventStore:
     ) -> None:
         if event_type != "RetrieverFeatureSourceRecorded":
             return
-        validation_cache = self.__dict__.get("_active_external_validation_cache")
+        verification = self._chain_verification_caches()
+        validation_cache = (
+            None if verification is None else verification.external_validation
+        )
         validation_key = (
             "RetrieverFeatureSourceRecorded",
             canonical_json_hash(dict(payload)),
@@ -1340,8 +1429,12 @@ class ResearchEventStore:
                 str(references[0]["relative_path"]),
                 str(payload["source_hash"]),
             )
-            replay_services = self.__dict__.setdefault(
-                "_retriever_feature_replay_services", {}
+            replay_services = (
+                verification.feature_replay_services
+                if verification is not None
+                else self.__dict__.setdefault(
+                    "_retriever_feature_replay_services", {}
+                )
             )
             service_key = canonical_json_hash(dict(source.feature_policy))
             service = replay_services.get(service_key)
@@ -1381,6 +1474,12 @@ class ResearchEventStore:
         }
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("Retriever feature event differs from source artifact")
+        if verification is not None:
+            # Source/v7 records are normally adjacent.  Retaining only the most
+            # recently validated source bounds Python-object residency at one;
+            # a non-adjacent consumer safely falls back to the artifact store.
+            verification.retriever_feature_sources.clear()
+            verification.retriever_feature_sources[source.source_hash] = source
         if validation_cache is not None:
             validation_cache.add(validation_key)
 
@@ -1860,7 +1959,10 @@ class ResearchEventStore:
     def _validate_external_retriever_v7_evidence(self, event_type: str, payload: Mapping[str, Any]) -> None:
         if event_type != "RetrieverDecisionV7Recorded":
             return
-        validation_cache = self.__dict__.get("_active_external_validation_cache")
+        verification = self._chain_verification_caches()
+        validation_cache = (
+            None if verification is None else verification.external_validation
+        )
         validation_key = (
             "RetrieverDecisionV7Recorded",
             canonical_json_hash(dict(payload)),
@@ -1901,10 +2003,16 @@ class ResearchEventStore:
             ]
             if len(historical) > 1:
                 raise ValueError("retriever v7 historical identity is ambiguous")
-            service = self.__dict__.get("_retriever_v7_replay_service")
-            if service is None:
-                service = RetrieverDecisionV7Service(self)
-                self.__dict__["_retriever_v7_replay_service"] = service
+            if verification is not None:
+                service = verification.v7_replay_service
+                if service is None:
+                    service = RetrieverDecisionV7Service(self)
+                    verification.v7_replay_service = service
+            else:
+                service = self.__dict__.get("_retriever_v7_replay_service")
+                if service is None:
+                    service = RetrieverDecisionV7Service(self)
+                    self.__dict__["_retriever_v7_replay_service"] = service
             decision, rebuilt_bundle, schedule, source, _ = service.rebuild(
                 schedule_event_hash=bundle.schedule_event_hash,
                 feature_source_event_hash=bundle.feature_source_event_hash,
@@ -2336,14 +2444,39 @@ class ResearchEventStore:
                 )
                 definition = next(event for event in source_events if event.event_type == "FactorDefinitionRecorded")
                 snapshot = next(event for event in source_events if event.event_type == "AsharePITSnapshotRecorded")
-                rebuilt, _, _ = PITPredictiveEvidenceServiceV4.rebuild(
-                    self,
-                    run_id=artifact.run_id,
-                    contract_event_hash=contract.event_hash,
-                    factor_definition_event_hash=definition.event_hash,
-                    pit_snapshot_event_hash=snapshot.event_hash,
-                    persist_factor=True,
+                rebuild_key = (
+                    artifact.run_id,
+                    contract.event_hash,
+                    definition.event_hash,
+                    snapshot.event_hash,
                 )
+                verification = self._chain_verification_caches()
+                rebuild_cache = (
+                    None
+                    if verification is None
+                    else verification.predictive_v4_rebuilds
+                )
+                rebuilt_all = (
+                    rebuild_cache.get(rebuild_key)
+                    if isinstance(rebuild_cache, dict)
+                    else None
+                )
+                if rebuilt_all is None:
+                    rebuilt_all = PITPredictiveEvidenceServiceV4.rebuild(
+                        self,
+                        run_id=artifact.run_id,
+                        contract_event_hash=contract.event_hash,
+                        factor_definition_event_hash=definition.event_hash,
+                        pit_snapshot_event_hash=snapshot.event_hash,
+                        persist_factor=True,
+                    )
+                    if rebuild_cache is not None:
+                        # The factor/observed/PIT records are emitted as one
+                        # contiguous evidence unit.  Bound retained panels to
+                        # one unit; unusual interleaving merely causes replay.
+                        rebuild_cache.clear()
+                        rebuild_cache[rebuild_key] = rebuilt_all
+                rebuilt = rebuilt_all[0]
                 expected = PITPredictiveEvidenceServiceV4.factor_event_payload(rebuilt, ref)
                 if rebuilt != artifact or dict(payload) != expected:
                     raise ValueError("factor output differs from backend replay")
@@ -2383,14 +2516,36 @@ class ResearchEventStore:
                 )
                 definition = next(event for event in source_events if event.event_type == "FactorDefinitionRecorded")
                 snapshot = next(event for event in source_events if event.event_type == "AsharePITSnapshotRecorded")
-                _, observed, pit = PITPredictiveEvidenceServiceV4.rebuild(
-                    self,
-                    run_id=factor_artifact.run_id,
-                    contract_event_hash=contract.event_hash,
-                    factor_definition_event_hash=definition.event_hash,
-                    pit_snapshot_event_hash=snapshot.event_hash,
-                    persist_factor=True,
+                rebuild_key = (
+                    factor_artifact.run_id,
+                    contract.event_hash,
+                    definition.event_hash,
+                    snapshot.event_hash,
                 )
+                verification = self._chain_verification_caches()
+                rebuild_cache = (
+                    None
+                    if verification is None
+                    else verification.predictive_v4_rebuilds
+                )
+                rebuilt_all = (
+                    rebuild_cache.get(rebuild_key)
+                    if isinstance(rebuild_cache, dict)
+                    else None
+                )
+                if rebuilt_all is None:
+                    rebuilt_all = PITPredictiveEvidenceServiceV4.rebuild(
+                        self,
+                        run_id=factor_artifact.run_id,
+                        contract_event_hash=contract.event_hash,
+                        factor_definition_event_hash=definition.event_hash,
+                        pit_snapshot_event_hash=snapshot.event_hash,
+                        persist_factor=True,
+                    )
+                    if rebuild_cache is not None:
+                        rebuild_cache.clear()
+                        rebuild_cache[rebuild_key] = rebuilt_all
+                _, observed, pit = rebuilt_all
                 expected_artifact = PITPredictiveEvidenceServiceV4._with_factor_event(
                     observed if event_type == "ObservedPanelPredictiveEvidenceRecorded" else pit,
                     factor_event.event_hash,
@@ -2398,6 +2553,11 @@ class ResearchEventStore:
                 expected = PITPredictiveEvidenceServiceV4.predictive_event_payload(expected_artifact, ref)
                 if expected_artifact != predictive_artifact or dict(payload) != expected:
                     raise ValueError("predictive evidence differs from source replay")
+                if (
+                    event_type == "PITPredictiveEvidenceRecorded"
+                    and rebuild_cache is not None
+                ):
+                    rebuild_cache.pop(rebuild_key, None)
                 return
 
             ref = next(
@@ -7411,14 +7571,8 @@ class ResearchEventStore:
         )
 
     def verify_chain(self) -> bool:
-        projection_cache = self.__dict__.get(
-            "_immutable_discovery_projection_cache"
-        )
-        if isinstance(projection_cache, dict):
-            projection_cache.clear()
-        self.__dict__.pop("_retriever_feature_replay_services", None)
-        self.__dict__.pop("_retriever_v7_replay_service", None)
-        self.__dict__["_active_external_validation_cache"] = set()
+        verification = _ChainVerificationCaches()
+        token = _ACTIVE_CHAIN_VERIFICATION.set((self, verification))
         try:
             try:
                 events = self.query_events()
@@ -7426,14 +7580,8 @@ class ResearchEventStore:
                 return False
             return self._verify_events(events)
         finally:
-            projection_cache = self.__dict__.get(
-                "_immutable_discovery_projection_cache"
-            )
-            if isinstance(projection_cache, dict):
-                projection_cache.clear()
-            self.__dict__.pop("_active_external_validation_cache", None)
-            self.__dict__.pop("_retriever_feature_replay_services", None)
-            self.__dict__.pop("_retriever_v7_replay_service", None)
+            verification.clear()
+            _ACTIVE_CHAIN_VERIFICATION.reset(token)
 
     def _verify_events(self, events: list[ResearchEventEnvelope]) -> bool:
         previous: str | None = None

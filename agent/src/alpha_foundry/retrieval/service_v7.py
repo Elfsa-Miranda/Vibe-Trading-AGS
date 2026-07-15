@@ -82,9 +82,7 @@ class RetrieverDecisionV7Service:
         # Feature production and v7 selection consume the exact same immutable
         # snapshot/watermark projection.  Keep one cache on the bound store
         # instance so deterministic append/replay validation can reuse it.
-        self._discovery_cache = store.__dict__.setdefault(
-            "_immutable_discovery_projection_cache", {}
-        )
+        self._discovery_cache = store._retriever_discovery_projection_cache()
         self._action_retrievers: dict[str, ActionShadowRetrieverV5] = {}
 
     def record(
@@ -270,12 +268,16 @@ class RetrieverDecisionV7Service:
         )
 
     def _source(self, event: ResearchEventEnvelope) -> RetrieverFeatureSourceV1:
+        source_hash = str(event.payload["source_hash"])
+        cached = self.store._consume_verified_retriever_feature_source(source_hash)
+        if isinstance(cached, RetrieverFeatureSourceV1):
+            return cached
         refs = [reference for reference in event.payload["artifact_refs"]
                 if reference["media_type"] == RetrieverFeatureSourceArtifactStoreV1.media_type]
         if len(refs) != 1:
             raise ValueError("Retriever v7 feature artifact is missing")
         return RetrieverFeatureSourceArtifactStoreV1(self.store.artifact_root).read(
-            str(refs[0]["relative_path"]), str(event.payload["source_hash"])
+            str(refs[0]["relative_path"]), source_hash
         )
 
     @staticmethod
