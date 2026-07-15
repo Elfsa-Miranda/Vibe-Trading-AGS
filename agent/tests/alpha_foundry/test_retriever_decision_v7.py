@@ -153,6 +153,46 @@ def test_v7_reuses_immutable_discovery_projection_within_service(
     assert second[1].bundle_hash == first[1].bundle_hash
 
 
+def test_chain_verify_memoizes_only_nested_exact_upstream_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, _, _, _ = _record(tmp_path)
+    feature_rebuilds = 0
+    decision_rebuilds = 0
+    original_feature_rebuild = RetrieverFeatureSourceServiceV1.rebuild
+    original_decision_rebuild = RetrieverDecisionV7Service.rebuild
+
+    def counted_feature_rebuild(self, *args, **kwargs):
+        nonlocal feature_rebuilds
+        feature_rebuilds += 1
+        return original_feature_rebuild(self, *args, **kwargs)
+
+    def counted_decision_rebuild(self, *args, **kwargs):
+        nonlocal decision_rebuilds
+        decision_rebuilds += 1
+        return original_decision_rebuild(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        RetrieverFeatureSourceServiceV1,
+        "rebuild",
+        counted_feature_rebuild,
+    )
+    monkeypatch.setattr(
+        RetrieverDecisionV7Service,
+        "rebuild",
+        counted_decision_rebuild,
+    )
+
+    assert store.verify_chain()
+    assert feature_rebuilds == len(
+        store.query_events(event_type="RetrieverFeatureSourceRecorded")
+    )
+    assert decision_rebuilds == len(
+        store.query_events(event_type="RetrieverDecisionV7Recorded")
+    )
+
+
 def test_v7_rejects_schedule_chosen_after_treatment_features(tmp_path: Path) -> None:
     store, _, _, _, schedule, _ = _record(tmp_path)
     earlier_source = store.query_events(

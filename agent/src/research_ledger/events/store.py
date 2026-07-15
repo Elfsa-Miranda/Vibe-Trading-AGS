@@ -1309,6 +1309,13 @@ class ResearchEventStore:
     ) -> None:
         if event_type != "RetrieverFeatureSourceRecorded":
             return
+        validation_cache = self.__dict__.get("_active_external_validation_cache")
+        validation_key = (
+            "RetrieverFeatureSourceRecorded",
+            canonical_json_hash(dict(payload)),
+        )
+        if validation_cache is not None and validation_key in validation_cache:
+            return
         references = [
             reference
             for reference in payload["artifact_refs"]
@@ -1374,6 +1381,8 @@ class ResearchEventStore:
         }
         if any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("Retriever feature event differs from source artifact")
+        if validation_cache is not None:
+            validation_cache.add(validation_key)
 
     def _validate_external_retriever_evidence(
         self,
@@ -1851,6 +1860,13 @@ class ResearchEventStore:
     def _validate_external_retriever_v7_evidence(self, event_type: str, payload: Mapping[str, Any]) -> None:
         if event_type != "RetrieverDecisionV7Recorded":
             return
+        validation_cache = self.__dict__.get("_active_external_validation_cache")
+        validation_key = (
+            "RetrieverDecisionV7Recorded",
+            canonical_json_hash(dict(payload)),
+        )
+        if validation_cache is not None and validation_key in validation_cache:
+            return
         references = [
             reference
             for reference in payload["artifact_refs"]
@@ -1922,6 +1938,8 @@ class ResearchEventStore:
         }
         if bundle != rebuilt_bundle or any(payload[name] != value for name, value in expected.items()):
             raise EventValidationError("retriever v7 differs from deterministic rebuild")
+        if validation_cache is not None:
+            validation_cache.add(validation_key)
 
     def _validate_external_decision_evidence_v3(
         self,
@@ -7393,11 +7411,19 @@ class ResearchEventStore:
         )
 
     def verify_chain(self) -> bool:
+        self.__dict__.pop("_retriever_feature_replay_services", None)
+        self.__dict__.pop("_retriever_v7_replay_service", None)
+        self.__dict__["_active_external_validation_cache"] = set()
         try:
-            events = self.query_events()
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            return False
-        return self._verify_events(events)
+            try:
+                events = self.query_events()
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                return False
+            return self._verify_events(events)
+        finally:
+            self.__dict__.pop("_active_external_validation_cache", None)
+            self.__dict__.pop("_retriever_feature_replay_services", None)
+            self.__dict__.pop("_retriever_v7_replay_service", None)
 
     def _verify_events(self, events: list[ResearchEventEnvelope]) -> bool:
         previous: str | None = None
