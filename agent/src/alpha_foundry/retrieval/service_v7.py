@@ -79,7 +79,12 @@ class RetrieverDecisionV7Service:
         self.store = store
         self.artifacts = RetrieverDecisionInputArtifactStoreV7(store.artifact_root)
         self.projector = DiscoveryEvidenceProjector(flags=store.flags)
-        self._discovery_cache: dict[tuple[str, str], Any] = {}
+        # Feature production and v7 selection consume the exact same immutable
+        # snapshot/watermark projection.  Keep one cache on the bound store
+        # instance so deterministic append/replay validation can reuse it.
+        self._discovery_cache = store.__dict__.setdefault(
+            "_immutable_discovery_projection_cache", {}
+        )
 
     def record(
         self, *, schedule_event_hash: str, feature_source_event_hash: str,

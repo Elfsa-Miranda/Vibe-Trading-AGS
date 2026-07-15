@@ -364,7 +364,13 @@ class RetrieverFeatureSourceServiceV1:
         self.feature_policy = feature_policy or RetrieverFeaturePolicyV1()
         self.projector = DiscoveryEvidenceProjector(flags=flags)
         self.artifacts = RetrieverFeatureSourceArtifactStoreV1(store.artifact_root)
-        self._discovery_cache: dict[tuple[str, str], Any] = {}
+        # A frozen watermark identifies an immutable discovery projection.  Share
+        # it across the producer and decision replay services bound to this one
+        # store instance so append-time validation does not replay the same
+        # prefix for every downstream artifact.
+        self._discovery_cache = store.__dict__.setdefault(
+            "_immutable_discovery_projection_cache", {}
+        )
         self._raw_panel_cache: dict[str, Mapping[str, Any]] = {}
         self._output_panel_cache: dict[tuple[str, str, str], FactorOutputPanel] = {}
 

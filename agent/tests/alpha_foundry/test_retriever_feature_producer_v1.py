@@ -227,6 +227,7 @@ def test_feature_source_reuses_immutable_output_panels_within_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store, _, _, _, _, recorded = _record(tmp_path)
+    store.__dict__["_immutable_discovery_projection_cache"].clear()
     service = RetrieverFeatureSourceServiceV1(store, flags=store.flags)
     calls = 0
     projection_calls = 0

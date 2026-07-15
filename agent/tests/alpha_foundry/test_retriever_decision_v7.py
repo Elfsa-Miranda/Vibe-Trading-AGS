@@ -130,6 +130,7 @@ def test_v7_reuses_immutable_discovery_projection_within_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store, _, _, source, schedule, recorded = _record(tmp_path)
+    store.__dict__["_immutable_discovery_projection_cache"].clear()
     service = RetrieverDecisionV7Service(store)
     projection_calls = 0
     original_project = service.projector.project_at_watermark
@@ -151,6 +152,20 @@ def test_v7_reuses_immutable_discovery_projection_within_service(
     assert projection_calls == 1
     assert second[0].decision_hash == first[0].decision_hash
     assert second[1].bundle_hash == first[1].bundle_hash
+
+
+def test_feature_and_v7_services_share_store_bound_immutable_projection_cache(
+    tmp_path: Path,
+) -> None:
+    store, _, _, _, _, _ = _record(tmp_path)
+
+    feature = RetrieverFeatureSourceServiceV1(store, flags=store.flags)
+    decision = RetrieverDecisionV7Service(store)
+
+    assert feature._discovery_cache is decision._discovery_cache
+    assert feature._discovery_cache is store.__dict__[
+        "_immutable_discovery_projection_cache"
+    ]
 
 
 def test_chain_verify_memoizes_only_nested_exact_upstream_validation(
@@ -266,7 +281,7 @@ def test_retriever_decision_replays_projection_before_append(tmp_path: Path) -> 
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(
         (EventValidationError, ResearchEventAppendError),
-        match="upstream|feature source|invalid historical prefix",
+        match="upstream|feature source|invalid historical prefix|pre-arm decision",
     ):
         RetrieverDecisionV7Service(store).record(
             schedule_event_hash=schedule.event.event_hash,

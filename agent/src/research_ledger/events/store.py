@@ -7411,6 +7411,11 @@ class ResearchEventStore:
         )
 
     def verify_chain(self) -> bool:
+        projection_cache = self.__dict__.get(
+            "_immutable_discovery_projection_cache"
+        )
+        if isinstance(projection_cache, dict):
+            projection_cache.clear()
         self.__dict__.pop("_retriever_feature_replay_services", None)
         self.__dict__.pop("_retriever_v7_replay_service", None)
         self.__dict__["_active_external_validation_cache"] = set()
@@ -7421,6 +7426,11 @@ class ResearchEventStore:
                 return False
             return self._verify_events(events)
         finally:
+            projection_cache = self.__dict__.get(
+                "_immutable_discovery_projection_cache"
+            )
+            if isinstance(projection_cache, dict):
+                projection_cache.clear()
             self.__dict__.pop("_active_external_validation_cache", None)
             self.__dict__.pop("_retriever_feature_replay_services", None)
             self.__dict__.pop("_retriever_v7_replay_service", None)
