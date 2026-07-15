@@ -8,6 +8,8 @@ import random
 import sqlite3
 import time
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -654,6 +656,20 @@ class ResearchEventStore:
         if active is None or active[0] is not self:
             return None
         return active[1]
+
+    @contextmanager
+    def _validation_cache_scope(self) -> Iterator[None]:
+        active = _ACTIVE_CHAIN_VERIFICATION.get()
+        if active is not None and active[0] is self:
+            yield None
+            return
+        verification = _ChainVerificationCaches()
+        token = _ACTIVE_CHAIN_VERIFICATION.set((self, verification))
+        try:
+            yield None
+        finally:
+            verification.clear()
+            _ACTIVE_CHAIN_VERIFICATION.reset(token)
 
     def _retriever_discovery_projection_cache(self) -> dict[tuple[str, str], Any]:
         verification = self._chain_verification_caches()
@@ -4273,6 +4289,305 @@ class ResearchEventStore:
         except (KeyError, TypeError, ValueError) as exc:
             raise EventValidationError("registry bootstrap identity is not reproducible") from exc
 
+    @staticmethod
+    def _activation_arm_start_hash(
+        *, run_id: str, payload: Mapping[str, Any]
+    ) -> str:
+        return canonical_json_hash(
+            {
+                "schema_version": "production_activation_arm_started.v1",
+                "run_input_bundle_event_hash": payload[
+                    "run_input_bundle_event_hash"
+                ],
+                "plan_hash": payload["plan_hash"],
+                "pair_id": payload["pair_id"],
+                "run_group_id": payload["run_group_id"],
+                "execution_run_id": run_id,
+                "arm": payload["arm"],
+                "retriever_policy_hash": payload["retriever_policy_hash"],
+                "retrieval_authority_event_hash": payload[
+                    "retrieval_authority_event_hash"
+                ],
+            }
+        )
+
+    @classmethod
+    def _validate_activation_arm_start_in_connection(
+        cls,
+        conn: sqlite3.Connection,
+        *,
+        run_id: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        from src.alpha_foundry.activation.runner import activation_arm_execution_run_id
+
+        bundle_row = conn.execute(
+            """
+            SELECT seq, event_type, payload FROM research_events
+            WHERE event_hash = ? AND event_type IN (
+                'ProductionActivationRunInputBundleV1Registered',
+                'ResearchOnlyActivationRunInputRegistered'
+            )
+            """,
+            (payload["run_input_bundle_event_hash"],),
+        ).fetchone()
+        retrieval_row = conn.execute(
+            """
+            SELECT seq, event_type, run_id, payload FROM research_events
+            WHERE event_hash = ?
+            """,
+            (payload["retrieval_authority_event_hash"],),
+        ).fetchone()
+        prior = conn.execute(
+            """
+            SELECT 1 FROM research_events
+            WHERE event_type = 'ProductionActivationArmStartedV1Recorded'
+              AND run_id = ?
+            """,
+            (run_id,),
+        ).fetchone()
+        if bundle_row is None or retrieval_row is None or prior is not None:
+            raise EventTransitionError("Activation arm start lacks unique frozen sources")
+        registered = json.loads(str(bundle_row["payload"]))
+        bundle = registered.get("bundle")
+        retrieval = json.loads(str(retrieval_row["payload"]))
+        arm = str(payload["arm"])
+        expected_type = (
+            "PreArmFlatScheduleFrozen"
+            if arm == "flat"
+            else "RetrieverDecisionV7Recorded"
+        )
+        expected_policy = (
+            bundle.get("flat_policy_hash")
+            if isinstance(bundle, Mapping) and arm == "flat"
+            else bundle.get("topology_policy_hash")
+            if isinstance(bundle, Mapping)
+            else None
+        )
+        expected_run_id = activation_arm_execution_run_id(
+            plan_hash=str(payload["plan_hash"]),
+            run_group_id=str(payload["run_group_id"]),
+            arm="control" if arm == "flat" else "treatment",
+        )
+        expected_hash = cls._activation_arm_start_hash(
+            run_id=run_id, payload=payload
+        )
+        retrieval_run_ok = (
+            str(retrieval_row["run_id"]) == str(payload["run_group_id"])
+            and retrieval.get("run_group_id") == payload["run_group_id"]
+            if arm == "flat"
+            else str(retrieval_row["run_id"]) == run_id
+        )
+        if (
+            not isinstance(bundle, Mapping)
+            or str(retrieval_row["event_type"]) != expected_type
+            or run_id != expected_run_id
+            or payload["retriever_policy_hash"] != expected_policy
+            or retrieval.get("policy_hash") != expected_policy
+            or retrieval.get("plan_hash") != payload["plan_hash"]
+            or retrieval.get("pair_id") != payload["pair_id"]
+            or not retrieval_run_ok
+            or payload["arm_start_hash"] != expected_hash
+            or payload["arm_start_id"]
+            != "production-activation-arm-start-" + expected_hash[-24:]
+        ):
+            raise EventTransitionError("Activation arm start differs from frozen sources")
+
+    @classmethod
+    def _verify_activation_arm_start_event(
+        cls,
+        event: ResearchEventEnvelope,
+        *,
+        events: list[ResearchEventEnvelope],
+        events_by_hash: Mapping[str, ResearchEventEnvelope],
+        event_order: Mapping[str, int],
+    ) -> bool:
+        if event.event_type != "ProductionActivationArmStartedV1Recorded":
+            return True
+        from src.alpha_foundry.activation.runner import activation_arm_execution_run_id
+
+        payload = event.payload
+        bundle_event = events_by_hash.get(str(payload["run_input_bundle_event_hash"]))
+        retrieval = events_by_hash.get(str(payload["retrieval_authority_event_hash"]))
+        if (
+            bundle_event is None
+            or bundle_event.event_type
+            not in {
+                "ProductionActivationRunInputBundleV1Registered",
+                "ResearchOnlyActivationRunInputRegistered",
+            }
+            or retrieval is None
+        ):
+            return False
+        bundle = bundle_event.payload.get("bundle")
+        if not isinstance(bundle, Mapping):
+            return False
+        arm = str(payload["arm"])
+        expected_type = (
+            "PreArmFlatScheduleFrozen"
+            if arm == "flat"
+            else "RetrieverDecisionV7Recorded"
+        )
+        expected_policy = (
+            bundle.get("flat_policy_hash")
+            if arm == "flat"
+            else bundle.get("topology_policy_hash")
+        )
+        expected_run_id = activation_arm_execution_run_id(
+            plan_hash=str(payload["plan_hash"]),
+            run_group_id=str(payload["run_group_id"]),
+            arm="control" if arm == "flat" else "treatment",
+        )
+        expected_hash = cls._activation_arm_start_hash(
+            run_id=event.run_id, payload=payload
+        )
+        retrieval_run_ok = (
+            retrieval.run_id == payload["run_group_id"]
+            and retrieval.payload.get("run_group_id") == payload["run_group_id"]
+            if arm == "flat"
+            else retrieval.run_id == event.run_id
+        )
+        return bool(
+            sum(
+                candidate.event_type
+                == "ProductionActivationArmStartedV1Recorded"
+                and candidate.run_id == event.run_id
+                for candidate in events
+            )
+            == 1
+            and event_order[bundle_event.event_hash] < event_order[event.event_hash]
+            and event_order[retrieval.event_hash] < event_order[event.event_hash]
+            and retrieval.event_type == expected_type
+            and event.run_id == expected_run_id
+            and payload["retriever_policy_hash"] == expected_policy
+            and retrieval.payload.get("policy_hash") == expected_policy
+            and retrieval.payload.get("plan_hash") == payload["plan_hash"]
+            and retrieval.payload.get("pair_id") == payload["pair_id"]
+            and retrieval_run_ok
+            and payload["arm_start_hash"] == expected_hash
+            and payload["arm_start_id"]
+            == "production-activation-arm-start-" + expected_hash[-24:]
+        )
+
+    @staticmethod
+    def _shared_activation_sources_in_connection(
+        conn: sqlite3.Connection,
+        *,
+        run_id: str,
+        contract_event_hash: str,
+        snapshot_event_hash: str | None = None,
+    ) -> bool:
+        starts = conn.execute(
+            """
+            SELECT seq, payload FROM research_events
+            WHERE event_type = 'ProductionActivationArmStartedV1Recorded'
+              AND run_id = ?
+            """,
+            (run_id,),
+        ).fetchall()
+        if len(starts) != 1:
+            return False
+        start = starts[0]
+        start_payload = json.loads(str(start["payload"]))
+        bundle_row = conn.execute(
+            """
+            SELECT seq, event_type, payload FROM research_events
+            WHERE event_hash = ?
+              AND event_type = 'ResearchOnlyActivationRunInputRegistered'
+            """,
+            (start_payload.get("run_input_bundle_event_hash"),),
+        ).fetchone()
+        if bundle_row is None:
+            return False
+        registered = json.loads(str(bundle_row["payload"]))
+        bundle = registered.get("bundle")
+        if not isinstance(bundle, dict):
+            return False
+        bound_snapshot_hash = bundle.get("pit_snapshot_event_hash")
+        if (
+            bundle.get("resolved_contract_event_hash") != contract_event_hash
+            or not isinstance(bound_snapshot_hash, str)
+            or (
+                snapshot_event_hash is not None
+                and bound_snapshot_hash != snapshot_event_hash
+            )
+        ):
+            return False
+        source_rows = conn.execute(
+            """
+            SELECT event_hash, event_type, seq FROM research_events
+            WHERE event_hash IN (?, ?)
+            """,
+            (contract_event_hash, bound_snapshot_hash),
+        ).fetchall()
+        by_hash = {str(row["event_hash"]): row for row in source_rows}
+        contract = by_hash.get(contract_event_hash)
+        snapshot = by_hash.get(bound_snapshot_hash)
+        return bool(
+            contract is not None
+            and str(contract["event_type"])
+            == "ResolvedEvaluationContractRegistered"
+            and snapshot is not None
+            and str(snapshot["event_type"]) == "AsharePITSnapshotRecorded"
+            and int(contract["seq"]) < int(bundle_row["seq"])
+            and int(snapshot["seq"]) < int(bundle_row["seq"])
+            and int(bundle_row["seq"]) < int(start["seq"])
+        )
+
+    @staticmethod
+    def _shared_activation_sources_in_events(
+        events: list[ResearchEventEnvelope],
+        *,
+        run_id: str,
+        contract_event_hash: str,
+        snapshot_event_hash: str | None,
+        before_event_hash: str | None,
+    ) -> bool:
+        order = {event.event_hash: index for index, event in enumerate(events)}
+        boundary = (
+            len(events)
+            if before_event_hash is None
+            else order.get(before_event_hash)
+        )
+        starts = [
+            event
+            for event in events
+            if event.event_type == "ProductionActivationArmStartedV1Recorded"
+            and event.run_id == run_id
+            and boundary is not None
+            and order[event.event_hash] < boundary
+        ]
+        if len(starts) != 1:
+            return False
+        by_hash = {event.event_hash: event for event in events}
+        bundle = by_hash.get(
+            str(starts[0].payload.get("run_input_bundle_event_hash"))
+        )
+        if bundle is None or bundle.event_type != "ResearchOnlyActivationRunInputRegistered":
+            return False
+        content = bundle.payload.get("bundle")
+        if not isinstance(content, Mapping):
+            return False
+        bound_snapshot_hash = content.get("pit_snapshot_event_hash")
+        contract = by_hash.get(contract_event_hash)
+        snapshot = by_hash.get(str(bound_snapshot_hash))
+        return bool(
+            boundary is not None
+            and content.get("resolved_contract_event_hash") == contract_event_hash
+            and isinstance(bound_snapshot_hash, str)
+            and (
+                snapshot_event_hash is None
+                or bound_snapshot_hash == snapshot_event_hash
+            )
+            and contract is not None
+            and contract.event_type == "ResolvedEvaluationContractRegistered"
+            and snapshot is not None
+            and snapshot.event_type == "AsharePITSnapshotRecorded"
+            and order[contract.event_hash] < order[bundle.event_hash]
+            and order[snapshot.event_hash] < order[bundle.event_hash]
+            and order[bundle.event_hash] < order[starts[0].event_hash] < boundary
+        )
+
     def _validate_transition(
         self,
         conn: sqlite3.Connection,
@@ -4280,36 +4595,69 @@ class ResearchEventStore:
         payload: Mapping[str, Any],
     ) -> None:
         event_type = draft.event_type
+        if event_type == "ProductionActivationArmStartedV1Recorded":
+            self._validate_activation_arm_start_in_connection(
+                conn, run_id=draft.run_id, payload=payload
+            )
+            return
         if event_type == "ResearchOnlyActivationRunInputRegistered":
             bundle = payload["bundle"]
+            if draft.run_id != bundle["research_cycle_id"]:
+                raise EventTransitionError(
+                    "research-only Activation run differs from its frozen cycle"
+                )
             provider = conn.execute(
-                "SELECT payload FROM research_events WHERE event_type = 'ProviderAuthorityDecisionV1Recorded' AND event_hash = ?",
+                "SELECT seq, payload FROM research_events WHERE event_type = 'ProviderAuthorityDecisionV1Recorded' AND event_hash = ?",
                 (bundle["provider_authority_decision_event_hash"],),
             ).fetchone()
             snapshot = conn.execute(
-                "SELECT 1 FROM research_events WHERE event_type = 'AsharePITSnapshotRecorded' AND event_hash = ?",
+                "SELECT seq, payload FROM research_events WHERE event_type = 'AsharePITSnapshotRecorded' AND event_hash = ?",
                 (bundle["pit_snapshot_event_hash"],),
             ).fetchone()
             contract = conn.execute(
-                "SELECT 1 FROM research_events WHERE event_type = 'ResolvedEvaluationContractRegistered' AND event_hash = ?",
+                "SELECT seq, payload FROM research_events WHERE event_type = 'ResolvedEvaluationContractRegistered' AND event_hash = ?",
                 (bundle["resolved_contract_event_hash"],),
             ).fetchone()
             train_valid = conn.execute(
-                "SELECT 1 FROM research_events WHERE event_type = 'TrainValidDataSnapshotFrozen' AND event_hash = ?",
+                "SELECT seq, payload FROM research_events WHERE event_type = 'TrainValidDataSnapshotFrozen' AND event_hash = ?",
                 (bundle["train_valid_snapshot_event_hash"],),
             ).fetchone()
             if provider is None or snapshot is None or contract is None or train_valid is None:
                 raise EventTransitionError("research-only Activation input lacks exact frozen sources")
             authority = json.loads(str(provider["payload"]))
+            snapshot_payload = json.loads(str(snapshot["payload"]))
+            contract_payload = json.loads(str(contract["payload"]))
+            train_valid_payload = json.loads(str(train_valid["payload"]))
             if authority.get("authority_status") not in {"best_effort", "verified_strict"}:
                 raise EventTransitionError("research-only Activation provider authority is insufficient")
+            if snapshot_payload.get("evaluation_policy_event_hash") != contract_payload.get(
+                "evaluation_policy_event_hash"
+            ):
+                raise EventTransitionError(
+                    "research-only Activation snapshot and contract policy differ"
+                )
+            if snapshot_payload.get("adapter_registration_event_hash") != authority.get(
+                "adapter_registration_event_hash"
+            ):
+                raise EventTransitionError(
+                    "research-only Activation snapshot and provider authority differ"
+                )
+            if not snapshot_payload.get("artifact_refs") or not train_valid_payload.get(
+                "artifact_refs"
+            ):
+                raise EventTransitionError(
+                    "research-only Activation input lacks source artifacts"
+                )
             interface_hashes = tuple(authority.get("interface_audit_event_hashes", ()))
             if not interface_hashes:
                 raise EventTransitionError("research-only Activation input lacks provider interfaces")
-            placeholders = ",".join("?" for _ in interface_hashes)
             interfaces = conn.execute(
-                f"SELECT event_hash, payload FROM research_events WHERE event_type = 'ProviderInterfacePITAuditV1Recorded' AND event_hash IN ({placeholders})",
-                interface_hashes,
+                """
+                SELECT event_hash, seq, payload FROM research_events
+                WHERE event_type = 'ProviderInterfacePITAuditV1Recorded'
+                  AND event_hash IN (SELECT value FROM json_each(?))
+                """,
+                (canonical_json(list(interface_hashes)),),
             ).fetchall()
             if len(interfaces) != len(interface_hashes):
                 raise EventTransitionError("research-only Activation input lacks exact provider interfaces")
@@ -4320,11 +4668,18 @@ class ResearchEventStore:
             )
             if not field_hashes:
                 raise EventTransitionError("research-only Activation input lacks field audits")
-            field_placeholders = ",".join("?" for _ in field_hashes)
             fields = conn.execute(
-                f"SELECT payload FROM research_events WHERE event_type = 'ProviderFieldPITAuditV1Recorded' AND event_hash IN ({field_placeholders})",
-                field_hashes,
+                """
+                SELECT event_hash, seq, payload FROM research_events
+                WHERE event_type = 'ProviderFieldPITAuditV1Recorded'
+                  AND event_hash IN (SELECT value FROM json_each(?))
+                """,
+                (canonical_json(list(field_hashes)),),
             ).fetchall()
+            watermark = conn.execute(
+                "SELECT seq FROM research_events WHERE event_hash = ?",
+                (bundle["source_watermark"],),
+            ).fetchone()
             forbidden = conn.execute(
                 "SELECT 1 FROM research_events WHERE event_type LIKE 'Final%' OR event_type LIKE 'Forward%'"
             ).fetchone()
@@ -4335,6 +4690,11 @@ class ResearchEventStore:
                     for row in fields
                 )
                 or forbidden is not None
+                or watermark is None
+                or any(
+                    int(row["seq"]) > int(watermark["seq"])
+                    for row in (provider, snapshot, contract, train_valid, *interfaces, *fields)
+                )
             ):
                 raise EventTransitionError("research-only Activation input has unresolved authority or scope evidence")
             return
@@ -4527,7 +4887,21 @@ class ResearchEventStore:
             ).fetchone()
             if contract is None or definition is None:
                 raise EventTransitionError("applicability lacks contract or factor source")
-            if str(contract["run_id"]) != draft.run_id or str(definition["run_id"]) != draft.run_id:
+            shared_activation_contract = (
+                str(contract["run_id"]) != draft.run_id
+                and self._shared_activation_sources_in_connection(
+                    conn,
+                    run_id=draft.run_id,
+                    contract_event_hash=str(contract["event_hash"]),
+                )
+            )
+            if (
+                (
+                    str(contract["run_id"]) != draft.run_id
+                    and not shared_activation_contract
+                )
+                or str(definition["run_id"]) != draft.run_id
+            ):
                 raise EventTransitionError("applicability cannot mix runs")
             if str(contract["event_hash"]) not in payload["source_event_hashes"]:
                 raise EventTransitionError("applicability sources omit contract event")
@@ -4648,13 +5022,29 @@ class ResearchEventStore:
                 """,
                 (draft.run_id, payload["factor_spec_id"]),
             ).fetchone()
+            shared_activation_sources = bool(
+                contract is not None
+                and snapshot is not None
+                and self._shared_activation_sources_in_connection(
+                    conn,
+                    run_id=draft.run_id,
+                    contract_event_hash=payload["contract_event_hash"],
+                    snapshot_event_hash=payload["pit_snapshot_event_hash"],
+                )
+            )
             if (
                 contract is None
                 or snapshot is None
                 or len(definitions) != 1
                 or prior is not None
-                or str(contract["run_id"]) != draft.run_id
-                or str(snapshot["run_id"]) != draft.run_id
+                or (
+                    str(contract["run_id"]) != draft.run_id
+                    and not shared_activation_sources
+                )
+                or (
+                    str(snapshot["run_id"]) != draft.run_id
+                    and not shared_activation_sources
+                )
                 or str(definitions[0]["run_id"]) != draft.run_id
             ):
                 raise EventTransitionError("factor output source identity or order differs")
@@ -4887,8 +5277,12 @@ class ResearchEventStore:
             return
         if event_type == "SelectionAssessmentRecorded":
             contracts = conn.execute(
-                "SELECT event_hash, payload FROM research_events WHERE event_type = 'ResolvedEvaluationContractRegistered' AND run_id = ?",
-                (draft.run_id,),
+                """
+                SELECT event_hash, run_id, payload FROM research_events
+                WHERE event_type = 'ResolvedEvaluationContractRegistered'
+                  AND event_hash IN (SELECT value FROM json_each(?))
+                """,
+                (json.dumps(payload["source_event_hashes"]),),
             ).fetchall()
             starts = conn.execute(
                 "SELECT event_hash, payload FROM research_events WHERE event_type = 'TrialStarted' AND run_id = ?",
@@ -4903,7 +5297,20 @@ class ResearchEventStore:
                 (draft.run_id,),
             ).fetchall()
             if len(contracts) != 1:
-                raise EventTransitionError("selection requires one exact run contract")
+                raise EventTransitionError("selection requires one exact cited contract")
+            shared_activation_contract = bool(
+                str(contracts[0]["run_id"]) != draft.run_id
+                and self._shared_activation_sources_in_connection(
+                    conn,
+                    run_id=draft.run_id,
+                    contract_event_hash=str(contracts[0]["event_hash"]),
+                )
+            )
+            if (
+                str(contracts[0]["run_id"]) != draft.run_id
+                and not shared_activation_contract
+            ):
+                raise EventTransitionError("selection cannot mix runs")
             contract_payload = json.loads(str(contracts[0]["payload"]))
             if contract_payload["research_family_id"] != payload["research_family_id"]:
                 raise EventTransitionError("selection research family differs")
@@ -5114,12 +5521,21 @@ class ResearchEventStore:
             ).fetchone()
             contract = conn.execute(
                 """
-                SELECT run_id FROM research_events
+                SELECT event_hash, run_id FROM research_events
                 WHERE event_type = 'ResolvedEvaluationContractRegistered'
                   AND json_extract(payload, '$.contract_hash') = ?
                 """,
                 (payload["resolved_contract_hash"],),
             ).fetchone()
+            shared_activation_contract = bool(
+                contract is not None
+                and str(contract["run_id"]) != draft.run_id
+                and self._shared_activation_sources_in_connection(
+                    conn,
+                    run_id=draft.run_id,
+                    contract_event_hash=str(contract["event_hash"]),
+                )
+            )
             prior = conn.execute(
                 """
                 SELECT 1 FROM research_events
@@ -5145,7 +5561,10 @@ class ResearchEventStore:
                 or payload["run_id"] != draft.run_id
                 or str(trial["run_id"]) != draft.run_id
                 or str(factor["run_id"]) != draft.run_id
-                or str(contract["run_id"]) != draft.run_id
+                or (
+                    str(contract["run_id"]) != draft.run_id
+                    and not shared_activation_contract
+                )
                 or any(row is None for row in node_source_rows)
             ):
                 raise EventTransitionError("production node source identity or order differs")
@@ -7600,6 +8019,22 @@ class ResearchEventStore:
             _ACTIVE_CHAIN_VERIFICATION.reset(token)
 
     def _verify_events(self, events: list[ResearchEventEnvelope]) -> bool:
+        active = _ACTIVE_CHAIN_VERIFICATION.get()
+        if active is not None and active[0] is self:
+            return self._verify_events_with_active_caches(events)
+
+        verification = _ChainVerificationCaches()
+        token = _ACTIVE_CHAIN_VERIFICATION.set((self, verification))
+        try:
+            return self._verify_events_with_active_caches(events)
+        finally:
+            verification.clear()
+            _ACTIVE_CHAIN_VERIFICATION.reset(token)
+
+    def _verify_events_with_active_caches(
+        self,
+        events: list[ResearchEventEnvelope],
+    ) -> bool:
         previous: str | None = None
         for event in events:
             try:
@@ -7799,6 +8234,99 @@ class ResearchEventStore:
         return self._verify_references_and_lifecycle(events)
 
     @staticmethod
+    def _verify_research_only_activation_input(
+        event: ResearchEventEnvelope,
+        *,
+        events: list[ResearchEventEnvelope],
+        events_by_hash: Mapping[str, ResearchEventEnvelope],
+        event_order: Mapping[str, int],
+    ) -> bool:
+        if event.event_type != "ResearchOnlyActivationRunInputRegistered":
+            return True
+        bundle = event.payload.get("bundle")
+        if not isinstance(bundle, Mapping) or event.run_id != bundle.get(
+            "research_cycle_id"
+        ):
+            return False
+        provider = events_by_hash.get(
+            str(bundle.get("provider_authority_decision_event_hash"))
+        )
+        snapshot = events_by_hash.get(str(bundle.get("pit_snapshot_event_hash")))
+        contract = events_by_hash.get(
+            str(bundle.get("resolved_contract_event_hash"))
+        )
+        train_valid = events_by_hash.get(
+            str(bundle.get("train_valid_snapshot_event_hash"))
+        )
+        watermark = events_by_hash.get(str(bundle.get("source_watermark")))
+        if (
+            provider is None
+            or provider.event_type != "ProviderAuthorityDecisionV1Recorded"
+            or provider.payload.get("authority_status")
+            not in {"best_effort", "verified_strict"}
+            or snapshot is None
+            or snapshot.event_type != "AsharePITSnapshotRecorded"
+            or contract is None
+            or contract.event_type != "ResolvedEvaluationContractRegistered"
+            or train_valid is None
+            or train_valid.event_type != "TrainValidDataSnapshotFrozen"
+            or watermark is None
+            or snapshot.payload.get("evaluation_policy_event_hash")
+            != contract.payload.get("evaluation_policy_event_hash")
+            or snapshot.payload.get("adapter_registration_event_hash")
+            != provider.payload.get("adapter_registration_event_hash")
+            or not snapshot.payload.get("artifact_refs")
+            or not train_valid.payload.get("artifact_refs")
+        ):
+            return False
+        interface_hashes = tuple(
+            str(value)
+            for value in provider.payload.get("interface_audit_event_hashes", ())
+        )
+        interfaces = tuple(events_by_hash.get(value) for value in interface_hashes)
+        if not interfaces or any(
+            source is None
+            or source.event_type != "ProviderInterfacePITAuditV1Recorded"
+            or source.payload.get("adapter_registration_event_hash")
+            != provider.payload.get("adapter_registration_event_hash")
+            for source in interfaces
+        ):
+            return False
+        field_hashes = tuple(
+            str(value)
+            for source in interfaces
+            if source is not None
+            for value in source.payload.get("field_audit_event_hashes", ())
+        )
+        fields = tuple(events_by_hash.get(value) for value in field_hashes)
+        if not fields or any(
+            source is None
+            or source.event_type != "ProviderFieldPITAuditV1Recorded"
+            or source.payload.get("adapter_registration_event_hash")
+            != provider.payload.get("adapter_registration_event_hash")
+            or not source.payload.get("audit", {}).get("audit_evidence_hashes")
+            for source in fields
+        ):
+            return False
+        sources = (
+            provider,
+            snapshot,
+            contract,
+            train_valid,
+            *interfaces,
+            *fields,
+        )
+        return bool(
+            all(source is not None for source in sources)
+            and all(
+                event_order[source.event_hash] <= event_order[watermark.event_hash]
+                < event_order[event.event_hash]
+                for source in sources
+                if source is not None
+            )
+        )
+
+    @staticmethod
     def _verify_references_and_lifecycle(events: list[ResearchEventEnvelope]) -> bool:
         started: dict[str, str] = {}
         terminated: set[str] = set()
@@ -7899,6 +8427,20 @@ class ResearchEventStore:
         events_by_hash = {event.event_hash: event for event in events}
         for event in events:
             payload = event.payload
+            if not ResearchEventStore._verify_activation_arm_start_event(
+                event,
+                events=events,
+                events_by_hash=events_by_hash,
+                event_order=event_order,
+            ):
+                return False
+            if not ResearchEventStore._verify_research_only_activation_input(
+                event,
+                events=events,
+                events_by_hash=events_by_hash,
+                event_order=event_order,
+            ):
+                return False
             run_seen_before = event.run_id in seen_run_ids
             seen_run_ids.add(event.run_id)
             if event.event_type == "RetrieverDecisionV4Recorded":
@@ -8079,6 +8621,17 @@ class ResearchEventStore:
             elif event.event_type == "ApplicabilityAssessmentRecorded":
                 contract = resolved_contract_events.get(str(payload["resolved_contract_hash"]))
                 definition = events_by_hash.get(str(payload["factor_definition_event_hash"]))
+                shared_activation_contract = bool(
+                    contract is not None
+                    and contract.run_id != event.run_id
+                    and ResearchEventStore._shared_activation_sources_in_events(
+                        events,
+                        run_id=event.run_id,
+                        contract_event_hash=contract.event_hash,
+                        snapshot_event_hash=None,
+                        before_event_hash=event.event_hash,
+                    )
+                )
                 key = (
                     str(payload["resolved_contract_hash"]),
                     str(payload["factor_spec_id"]),
@@ -8089,7 +8642,10 @@ class ResearchEventStore:
                     or contract is None
                     or definition is None
                     or definition.event_type != "FactorDefinitionRecorded"
-                    or contract.run_id != event.run_id
+                    or (
+                        contract.run_id != event.run_id
+                        and not shared_activation_contract
+                    )
                     or definition.run_id != event.run_id
                     or contract.event_hash not in payload["source_event_hashes"]
                     or definition.event_hash not in payload["source_event_hashes"]
@@ -8128,6 +8684,17 @@ class ResearchEventStore:
             elif event.event_type == "FactorOutputRecordedV3":
                 contract = events_by_hash.get(str(payload["contract_event_hash"]))
                 snapshot = events_by_hash.get(str(payload["pit_snapshot_event_hash"]))
+                shared_activation_sources = bool(
+                    contract is not None
+                    and snapshot is not None
+                    and ResearchEventStore._shared_activation_sources_in_events(
+                        events,
+                        run_id=event.run_id,
+                        contract_event_hash=contract.event_hash,
+                        snapshot_event_hash=snapshot.event_hash,
+                        before_event_hash=event.event_hash,
+                    )
+                )
                 definitions_for_factor = [
                     candidate
                     for candidate in events[: event_order[event.event_hash]]
@@ -8142,8 +8709,14 @@ class ResearchEventStore:
                     or snapshot is None
                     or snapshot.event_type != "AsharePITSnapshotRecorded"
                     or len(definitions_for_factor) != 1
-                    or contract.run_id != event.run_id
-                    or snapshot.run_id != event.run_id
+                    or (
+                        contract.run_id != event.run_id
+                        and not shared_activation_sources
+                    )
+                    or (
+                        snapshot.run_id != event.run_id
+                        and not shared_activation_sources
+                    )
                     or definitions_for_factor[0].run_id != event.run_id
                     or contract.payload["contract_hash"] != payload["resolved_contract_hash"]
                     or snapshot.payload["snapshot_hash"] != payload["pit_snapshot_hash"]
@@ -8290,7 +8863,8 @@ class ResearchEventStore:
                 contracts = [
                     item
                     for item in prior_events
-                    if item.event_type == "ResolvedEvaluationContractRegistered" and item.run_id == event.run_id
+                    if item.event_type == "ResolvedEvaluationContractRegistered"
+                    and item.event_hash in payload["source_event_hashes"]
                 ]
                 starts_for_run = [
                     item for item in prior_events if item.event_type == "TrialStarted" and item.run_id == event.run_id
@@ -8316,8 +8890,23 @@ class ResearchEventStore:
                         }
                     )
                 )
+                shared_activation_contract = bool(
+                    len(contracts) == 1
+                    and contracts[0].run_id != event.run_id
+                    and ResearchEventStore._shared_activation_sources_in_events(
+                        events,
+                        run_id=event.run_id,
+                        contract_event_hash=contracts[0].event_hash,
+                        snapshot_event_hash=None,
+                        before_event_hash=event.event_hash,
+                    )
+                )
                 if (
                     len(contracts) != 1
+                    or (
+                        contracts[0].run_id != event.run_id
+                        and not shared_activation_contract
+                    )
                     or contracts[0].payload["research_family_id"] != payload["research_family_id"]
                     or payload["source_event_hashes"] != expected_sources
                     or payload["trial_count"] != len(starts_for_run)
@@ -8475,13 +9064,27 @@ class ResearchEventStore:
                 )
                 sources = [events_by_hash.get(str(item)) for item in payload["source_event_hashes"]]
                 contract = resolved_contract_events.get(str(payload["resolved_contract_hash"]))
+                shared_activation_contract = bool(
+                    contract is not None
+                    and contract.run_id != event.run_id
+                    and ResearchEventStore._shared_activation_sources_in_events(
+                        events,
+                        run_id=event.run_id,
+                        contract_event_hash=contract.event_hash,
+                        snapshot_event_hash=None,
+                        before_event_hash=event.event_hash,
+                    )
+                )
                 if (
                     production_node_key in production_node_keys
                     or str(payload["trial_id"]) not in started
                     or str(payload["trial_id"]) in terminated
                     or str(payload["factor_spec_id"]) not in definitions
                     or contract is None
-                    or contract.run_id != event.run_id
+                    or (
+                        contract.run_id != event.run_id
+                        and not shared_activation_contract
+                    )
                     or payload["run_id"] != event.run_id
                     or any(source is None for source in sources)
                     or any(

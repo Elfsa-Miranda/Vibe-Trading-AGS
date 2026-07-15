@@ -616,20 +616,19 @@ class ProductionActivationCandidateFactoryV1:
             event
             for event in by_hash.values()
             if event.event_type == "ResolvedEvaluationContractRegistered"
-            and event.payload.get("resolved_contract_hash")
-            == request.resolved_contract_hash
+            and event.payload.get("contract_hash") == request.resolved_contract_hash
         ]
+        if len(contracts) != 1:
+            raise EventTransitionError("Decision v3 requires one resolved contract")
         if (
             snapshot.run_id != request.run_id
-            and (
-                len(contracts) != 1
-                or not self.evaluator._shared_activation_sources(
-                events=list(by_hash.values()),
-                run_id=request.run_id,
-                snapshot_event_hash=snapshot.event_hash,
-                contract_event_hash=contracts[0].event_hash,
-                )
-            )
+            or contracts[0].run_id != request.run_id
+        ) and not self.store._shared_activation_sources_in_events(
+            list(by_hash.values()),
+            run_id=request.run_id,
+            snapshot_event_hash=snapshot.event_hash,
+            contract_event_hash=contracts[0].event_hash,
+            before_event_hash=terminal.event_hash,
         ):
             raise EventTransitionError("Decision v3 snapshot crosses evaluation runs")
         scorecard = scorecards[0]

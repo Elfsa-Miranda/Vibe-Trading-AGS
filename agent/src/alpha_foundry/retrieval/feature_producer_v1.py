@@ -6,10 +6,11 @@ import hashlib
 import json
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping, cast
+from typing import Any, cast
 
 import pandas as pd  # type: ignore[import-untyped]
 
@@ -84,34 +85,48 @@ def _json_redaction_would_change(value: Any) -> bool:
     """Exact redaction-identity check without materializing a second panel."""
 
     safe_strings: set[tuple[str | None, str]] = set()
-
-    def visit(item: Any) -> bool:
+    sensitive_keys: dict[str, bool] = {}
+    pending: list[Any] = [value]
+    while pending:
+        item = pending.pop()
         if isinstance(item, Mapping):
             for raw_key, child in item.items():
                 key = str(raw_key)
-                if is_sensitive_key(key):
+                sensitive = sensitive_keys.get(key)
+                if sensitive is None:
+                    sensitive = is_sensitive_key(key)
+                    sensitive_keys[key] = sensitive
+                if sensitive:
                     if child != _REDACTED:
                         return True
-                elif isinstance(child, str):
+                    continue
+                if isinstance(child, str):
                     marker = (key, child)
                     if marker not in safe_strings:
                         if _redact_string(child, key=key) != child:
                             return True
                         safe_strings.add(marker)
-                elif visit(child):
-                    return True
-            return False
+                elif isinstance(child, (Mapping, list, tuple)):
+                    pending.append(child)
+            continue
         if isinstance(item, (list, tuple)):
-            return any(visit(child) for child in item)
+            for child in item:
+                if isinstance(child, str):
+                    marker = (None, child)
+                    if marker not in safe_strings:
+                        if _redact_string(child) != child:
+                            return True
+                        safe_strings.add(marker)
+                elif isinstance(child, (Mapping, list, tuple)):
+                    pending.append(child)
+            continue
         if isinstance(item, str):
             marker = (None, item)
             if marker not in safe_strings:
                 if _redact_string(item) != item:
                     return True
                 safe_strings.add(marker)
-        return False
-
-    return visit(value)
+    return False
 
 
 def _strict_json_object(raw: bytes, *, label: str) -> Mapping[str, Any]:
@@ -301,8 +316,9 @@ class RetrieverFeatureSourceV1:
             )
         ):
             raise ValueError("Retriever feature source has an invalid schema")
+        panel_cache: dict[str, tuple[str, FactorOutputPanel]] = {}
         candidates = tuple(
-            _candidate_from_dict(item)
+            _candidate_from_dict(item, panel_cache=panel_cache)
             for item in raw["candidates"]
             if isinstance(item, Mapping)
         )

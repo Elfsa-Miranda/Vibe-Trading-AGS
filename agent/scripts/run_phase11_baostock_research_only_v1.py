@@ -35,6 +35,13 @@ from src.research_ledger.hash_utils import canonical_json, canonical_json_hash
 CYCLE = "ags-v32-phase11-flat-topology-baostock-research-only-v1"
 
 
+def _validated_feature_commit(value: str) -> str:
+    normalized = value.strip().lower()
+    if len(normalized) != 40 or any(character not in "0123456789abcdef" for character in normalized):
+        raise ValueError("feature commit must be one exact 40-character Git commit hash")
+    return normalized
+
+
 class _ReplayedBaoStockResultV1:
     error_code = "0"
     error_msg = "success"
@@ -208,10 +215,14 @@ def freeze(
     train_end: str,
     valid_end: str,
     test_end: str,
+    feature_commit: str,
     replay_raw_root: Path | None = None,
 ) -> dict[str, object]:
-    root.mkdir(parents=True, exist_ok=True)
-    store = ResearchEventStore(root / "events.sqlite", artifact_root=root / "artifacts", flags=_flags(), code_version="phase11-baostock-research-only-v1")
+    feature_commit = _validated_feature_commit(feature_commit)
+    if root.exists():
+        raise ValueError("fresh research-only root already exists; refusing append")
+    root.mkdir(parents=True)
+    store = ResearchEventStore(root / "events.sqlite", artifact_root=root / "artifacts", flags=_flags(), code_version=feature_commit)
     raw_writer = AtomicContentAddressedArtifactWriter(store.artifact_root)
     adapter = _adapter(raw_writer=raw_writer, replay_raw_root=replay_raw_root)
     dates = _trading_dates(adapter, start, test_end)
@@ -287,7 +298,7 @@ def freeze(
         source_watermark=tail, limitation_codes=("BAOSTOCK_BEST_EFFORT_AUTHORITY", "RESEARCH_ONLY_EMPIRICAL_ACTIVATION"),
     )
     input_event = ResearchOnlyActivationRunInputServiceV1(store).register(run_id=CYCLE, bundle=bundle)
-    result = {"research_cycle_id": CYCLE, "bundle_hash": bundle.bundle_hash, "input_event_hash": input_event.event_hash,
+    result = {"research_cycle_id": CYCLE, "feature_commit": feature_commit, "bundle_hash": bundle.bundle_hash, "input_event_hash": input_event.event_hash,
               "provider_authority": authority.decision.to_dict(), "symbols": list(source_bundle.daily_membership.columns),
               "train_snapshot_hash": train.snapshot.snapshot_hash, "valid_snapshot_hash": valid.snapshot.snapshot_hash,
               "train_valid_snapshot_event_hash": combined.event.event_hash, "pit_snapshot_event_hash": snapshot.event.event_hash,
@@ -307,9 +318,10 @@ def main() -> int:
     parser.add_argument("--train-end", default="2025-04-30")
     parser.add_argument("--valid-end", default="2025-06-30")
     parser.add_argument("--test-end", default="2025-07-31")
+    parser.add_argument("--feature-commit", required=True)
     parser.add_argument("--replay-raw-root", type=Path)
     args = parser.parse_args()
-    print(json.dumps(freeze(root=args.root, start=args.start, train_end=args.train_end, valid_end=args.valid_end, test_end=args.test_end, replay_raw_root=args.replay_raw_root), sort_keys=True))
+    print(json.dumps(freeze(root=args.root, start=args.start, train_end=args.train_end, valid_end=args.valid_end, test_end=args.test_end, feature_commit=args.feature_commit, replay_raw_root=args.replay_raw_root), sort_keys=True))
     return 0
 
 

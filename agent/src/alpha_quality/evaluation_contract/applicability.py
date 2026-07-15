@@ -224,10 +224,24 @@ class ApplicabilityAssessmentServiceV1:
         events = {event.event_hash: event for event in self.store.query_events()}
         contract_event = events.get(contract_event_hash)
         factor_event = events.get(factor_definition_event_hash)
+        shared_activation_contract = bool(
+            contract_event is not None
+            and contract_event.run_id != run_id
+            and self.store._shared_activation_sources_in_events(
+                list(events.values()),
+                run_id=run_id,
+                contract_event_hash=contract_event.event_hash,
+                snapshot_event_hash=None,
+                before_event_hash=None,
+            )
+        )
         if (
             contract_event is None
             or contract_event.event_type != "ResolvedEvaluationContractRegistered"
-            or contract_event.run_id != run_id
+            or (
+                contract_event.run_id != run_id
+                and not shared_activation_contract
+            )
         ):
             raise EventTransitionError("applicability requires exact run contract")
         if (

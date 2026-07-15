@@ -581,6 +581,10 @@ class ResearchOnlyActivationRunInputServiceV1:
     def register(self, *, run_id: str, bundle: ResearchOnlyActivationRunInputBundleV1) -> ResearchEventEnvelope:
         if not isinstance(bundle, ResearchOnlyActivationRunInputBundleV1):
             raise TypeError("research-only Activation requires its closed input bundle")
+        if run_id != bundle.research_cycle_id:
+            raise EventTransitionError(
+                "research-only Activation run differs from its frozen cycle"
+            )
         events = self.store.query_events()
         by_hash = {event.event_hash: event for event in events}
         provider = by_hash.get(bundle.provider_authority_decision_event_hash)
@@ -594,6 +598,12 @@ class ResearchOnlyActivationRunInputServiceV1:
             raise EventTransitionError("research-only input requires an exact PIT snapshot")
         if contract is None or contract.event_type != "ResolvedEvaluationContractRegistered":
             raise EventTransitionError("research-only input requires a frozen resolved contract")
+        if snapshot.payload.get("evaluation_policy_event_hash") != contract.payload.get(
+            "evaluation_policy_event_hash"
+        ):
+            raise EventTransitionError(
+                "research-only input snapshot and resolved contract policy differ"
+            )
         if train_valid is None or train_valid.event_type != "TrainValidDataSnapshotFrozen":
             raise EventTransitionError("research-only input requires a frozen train/valid snapshot")
         if not snapshot.payload.get("artifact_refs") or not train_valid.payload.get("artifact_refs"):

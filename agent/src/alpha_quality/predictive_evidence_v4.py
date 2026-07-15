@@ -766,6 +766,19 @@ class PITPredictiveEvidenceServiceV4:
             pit_snapshot_event_hash=pit_snapshot_event_hash,
             persist_factor=True,
         )
+        with self.store._validation_cache_scope():
+            return self._record_rebuilt(run_id=run_id, rebuilt=rebuilt)
+
+    def _record_rebuilt(
+        self,
+        *,
+        run_id: str,
+        rebuilt: tuple[
+            FactorOutputArtifactV3,
+            PredictiveEvidenceV1,
+            PredictiveEvidenceV1,
+        ],
+    ) -> RecordedPredictiveEvidenceV4:
         factor_manifest_artifact = self.factor_artifacts.write_manifest(rebuilt[0])
         factor_event = self.store._append_producer_event(
             EventDraft(

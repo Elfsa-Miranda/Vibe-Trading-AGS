@@ -301,9 +301,18 @@ def build_claim_matrix(
             source_event_hashes=(observed.event_hash,),
         )
     )
+    legacy_pit_authority = pit.payload.get("pit_authority", {})
+    legacy_decision_grade = bool(
+        isinstance(legacy_pit_authority, Mapping)
+        and legacy_pit_authority.get("decision_grade") is True
+    )
     pit_available = (
         pit.payload["availability"] == "available"
-        and pit.payload["pit_authority"]["decision_grade"] is True
+        and (
+            pit.payload.get("evidence_grade") == "confirmatory"
+            or legacy_decision_grade
+        )
+        and not pit.payload.get("caps")
     )
     pit_blockers = tuple(pit.payload.get("caps", ())) or ("PIT_AUTHORITY_UNAVAILABLE",)
     for claim_type in (
@@ -495,6 +504,7 @@ def decide_narrow(
     claim_event_hash: str,
     selection_event_hash: str,
     contract_payload: Mapping[str, Any],
+    effective_maximum_promotion: str | None = None,
 ) -> NarrowQualityDecisionV4:
     by_type = {claim.claim_type: claim for claim in claims}
     reasons: set[str] = set()
@@ -551,9 +561,22 @@ def decide_narrow(
         "NO_LIVE_TRADING_MEANING",
     }
     profile_maximum = str(contract_payload["maximum_promotion"])
-    if profile_maximum == "research_only" and decision == "candidate_zoo":
+    effective_maximum = (
+        profile_maximum
+        if effective_maximum_promotion is None
+        else effective_maximum_promotion
+    )
+    if effective_maximum not in {
+        "reject", "research_only", "candidate_zoo", "paper_candidate", "forward_track"
+    }:
+        raise ValueError("effective promotion ceiling is invalid")
+    if effective_maximum == "research_only" and decision == "candidate_zoo":
         decision, tier = "research_only", 1
-        caps.add("PROFILE_PROMOTION_CEILING")
+        if profile_maximum == "research_only":
+            caps.add("PROFILE_PROMOTION_CEILING")
+        else:
+            caps.add("RESEARCH_ONLY_ACTIVATION_INPUT_CEILING")
+            limitations.add("RESEARCH_ONLY_ACTIVATION_INPUT")
         reasons = {"RESEARCH_ONLY_NONCOMPENSATORY_CAP"}
     content = {
         "schema_version": "narrow_quality_decision.v4",
@@ -785,6 +808,17 @@ class ClaimDecisionServiceV1:
             claim_event_hash=claim_event.event_hash,
             selection_event_hash=selection_event.event_hash,
             contract_payload=contract.payload,
+            effective_maximum_promotion=(
+                "research_only"
+                if self.store._shared_activation_sources_in_events(
+                    list(by_hash.values()),
+                    run_id=run_id,
+                    contract_event_hash=contract.event_hash,
+                    snapshot_event_hash=None,
+                    before_event_hash=secondary.event_hash,
+                )
+                else None
+            ),
         )
         decision_id = "quality-decision-v4-" + decision.decision_hash.removeprefix("sha256:")[:24]
         decision_event = self.store._append_producer_event(

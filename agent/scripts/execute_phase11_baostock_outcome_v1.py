@@ -67,7 +67,9 @@ from src.alpha_foundry.seed_bank import AlphaSeed, SeedBank
 from src.alpha_quality.decision_v2 import DecisionEvidenceRepository
 from src.alpha_quality.decision_v2.policy import DecisionV2Policy
 from src.alpha_quality.decision_v2.source_v3 import QualityDecisionV3Service
+from src.alpha_quality.baseline_v1 import _effective_sample
 from src.alpha_quality.flags import AGS_FLAG_DEFAULTS, ResolvedAGSFlags
+from src.alpha_quality.predictive_evidence_v4 import PITPredictiveEvidenceServiceV4
 from src.alpha_quality.production_evaluator_v1 import ProductionEvaluationRequestV1
 from src.alpha_quality.secondary_evidence_v1 import ComparisonPoolServiceV1
 from src.research_ledger.events import ResearchEventStore
@@ -88,7 +90,13 @@ SEED_FORMULAS = (
     "delta(close,1)",
 )
 NONIDENTITY_TEMPLATES = ("rank_wrap", "decay_3", "delay_1", "zscore_wrap")
-FEATURE_COMMIT = "d949434a485828a764cf5592b5fe144525e80563"
+
+
+def _validated_feature_commit(value: str) -> str:
+    normalized = value.strip().lower()
+    if len(normalized) != 40 or any(character not in "0123456789abcdef" for character in normalized):
+        raise ValueError("feature commit must be one exact 40-character Git commit hash")
+    return normalized
 
 
 def _flags() -> ResolvedAGSFlags:
@@ -105,12 +113,12 @@ def _flags() -> ResolvedAGSFlags:
     return ResolvedAGSFlags({name: name in enabled for name in AGS_FLAG_DEFAULTS})
 
 
-def _store(db: Path, artifacts: Path) -> ResearchEventStore:
+def _store(db: Path, artifacts: Path, feature_commit: str) -> ResearchEventStore:
     return ResearchEventStore(
         db,
         artifact_root=artifacts,
         flags=_flags(),
-        code_version=FEATURE_COMMIT,
+        code_version=_validated_feature_commit(feature_commit),
     )
 
 
@@ -267,6 +275,7 @@ def _bundle_sources(store: ResearchEventStore, input_event_hash: str) -> dict[st
         "retrieval_snapshot_event_hash": train_events[0].event_hash,
         "flat_policy_hash": str(raw["flat_policy_hash"]),
         "topology_policy_hash": str(raw["topology_policy_hash"]),
+        "maximum_promotion": str(raw["maximum_promotion"]),
     }
 
 
@@ -329,7 +338,37 @@ def _bootstrap(store: ResearchEventStore, input_event_hash: str) -> dict[str, An
     ) == 1
     baseline["exactly_one_dossier"] = len(baseline_dossiers) == 1
     baseline["replay_succeeds"] = store.verify_chain()
-    baseline["effective_sample_positive"] = baseline["evaluation_event_hash"] is not None
+    evaluation = _event(
+        store, str(baseline["evaluation_event_hash"]), "EvaluationRecorded"
+    )
+    scorecards = [
+        event
+        for event in store.query_events(event_type="ScorecardDecisionEvidenceV4Recorded")
+        if event.run_id == FAMILY
+        and event.payload["scorecard_evidence_hash"] == evaluation.payload["scorecard_hash"]
+    ]
+    if len(scorecards) != 1:
+        raise ValueError("baseline lacks one exact producer scorecard event")
+    predictive = PITPredictiveEvidenceServiceV4(store)._load_existing(scorecards[0])
+    observed_metrics = predictive.observed.split_metrics
+    baseline["effective_sample"] = _effective_sample(
+        predictive.observed.to_dict()
+    )
+    baseline["effective_dates"] = sum(
+        int(metrics.get("effective_dates", 0))
+        for metrics in observed_metrics.values()
+        if isinstance(metrics, Mapping)
+    )
+    baseline["effective_sample_positive"] = baseline["effective_sample"] > 0
+    baseline["maximum_promotion"] = sources["maximum_promotion"]
+    access_types = {
+        "FinalTestAccessRecorded",
+        "FinalTestArtifactRecorded",
+        "ForwardObservationRecorded",
+    }
+    baseline["test_final_forward_access_count"] = sum(
+        event.event_type in access_types for event in store.query_events()
+    )
     return {
         "baseline": baseline,
         "seeds": seeds,
@@ -339,15 +378,15 @@ def _bootstrap(store: ResearchEventStore, input_event_hash: str) -> dict[str, An
 
 def _compatibility_plan(
     *, stage: str, groups: tuple[str, ...], seeds: tuple[int, ...],
-    source: Mapping[str, str], watermark: str,
+    source: Mapping[str, str], watermark: str, feature_commit: str,
 ) -> ActivationExperimentPlan:
     flat = FlatControlPolicyV1.create(
         max_candidates_per_seed=5, max_candidates=32, trial_budget=64
     )
     topology = ActivationRetrieverPolicy()
-    hashes = lambda name: canonical_json_hash({"phase11": name, "feature_commit": FEATURE_COMMIT})
+    hashes = lambda name: canonical_json_hash({"phase11": name, "feature_commit": feature_commit})
     provenance = ActivationProvenance(
-        code_version=FEATURE_COMMIT,
+        code_version=feature_commit,
         code_hash=hashes("code"),
         feature_flags=_flags().as_dict(),
         runtime_manifest_hash=hashes("runtime"),
@@ -540,7 +579,7 @@ def _child_arm(payload: Mapping[str, Any], queue: Any) -> None:
     try:
         db = Path(str(payload["db"]))
         artifacts = Path(str(payload["artifacts"]))
-        store = _store(db, artifacts)
+        store = _store(db, artifacts, str(payload["feature_commit"]))
         source = _bundle_sources(store, str(payload["input_event_hash"]))
         factory = ProductionActivationCandidateFactoryV1(
             store=store, quality_decision_v3=_quality(store)
@@ -637,7 +676,6 @@ def _child_arm(payload: Mapping[str, Any], queue: Any) -> None:
         queue.put(
             {
                 "ok": True,
-                "db": str(db),
                 "attempts": len(result.attempts),
                 "terminal_refs": list(completed.trial_terminal_event_refs),
                 "evaluation_refs": list(completed.evaluation_event_refs),
@@ -646,7 +684,6 @@ def _child_arm(payload: Mapping[str, Any], queue: Any) -> None:
                 "arm_started_event_hash": completed.arm_started_event_hash,
                 "arm_completed_event_hash": completed.arm_completed_event_hash,
                 "generation_event_hash": generation_event_hash,
-                "chain_verified": store.verify_chain(),
             }
         )
     except BaseException as exc:
@@ -667,9 +704,19 @@ def _run_spawn(payload: dict[str, Any], timeout: float) -> dict[str, Any]:
         elapsed = time.perf_counter() - started
         if elapsed > timeout:
             timed_out = True
-            for child in root.children(recursive=True):
-                child.kill()
-            root.kill()
+            try:
+                children = root.children(recursive=True)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                children = []
+            for child in children:
+                try:
+                    child.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            try:
+                root.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
             break
         try:
             tree = [root, *root.children(recursive=True)]
@@ -704,20 +751,39 @@ def _run_spawn(payload: dict[str, Any], timeout: float) -> dict[str, Any]:
     return result
 
 
-def _derive_arm(result: Mapping[str, Any]) -> dict[str, Any]:
-    if not result.get("ok"):
-        return {
-            "complete": False,
-            "attempts": 0,
-            "yield": 0,
-            "duplicate_rate": 0.0,
-            "failure_rate": 1.0,
-            **dict(result["resource"]),
-            "error": result.get("error"),
-        }
-    store = _store(Path(str(result["db"])), Path(str(result["db"])).parents[1] / "artifacts")
-    terminals = [_event(store, value, "TrialTerminated") for value in result["terminal_refs"]]
-    decisions = [_event(store, value, "QualityDecisionV4Recorded") for value in result["quality_refs"]]
+def _derive_arm(
+    result: Mapping[str, Any],
+    *,
+    store: ResearchEventStore,
+    execution_run_id: str,
+) -> dict[str, Any]:
+    all_events = store.query_events()
+    events = [event for event in all_events if event.run_id == execution_run_id]
+    starts = [event for event in events if event.event_type == "TrialStarted"]
+    terminals = [event for event in events if event.event_type == "TrialTerminated"]
+    evaluations = [event for event in events if event.event_type == "EvaluationRecorded"]
+    production_decisions = [
+        event for event in events if event.event_type == "QualityDecisionV4Recorded"
+    ]
+    decisions = [event for event in events if event.event_type == "QualityDecisionV3Recorded"]
+    dossiers = [
+        event for event in events if event.event_type == "TrialTerminalDossierRecorded"
+    ]
+    generation_events = [
+        event
+        for event in events
+        if event.event_type == "ActivationGenerationConsumptionV4Recorded"
+    ]
+    arm_starts = [
+        event
+        for event in events
+        if event.event_type == "ProductionActivationArmStartedV1Recorded"
+    ]
+    arm_completions = [
+        event
+        for event in events
+        if event.event_type == "ProductionActivationArmCompletedV1Recorded"
+    ]
     statuses = [str(item.payload["status"]) for item in terminals]
     qualified = {
         str(item.payload["factor_spec_id"])
@@ -725,20 +791,73 @@ def _derive_arm(result: Mapping[str, Any]) -> dict[str, Any]:
         if item.payload["decision"] in {"research_only", "candidate_zoo", "paper_candidate", "forward_track"}
     }
     failures = {"reject", "skip", "invalid", "timeout", "error", "infrastructure_failure"}
+    open_attempts = max(0, len(starts) - len(terminals))
+    completion_sources_exact = False
+    if len(arm_completions) == 1:
+        completion = arm_completions[0].payload
+        completion_sources_exact = (
+            set(completion["trial_terminal_event_hashes"])
+            == {event.event_hash for event in terminals}
+            and set(completion["evaluation_event_hashes"])
+            == {event.event_hash for event in evaluations}
+            and set(completion["quality_decision_event_hashes"])
+            == {event.event_hash for event in production_decisions}
+            and set(completion["terminal_dossier_event_hashes"])
+            == {event.event_hash for event in dossiers}
+        )
+    access_types = {
+        "FinalTestAccessRecorded",
+        "FinalTestArtifactRecorded",
+        "ForwardObservationRecorded",
+    }
+    access_count = sum(event.event_type in access_types for event in all_events)
+    complete = bool(
+        result.get("ok")
+        and result.get("chain_verified")
+        and not result["resource"]["timed_out"]
+        and len(arm_starts) == 1
+        and len(arm_completions) == 1
+        and len(starts) == 32
+        and len(terminals) == 32
+        and open_attempts == 0
+        and completion_sources_exact
+        and access_count == 0
+    )
+    failure_count = sum(status in failures for status in statuses) + open_attempts
     return {
-        "complete": bool(result["chain_verified"]) and len(terminals) == 32,
-        "attempts": len(terminals),
+        "complete": complete,
+        "attempts": len(starts),
+        "terminal_count": len(terminals),
+        "open_attempt_count": open_attempts,
         "yield": len(qualified),
         "duplicate_rate": statuses.count("duplicate") / 32,
-        "failure_rate": sum(status in failures for status in statuses) / 32,
+        "failure_rate": failure_count / 32,
+        "failure_count": failure_count,
+        "test_final_forward_access_count": access_count,
         "status_counts": dict(Counter(statuses)),
-        "terminal_refs": list(result["terminal_refs"]),
-        "evaluation_refs": list(result["evaluation_refs"]),
-        "quality_refs": list(result["quality_refs"]),
-        "dossier_refs": list(result["dossier_refs"]),
-        "arm_started_event_hash": result["arm_started_event_hash"],
-        "arm_completed_event_hash": result["arm_completed_event_hash"],
+        "terminal_refs": sorted(event.event_hash for event in terminals),
+        "evaluation_refs": sorted(event.event_hash for event in evaluations),
+        "production_quality_refs": sorted(
+            event.event_hash for event in production_decisions
+        ),
+        "quality_decision_v3_refs": sorted(event.event_hash for event in decisions),
+        "dossier_refs": sorted(event.event_hash for event in dossiers),
+        "generation_event_refs": sorted(
+            event.event_hash for event in generation_events
+        ),
+        "arm_started_event_hash": (
+            arm_starts[0].event_hash if len(arm_starts) == 1 else None
+        ),
+        "arm_completed_event_hash": (
+            arm_completions[0].event_hash if len(arm_completions) == 1 else None
+        ),
+        "completion_sources_exact": completion_sources_exact,
+        "chain_verified": bool(result.get("chain_verified")),
+        "replay_scope": result.get("replay_scope"),
+        "replay_error": result.get("replay_error"),
         **dict(result["resource"]),
+        "worker_ok": bool(result.get("ok")),
+        "worker_error": result.get("error"),
     }
 
 
@@ -751,51 +870,98 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> str:
 def _run_stage(
     *, root: Path, master_db: Path, artifacts: Path, plan: ActivationExperimentPlan,
     formal: FormalActivationStagePlanV3, bootstrap: Mapping[str, Any],
-    prepared: Mapping[str, Mapping[str, Any]], input_event_hash: str,
+    sources: Mapping[str, str], input_event_hash: str, feature_commit: str,
 ) -> list[dict[str, Any]]:
     schedules = {item.run_group_id: item for item in freeze_pair_schedules_v3(formal)}
     records: list[dict[str, Any]] = []
     for group in formal.run_group_ids:
+        prepared_db = root / "events" / f"{formal.stage}-{group}-prepared.sqlite"
+        if prepared_db.exists():
+            raise ValueError("group preparation database already exists; refusing append")
+        _backup_db(master_db, prepared_db)
+        prepared_store = _store(prepared_db, artifacts, feature_commit)
+        prepared = _prepare_group(
+            prepared_store,
+            plan,
+            group,
+            bootstrap,
+            sources,
+            RetrieverActionTemplateServiceV1(
+                store=prepared_store, flags=prepared_store.flags
+            ),
+            RetrieverFeatureSourceServiceV1(
+                prepared_store, flags=prepared_store.flags
+            ),
+            RetrieverDecisionV7Service(prepared_store),
+        )
+        preparation_chain_verified = prepared_store.verify_chain()
+        preparation = {
+            **prepared,
+            "chain_verified": preparation_chain_verified,
+            "scope": "one_frozen_group_prepared_before_either_arm_v1",
+        }
+        preparation["preparation_hash"] = canonical_json_hash(preparation)
+        preparation_artifact_hash = _write_json(
+            root / "preparations" / f"{formal.stage}-{group}.json",
+            preparation,
+        )
         pair: dict[str, Any] = {
             "run_group_id": group,
             "seed": schedules[group].seed,
             "arm_order": list(schedules[group].arm_order),
-            "pair_id": prepared[group]["pair_id"],
+            "pair_id": prepared["pair_id"],
             "formal_schedule_hash": schedules[group].schedule_hash,
+            "preparation": preparation,
+            "preparation_artifact_hash": preparation_artifact_hash,
             "arms": {},
         }
         for arm in schedules[group].arm_order:
             execution_arm = "control" if arm == "flat" else "treatment"
+            execution_run_id = activation_arm_execution_run_id(
+                plan_hash=plan.plan_hash,
+                run_group_id=group,
+                arm=execution_arm,  # type: ignore[arg-type]
+            )
             db = root / "events" / f"{formal.stage}-{group}-{arm}.sqlite"
-            _backup_db(master_db, db)
+            _backup_db(prepared_db, db)
             raw = _run_spawn(
                 {
                     "db": str(db),
                     "artifacts": str(artifacts),
+                    "feature_commit": feature_commit,
                     "input_event_hash": input_event_hash,
                     "plan_hash": plan.plan_hash,
-                    "pair_id": prepared[group]["pair_id"],
+                    "pair_id": prepared["pair_id"],
                     "group": group,
                     "arm": arm,
-                    "execution_run_id": activation_arm_execution_run_id(
-                        plan_hash=plan.plan_hash,
-                        run_group_id=group,
-                        arm=execution_arm,  # type: ignore[arg-type]
-                    ),
-                    "retrieval_event_hash": prepared[group][f"{arm}_event_hash"],
-                    "flat_event_hash": prepared[group]["flat_event_hash"],
-                    "feature_event_hash": prepared[group]["feature_event_hash"],
+                    "execution_run_id": execution_run_id,
+                    "retrieval_event_hash": prepared[f"{arm}_event_hash"],
+                    "flat_event_hash": prepared["flat_event_hash"],
+                    "feature_event_hash": prepared["feature_event_hash"],
                     "seed": schedules[group].seed,
                     "seeds": bootstrap["seeds"],
                     "eligible_event_watermark": bootstrap["eligible_event_watermark"],
                 },
                 formal.timeout_seconds,
             )
-            pair["arms"][arm] = _derive_arm(raw)
+            raw["replay_scope"] = "parent_post_resource_measurement_exact_chain_v1"
+            arm_store = _store(db, artifacts, feature_commit)
+            try:
+                raw["chain_verified"] = arm_store.verify_chain()
+                raw["replay_error"] = None
+            except BaseException as exc:
+                raw["chain_verified"] = False
+                raw["replay_error"] = type(exc).__name__
+            pair["arms"][arm] = _derive_arm(
+                raw,
+                store=arm_store,
+                execution_run_id=execution_run_id,
+            )
             pair["arms"][arm]["worker_result_hash"] = canonical_json_hash(raw)
-            _write_json(
+            resource_payload = dict(pair["arms"][arm])
+            pair["arms"][arm]["resource_artifact_hash"] = _write_json(
                 root / "resources" / f"{formal.stage}-{group}-{arm}.json",
-                pair["arms"][arm],
+                resource_payload,
             )
         pair["complete"] = all(pair["arms"][arm]["complete"] for arm in ("flat", "topology"))
         pair["pair_hash"] = canonical_json_hash(pair)
@@ -851,14 +1017,19 @@ def _summarize(pairs: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _inventory(roots: list[Path]) -> list[dict[str, Any]]:
+def _inventory(
+    roots: list[Path],
+    *,
+    database_relative_path: Path = Path("events.sqlite"),
+    failure_reason: str = "PROVIDER_AUDIT_REGISTERED_AFTER_SNAPSHOT",
+) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for root in roots:
-        db = root / "events.sqlite"
+        db = root / database_relative_path
         count = 0
         snapshot_hash = None
         if db.exists():
-            uri = f"file:{db.resolve().as_posix()}?mode=ro"
+            uri = f"file:{db.resolve().as_posix()}?mode=ro&immutable=1"
             with sqlite3.connect(uri, uri=True) as connection:
                 tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if "research_events" in tables:
@@ -874,7 +1045,7 @@ def _inventory(roots: list[Path]) -> list[dict[str, Any]]:
                 "event_count": count,
                 "partition_count": sum(1 for _ in root.rglob("*.parquet")),
                 "snapshot_hash": snapshot_hash,
-                "failure_reason": "PROVIDER_AUDIT_REGISTERED_AFTER_SNAPSHOT",
+                "failure_reason": failure_reason,
                 "analysis_eligible": False,
                 "pilot_eligible": False,
             }
@@ -882,9 +1053,19 @@ def _inventory(roots: list[Path]) -> list[dict[str, Any]]:
     return result
 
 
-def execute(root: Path, incomplete_roots: list[Path]) -> dict[str, Any]:
+def execute(
+    root: Path,
+    incomplete_roots: list[Path],
+    prior_incomplete_outcome_roots: list[Path],
+    *,
+    feature_commit: str,
+) -> dict[str, Any]:
+    feature_commit = _validated_feature_commit(feature_commit)
     if not root.exists() or not (root / "events.sqlite").exists():
         raise ValueError("fresh frozen input root is unavailable")
+    manifest = json.loads((root / "replay_manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("feature_commit") != feature_commit:
+        raise ValueError("fresh input bundle was not frozen from the requested feature commit")
     master_dir = root / "events"
     master_dir.mkdir(exist_ok=True)
     master_db = master_dir / "master.sqlite"
@@ -892,12 +1073,28 @@ def execute(root: Path, incomplete_roots: list[Path]) -> dict[str, Any]:
         raise ValueError("outcome master database already exists; refusing append")
     shutil.move(str(root / "events.sqlite"), master_db)
     artifacts = root / "artifacts"
-    store = _store(master_db, artifacts)
-    manifest = json.loads((root / "replay_manifest.json").read_text(encoding="utf-8"))
+    store = _store(master_db, artifacts, feature_commit)
     input_event_hash = str(manifest["input_event_hash"])
-    inventory = _inventory(incomplete_roots)
+    inventory = _inventory(incomplete_roots) + _inventory(
+        prior_incomplete_outcome_roots,
+        database_relative_path=Path("events") / "master.sqlite",
+        failure_reason=(
+            "PREVIOUS_OUTCOME_ROOT_INCOMPLETE_AFTER_FULL_ARM_TIMEOUT_"
+            "AND_REPEATED_IMMUTABLE_PROJECTION_REPLAY"
+        ),
+    )
     inventory_hash = _write_json(root / "excluded_incomplete_roots.json", {"roots": inventory})
     bootstrap = _bootstrap(store, input_event_hash)
+    baseline = bootstrap["baseline"]
+    if not (
+        baseline["effective_sample_positive"]
+        and baseline["exactly_one_terminal"]
+        and baseline["exactly_one_dossier"]
+        and baseline["replay_succeeds"]
+        and baseline["test_final_forward_access_count"] == 0
+        and baseline["maximum_promotion"] == "research_only"
+    ):
+        raise RuntimeError("baseline smoke did not satisfy the frozen execution gate")
     baseline_hash = canonical_json_hash(bootstrap["baseline"])
     sources = _bundle_sources(store, input_event_hash)
     dry_groups = ("dry-run-00", "dry-run-01")
@@ -907,10 +1104,12 @@ def execute(root: Path, incomplete_roots: list[Path]) -> dict[str, Any]:
     dry_compat = _compatibility_plan(
         stage="dry-run", groups=dry_groups, seeds=dry_seeds,
         source=sources, watermark=bootstrap["eligible_event_watermark"],
+        feature_commit=feature_commit,
     )
     pilot_compat = _compatibility_plan(
         stage="pilot", groups=pilot_groups, seeds=pilot_seeds,
         source=sources, watermark=bootstrap["eligible_event_watermark"],
+        feature_commit=feature_commit,
     )
     evidence = ActivationEvidenceService(store)
     evidence.register_plan(dry_compat)
@@ -925,39 +1124,22 @@ def execute(root: Path, incomplete_roots: list[Path]) -> dict[str, Any]:
     )
     _write_json(root / "plans" / "dry_run_formal_v3.json", dry_formal.to_dict())
     _write_json(root / "plans" / "pilot_formal_v3.json", pilot_formal.to_dict())
-    action_service = RetrieverActionTemplateServiceV1(store=store, flags=store.flags)
-    feature_service = RetrieverFeatureSourceServiceV1(store, flags=store.flags)
-    decision_service = RetrieverDecisionV7Service(store)
-    prepared_dry = {
-        group: _prepare_group(
-            store, dry_compat, group, bootstrap, sources,
-            action_service, feature_service, decision_service,
-        )
-        for group in dry_groups
-    }
-    prepared_pilot = {
-        group: _prepare_group(
-            store, pilot_compat, group, bootstrap, sources,
-            action_service, feature_service, decision_service,
-        )
-        for group in pilot_groups
-    }
     dry = _run_stage(
         root=root, master_db=master_db, artifacts=artifacts, plan=dry_compat,
-        formal=dry_formal, bootstrap=bootstrap, prepared=prepared_dry,
-        input_event_hash=input_event_hash,
+        formal=dry_formal, bootstrap=bootstrap, sources=sources,
+        input_event_hash=input_event_hash, feature_commit=feature_commit,
     )
     if not all(item["complete"] for item in dry):
         pilot: list[dict[str, Any]] = []
     else:
         pilot = _run_stage(
             root=root, master_db=master_db, artifacts=artifacts, plan=pilot_compat,
-            formal=pilot_formal, bootstrap=bootstrap, prepared=prepared_pilot,
-            input_event_hash=input_event_hash,
+            formal=pilot_formal, bootstrap=bootstrap, sources=sources,
+            input_event_hash=input_event_hash, feature_commit=feature_commit,
         )
     summary = {
         "schema_version": "baostock_research_only_phase11_outcome.v1",
-        "feature_commit": FEATURE_COMMIT,
+        "feature_commit": feature_commit,
         "research_family_id": FAMILY,
         "fresh_run_id": canonical_json_hash({"root": root.name, "bundle": manifest["bundle_hash"]}),
         "input": manifest,
@@ -977,7 +1159,9 @@ def execute(root: Path, incomplete_roots: list[Path]) -> dict[str, Any]:
         "official_policy_effect": "none",
         "live_trading_meaning": "none",
         "maximum_promotion": "research_only",
-        "test_final_forward_access_count": 0,
+        "test_final_forward_access_count": bootstrap["baseline"][
+            "test_final_forward_access_count"
+        ],
         "master_chain_verified": store.verify_chain(),
     }
     summary["outcome_hash"] = canonical_json_hash(summary)
@@ -989,8 +1173,17 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--incomplete-root", action="append", default=[], type=Path)
+    parser.add_argument(
+        "--prior-incomplete-outcome-root", action="append", default=[], type=Path
+    )
+    parser.add_argument("--feature-commit", required=True)
     args = parser.parse_args()
-    result = execute(args.root.resolve(), [item.resolve() for item in args.incomplete_root])
+    result = execute(
+        args.root.resolve(),
+        [item.resolve() for item in args.incomplete_root],
+        [item.resolve() for item in args.prior_incomplete_outcome_root],
+        feature_commit=args.feature_commit,
+    )
     print(json.dumps(result, sort_keys=True))
     return 0
 
