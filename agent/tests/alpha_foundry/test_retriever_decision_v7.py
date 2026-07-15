@@ -13,6 +13,7 @@ from src.alpha_foundry.flat_schedule_v1 import PreArmFlatScheduleServiceV1
 from src.alpha_foundry.mutators import SeedMutator
 from src.alpha_foundry.retrieval.action_template_v1 import RetrieverActionTemplateServiceV1
 from src.alpha_foundry.retrieval.feature_producer_v1 import RetrieverFeatureSourceServiceV1
+from src.alpha_foundry.retrieval.model import DiscoveryEvidenceView
 from src.alpha_foundry.retrieval.policy import ActivationRetrieverPolicy
 from src.alpha_foundry.retrieval.service_v7 import RetrieverDecisionV7Service
 from src.alpha_foundry.search import AlphaFoundrySearch
@@ -166,6 +167,34 @@ def test_feature_and_v7_services_share_store_bound_immutable_projection_cache(
     assert feature._discovery_cache is store.__dict__[
         "_immutable_discovery_projection_cache"
     ]
+
+
+def test_v7_verifies_same_immutable_evidence_once_per_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, source, schedule, recorded = _record(tmp_path)
+    store.__dict__["_immutable_discovery_projection_cache"].clear()
+    service = RetrieverDecisionV7Service(store)
+    calls = 0
+    original = DiscoveryEvidenceView.verify_integrity
+
+    def counted_verify(self):
+        nonlocal calls
+        calls += 1
+        return original(self)
+
+    monkeypatch.setattr(DiscoveryEvidenceView, "verify_integrity", counted_verify)
+    kwargs = {
+        "schedule_event_hash": schedule.event.event_hash,
+        "feature_source_event_hash": source.event.event_hash,
+        "decision_event_hash": recorded.event.event_hash,
+    }
+
+    service.rebuild(**kwargs)
+    service.rebuild(**kwargs)
+
+    assert calls == 1
 
 
 def test_chain_verify_memoizes_only_nested_exact_upstream_validation(

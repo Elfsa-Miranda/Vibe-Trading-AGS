@@ -85,6 +85,7 @@ class RetrieverDecisionV7Service:
         self._discovery_cache = store.__dict__.setdefault(
             "_immutable_discovery_projection_cache", {}
         )
+        self._action_retrievers: dict[str, ActionShadowRetrieverV5] = {}
 
     def record(
         self, *, schedule_event_hash: str, feature_source_event_hash: str,
@@ -233,9 +234,13 @@ class RetrieverDecisionV7Service:
             )
             self._discovery_cache[replay_key] = evidence
         official_ids = tuple(str(item["candidate_id"]) for item in schedule.candidates)
-        decision = ActionShadowRetrieverV5(
-            flags=self.store.flags, policy=policy
-        ).decide(
+        action_retriever = self._action_retrievers.get(policy.policy_hash)
+        if action_retriever is None:
+            action_retriever = ActionShadowRetrieverV5(
+                flags=self.store.flags, policy=policy
+            )
+            self._action_retrievers[policy.policy_hash] = action_retriever
+        decision = action_retriever.decide(
             official_candidate_ids=official_ids,
             evidence=evidence,
             query=FactorDAGQuery(evidence.factual.dag),

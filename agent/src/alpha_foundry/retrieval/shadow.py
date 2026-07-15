@@ -41,6 +41,16 @@ class ShadowRetriever:
         if any(not flags.enabled(name) for name in required):
             raise RuntimeError("topology retriever capability is disabled")
         self.policy = policy or RetrieverPolicy()
+        self._verified_evidence_by_identity: dict[int, DiscoveryEvidenceView] = {}
+
+    def _verify_evidence_once(self, evidence: DiscoveryEvidenceView) -> None:
+        identity = id(evidence)
+        if self._verified_evidence_by_identity.get(identity) is evidence:
+            return
+        evidence.verify_integrity()
+        # Retain the immutable object itself, not only its id, so Python object-id
+        # reuse cannot turn this service-local memo into an authority shortcut.
+        self._verified_evidence_by_identity[identity] = evidence
 
     def decide(
         self,
@@ -54,7 +64,7 @@ class ShadowRetriever:
     ) -> ShadowDecision:
         if not isinstance(evidence, DiscoveryEvidenceView):
             raise TypeError("retriever accepts DiscoveryEvidenceView only")
-        evidence.verify_integrity()
+        self._verify_evidence_once(evidence)
         if query.projection.projection_hash != evidence.factual.dag.projection_hash:
             raise ValueError("retriever DAG differs from its discovery evidence view")
         if query.projection.source_watermark_event_hash != evidence.source_watermark:
