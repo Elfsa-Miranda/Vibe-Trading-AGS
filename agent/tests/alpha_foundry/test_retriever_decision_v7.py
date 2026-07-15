@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import src.alpha_foundry.retrieval.shadow as retrieval_shadow
 
 from src.alpha_foundry.activation import ActivationEvidenceService, ActivationExperimentPlan
 from src.alpha_foundry.activation.runner import activation_arm_execution_run_id
@@ -195,6 +196,39 @@ def test_v7_verifies_same_immutable_evidence_once_per_service(
     service.rebuild(**kwargs)
 
     assert calls == 1
+
+
+def test_v7_reuses_action_independent_retrieval_features_across_groups(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, _, source, schedule, recorded = _record(tmp_path)
+    store.__dict__["_immutable_discovery_projection_cache"].clear()
+    service = RetrieverDecisionV7Service(store)
+    calls = 0
+    original = retrieval_shadow.build_retrieval_features
+
+    def counted_build(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        retrieval_shadow,
+        "build_retrieval_features",
+        counted_build,
+    )
+    kwargs = {
+        "schedule_event_hash": schedule.event.event_hash,
+        "feature_source_event_hash": source.event.event_hash,
+        "decision_event_hash": recorded.event.event_hash,
+    }
+
+    first = service.rebuild(**kwargs)
+    second = service.rebuild(**kwargs)
+
+    assert calls == len({item.factor_spec_id for item in first[0].components})
+    assert second[0].decision_hash == first[0].decision_hash
 
 
 def test_chain_verify_memoizes_only_nested_exact_upstream_validation(

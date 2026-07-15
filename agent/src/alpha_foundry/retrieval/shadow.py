@@ -9,7 +9,7 @@ from typing import Any, Mapping
 
 from src.alpha_foundry.dag.query import FactorDAGQuery
 from src.alpha_foundry.dsl.canonical import thaw_canonical_ast
-from src.alpha_foundry.retrieval.features import build_retrieval_features
+from src.alpha_foundry.retrieval.features import RetrievalFeatures, build_retrieval_features
 from src.alpha_foundry.retrieval.model import (
     DiscoveryEvidenceView,
     RetrievalCandidate,
@@ -42,6 +42,7 @@ class ShadowRetriever:
             raise RuntimeError("topology retriever capability is disabled")
         self.policy = policy or RetrieverPolicy()
         self._verified_evidence_by_identity: dict[int, DiscoveryEvidenceView] = {}
+        self._feature_cache: dict[tuple[object, ...], RetrievalFeatures] = {}
 
     def _verify_evidence_once(self, evidence: DiscoveryEvidenceView) -> None:
         identity = id(evidence)
@@ -51,6 +52,37 @@ class ShadowRetriever:
         # Retain the immutable object itself, not only its id, so Python object-id
         # reuse cannot turn this service-local memo into an authority shortcut.
         self._verified_evidence_by_identity[identity] = evidence
+
+    def _retrieval_features(
+        self,
+        candidate: RetrievalCandidate,
+        *,
+        evidence: DiscoveryEvidenceView,
+        query: FactorDAGQuery,
+    ) -> RetrievalFeatures:
+        # Retrieval features depend on immutable panels/AST projection/episodic
+        # state and policy, not on the group-bound action id, seed, propensity,
+        # or selection result.  Those latter values are still rebuilt below.
+        key: tuple[object, ...] = (
+            self.policy.policy_hash,
+            query.projection.projection_hash,
+            evidence.episodic.projection_hash,
+            candidate.factor_spec_id,
+            candidate.output_panel.panel_hash,
+            tuple(panel.panel_hash for panel in candidate.reference_panels),
+            candidate.semantic.embedding_hash,
+            candidate.estimated_cost,
+        )
+        features = self._feature_cache.get(key)
+        if features is None:
+            features = build_retrieval_features(
+                candidate,
+                query=query,
+                episodic=evidence.episodic,
+                policy=self.policy,
+            )
+            self._feature_cache[key] = features
+        return features
 
     def decide(
         self,
@@ -110,11 +142,10 @@ class ShadowRetriever:
         }
         components: list[RetrievalComponent] = []
         for candidate in candidates:
-            features = build_retrieval_features(
+            features = self._retrieval_features(
                 candidate,
+                evidence=evidence,
                 query=query,
-                episodic=evidence.episodic,
-                policy=self.policy,
             )
             topology = features.topology_score
             topology_floor = (
