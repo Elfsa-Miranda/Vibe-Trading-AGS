@@ -70,22 +70,6 @@ Alpha Zoo / mechanism seed
 → preregistered Flat-vs-Topology Activation
 ```
 
-### Current status
-
-| Dimension | Status |
-|---|---|
-| AGS v3.1 discovery and adversarial research foundation | Implemented |
-| AGS v3.2 production-evaluation Phase 1–11 | Integrated and audited |
-| Replayable pre-final baseline | Completed, `research_only` |
-| Baseline effective sample / typed events | 21 / 34 |
-| Final-test access during baseline | 0 |
-| Final / falsification / forward authority code | Implemented and accepted |
-| Formal Activation infrastructure and protocol | Implemented |
-| Formal Activation effectiveness result | `inconclusive` |
-| Official search policy | `flat_with_topology_shadow` |
-| Active topology influence | false |
-| Empirical profitable-alpha claim | Not established |
-| Live/broker/order impact | None |
 
 ### What this repository proves
 
