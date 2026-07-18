@@ -27,9 +27,10 @@
 </p>
 
 > [!IMPORTANT]
-> **AGS 是一套生产级研究评估系统，不代表已经发现可盈利 Alpha，也不是实时交易授权层。**
->
-> v3.1 因子发现基础与 v3.2 Phase 1–11 生产评估链路均已实现并完成审计。当前实证结论仍然刻意保持更窄：旗舰 Baseline 为 `research_only`；Formal Retriever Activation 为 `inconclusive`；官方搜索策略仍是 `flat_with_topology_shadow`；Topology 不会主动影响正式搜索结果。
+> **AGS 是一套生产级研究评估系统，
+v3.1 回答：如何发现、评估、证伪和持续观察高质量因子。
+v3.2 回答：谁有资格产生证据、每项证据能够支持什么声明、缺失证据时应该限制哪项结论。**
+
 
 <p align="center">
   <a href="#三分钟理解项目">三分钟概览</a> ·
@@ -70,24 +71,6 @@ Alpha Zoo / 机制 Seed
 → 预注册 Flat-vs-Topology Activation
 ```
 
-### 当前状态
-
-| 维度 | 状态 |
-|---|---|
-| AGS v3.1 因子发现与对抗研究基础 | 已实现 |
-| AGS v3.2 Phase 1–11 生产评估 | 已集成并审计 |
-| 可回放 Pre-final Baseline | 已完成，`research_only` |
-| Baseline Effective Sample / Typed Event | 21 / 34 |
-| Baseline Final-test Access | 0 |
-| Final / Falsification / Forward Authority | 已实现并接受 |
-| Formal Activation Infrastructure / Protocol | 已实现 |
-| Formal Activation Effectiveness | `inconclusive` |
-| Official Search Policy | `flat_with_topology_shadow` |
-| Active Topology Influence | false |
-| Empirical Profitable-alpha Claim | 尚未建立 |
-| Live / Broker / Order Impact | 无 |
-
-### 这个仓库能证明的能力
 
 | 方向 | 已展示能力 |
 |---|---|
@@ -192,6 +175,260 @@ Caller 提交精确已注册 Ref
 后续 Hardening 增加 BaoStock Research-only Input Freezer、Exact Raw-partition Replay 与 Outcome Orchestration，并复用现有 Evaluator、Retriever、Decision、Event Store 和 Artifact System。
 
 ---
+
+**1. v3.1 实际建立了怎样的因子研究系统
+
+v3.1 不是单一模块，而是一条完整的研究链：
+
+现有 Alpha Zoo / Bench
+→ 多周期质量 Scorecard
+→ 数据快照与 Trial Ledger
+→ 安全 DSL Alpha Foundry
+→ 机制驱动候选搜索
+→ 新颖性、残差与组合增量价值
+→ 确定性质量裁决
+→ 冻结 Forward Tracking
+→ 只读报告与对抗性 Demo
+
+这条链路的核心目标不是让 Agent 随机生成大量公式，而是：
+
+发现机制合理的因子，同时系统性地淘汰看起来漂亮但由未来数据、幸存者偏差、重复因子、高换手或多重试验造成的虚假 Alpha。
+
+A. 从单一 IC 扩展为多维因子质量评估
+
+v3.1 的 Scorecard 不只看一个周期的 IC，而是覆盖：
+
+1/5/10/20 日多周期 IC 和 Rank IC；
+train / valid / final-test 分离；
+大于 1 日的重叠收益使用 HAC/Newey–West 或非重叠样本；
+明确 execution_lag ≥ 1，防止当根信号当根成交；
+IC decay、近期稳定性、覆盖率；
+A 股 ST、停牌、涨跌停、新股、低流动性 mask；
+目标权重、换手率、成本后执行收益；
+数据 PIT 与幸存者偏差状态。
+
+这意味着一个高 IC 因子仍可能因为：
+
+同根成交；
+样本外崩塌；
+大量不可交易股票；
+成本超过毛收益；
+只在幸存股票上成立；
+
+而无法晋级。
+
+B. 建立受限 DSL，而不是让 LLM 生成任意 Python
+
+v3.1 设计了封闭的公式语言：
+
+operator allowlist；
+field allowlist；
+AST 深度、节点、窗口和公式长度上限；
+禁止 eval、exec、动态 import 和 shell；
+future_* 字段和负 lag 直接拒绝；
+每个候选记录 formula hash 和 parent seed。
+
+候选不是纯随机字符串，而是从已有 Alpha Zoo 种子出发，通过有边界的变异产生：
+
+窗口扫描；
+输入字段替换；
+行业或规模中性化；
+decay/smoothing；
+机制相关交互项。
+
+这让 LLM 或搜索器只能在定义好的公式空间内提出假设，无法绕过数据与执行规则。
+
+C. 机制优先，而不是公式垃圾生成
+
+v3.1 还设计了 A 股流动性条件反转案例，将候选族拆为：
+
+原始短周期反转；
+成交量或成交额冲击条件反转；
+行业中性反转；
+规模残差化反转；
+衰减平滑反转；
+流动性冲击×反转交互；
+公共因子重复对照；
+future/noise 等恶意负对照。
+
+研究问题因此不是“哪条随机公式 IC 最高”，而是：
+
+在控制流动性、行业规模暴露、涨跌停可交易性和换手成本后，反转机制是否仍然存在。
+
+D. 从“单因子高分”升级到“组合增量价值”
+
+v3.1 对候选进行多层重复和拥挤诊断：
+
+公式身份；
+因子截面 Rank Correlation；
+IC 序列相关；
+多空收益相关；
+残差 Rank IC；
+最近邻和聚类；
+加入现有因子池后的：
+delta portfolio IR
+delta max drawdown
+delta turnover
+
+因此：
+
+一个高 IC 但和现有因子完全重复的候选可以被拒绝；
+一个单因子 IC 较低，但与现有池正交、能改善组合 IR 的候选可以保留。
+
+这比“按 IC 排序取前十”专业得多。
+
+E. 所有失败也属于研究数据
+
+Trial Ledger 记录：
+
+success；
+reject；
+skip；
+error；
+crash。
+
+这样系统能知道搜索了多少候选、失败了多少次、是否存在多重试验压力，而不是只展示最终最漂亮的一条。
+
+Data Snapshot 同时绑定：
+
+数据源；
+universe；
+日期；
+PIT 状态；
+幸存者偏差；
+缺失率；
+数据配置的脱敏哈希。
+F. 冻结 Forward Tracking
+
+候选通过质量判断后，公式、参数和 kill rules 会被冻结：
+
+观察结果只能追加；
+不能回头修改历史；
+不能看到表现不好后再换规则；
+不足最小观察数时不能声称成功；
+新公式或新 kill rule 必须建立新计划。
+
+这一部分解决的是研究者看到未来表现后“重写过去”的问题。
+
+2. v3.2 的真正改进不只是“更严格”
+
+v3.1 的潜在问题是：虽然已经有许多质量模块，但系统仍可能把不同性质的证据压缩到一个总分或总决策中。
+
+v3.2 将问题进一步拆成：
+
+A. 证据必须五重绑定
+
+任何能影响研究晋级的证据都需要：
+
+content-bound：内容和语义哈希稳定；
+scope-bound：时间、universe、split、timing 和 policy 明确；
+producer-bound：只能由授权 producer 产生；
+source-bound：可追溯到具体事件和数据工件；
+replay-bound：可从准确的历史水位独立重算。
+
+这解决了“文件有 hash，但不知道由谁算、用什么数据算、能否重算”的问题。
+
+B. 从一个总决策拆为 Claim Matrix
+
+v3.2 不再让一个 research_only 或 reject 混合表达所有问题，而是分别判断：
+
+冻结样本上的预测关联；
+PIT 历史 universe 泛化；
+PIT-scoped 预测信号；
+A 股可实施性；
+精确重复；
+新颖性；
+残差预测；
+组合边际价值；
+机制；
+final-test；
+forward monitoring。
+
+例如：
+
+PIT 不可用，只限制历史 universe 泛化和实施性，不能抹掉已经合法计算出的描述性关联；
+execution 不可用，只阻止“成本后可实施 Alpha”声明，不应删除预测统计；
+duplicate 否定 novelty，但可以保留“成功复现某个公共因子”的结论；
+机制检验失败，不自动使预测证据消失。
+
+这就是 v3.2 最有价值的原则：
+
+晋级 fail-closed，独立分析 fail-soft。
+
+缺证据时不能越级，但也不能把所有合法分析一并清空。
+
+C. 唯一串行参考 Evaluator
+
+评估器只接受：
+
+run/trial 身份；
+factor definition event；
+frozen contract；
+snapshot event；
+source watermark；
+comparison pool reference。
+
+它不接受调用方传入：
+
+IC；
+return；
+cost；
+score；
+decision；
+warning；
+hard failure。
+
+系统按照固定顺序自己重建：
+
+合同与数据水位
+→ Factor Output
+→ Observed / PIT Predictive
+→ Identity
+→ Execution
+→ Complement / Mechanism
+→ Claim Assessments
+→ Narrow Decision
+→ 唯一 Terminal
+→ Dossier
+
+这不仅防止调用方造假，也为之后 DAG 并行化提供了“串行真值实现”。
+
+D. A 股执行模型进一步状态化
+
+v3.2 不再把目标权重变化直接当成真实成交，而是区分：
+
+target weights；
+submitted trades；
+filled trades；
+actual holdings；
+sellable quantity；
+当日新买数量；
+未成交金额；
+涨停买入受阻；
+跌停卖出受阻；
+停牌与不可定价持仓；
+初次建仓成本；
+最终清仓成本；
+gross / cost / net return。
+
+并处理：
+
+T+1；
+涨停只阻止买入；
+跌停只阻止卖出；
+停牌时持仓继续存在；
+退出指数后不可新开仓但可平仓；
+ST、公司行为和退市；
+缺失收益的预注册情景。
+E. 三层研究产物
+
+v3.2 为不同粒度设计：
+
+每个 attempt：TrialTerminalDossier
+每个 run：ExperimentRunReport
+达到最低分析条件的候选：CandidateResearchDossier
+
+报告只能展示证据，永远不能反过来成为 Decision 输入。**
 
 ## 系统架构
 
@@ -565,20 +802,6 @@ powershell -ExecutionPolicy Bypass -File scripts\ags_p0_acceptance.ps1
 | [`agent/research_evidence/activation_phase11/phase11_execution_record.json`](agent/research_evidence/activation_phase11/phase11_execution_record.json) | Formal Activation Record |
 | [`agent/research_evidence/activation_enablement_v2/activation_readiness_v4.json`](agent/research_evidence/activation_enablement_v2/activation_readiness_v4.json) | Immutable Readiness Snapshot |
 | [`docs/alpha-genesis-known-limitations.md`](docs/alpha-genesis-known-limitations.md) | 显式 Limitation |
-
----
-
-## 下一项 Evidence Milestone
-
-下一步最有含金量的结果不是 Retriever v8/v9，也不是再堆一层架构，而是一个新的 Formal Research Cycle：
-
-1. 对选定 Provider 建立严格 Field-level PIT Authority；
-2. 提供 Producer-bound Real Train / Validation Input；
-3. 形成 Source-complete Whole-arm Resource / Replay Evidence；
-4. 生成没有 Blocker 的新 Readiness Record；
-5. 完成 Pilot Pair；
-6. 按 Pilot Variance 预注册 Confirmatory Design；
-7. 诚实输出 Approved、Rejected、Invalidated 或 Inconclusive。
 
 ---
 
