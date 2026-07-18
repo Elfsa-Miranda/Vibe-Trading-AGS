@@ -140,7 +140,9 @@ v3.1 建立了 Current-main Compatible、Feature-flagged 的完整因子研究�
 
 高质量因子被定义为 Predictive、Robust、Novel、Tradable、Portfolio-useful、Explainable、Reproducible 与 Forward-testable，而不是单纯高 IC。
 
-**v3.1 实际建立了怎样的因子研究系统
+**v3.1 实际建立了怎样的因子研究系统**
+
+```text
 v3.1 不是单一模块，而是一条完整的研究链：
 现有 Alpha Zoo / Bench
 → 多周期质量 Scorecard
@@ -151,6 +153,7 @@ v3.1 不是单一模块，而是一条完整的研究链：
 → 确定性质量裁决
 → 冻结 Forward Tracking
 → 只读报告与对抗性 Demo**
+```
 
 ## AGS v3.2——生产评估与声明权威
 
