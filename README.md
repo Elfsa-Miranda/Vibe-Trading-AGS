@@ -379,41 +379,7 @@ For the detailed data contracts, execution state inventory, contamination taxono
 
 ## Verified results
 
-### Replayable flagship baseline
 
-| Field | Recorded value |
-|---|---|
-| Formula | `neg(delta(close,5))` |
-| Status / decision | `COMPLETED_RESEARCH_ONLY` / `research_only` |
-| Authority grade | `external_unverified_bundled_historical_fixture` |
-| Dates / symbols | 72 / 8 |
-| Effective sample | 21 |
-| Typed events | 34 |
-| Signal / entry | `close_t` / `open_t_plus_1` |
-| Horizon / rebalance | 5 / 5 |
-| Chain verified | true |
-| Serial retry equal | true |
-| Final-test access | 0 |
-| Forward observations | 0 |
-| Candidate dossier / run report | generated / generated |
-
-This baseline proves pipeline execution, exact replay, split isolation, and honest reporting—not profitability.
-
-### Formal Retriever Activation
-
-| Item | Recorded state |
-|---|---|
-| Infrastructure dry-run groups / arms | 2 / 4 |
-| Frozen exploratory pilot pairs | 12 |
-| Counterbalancing | 6 Flat-first / 6 Topology-first |
-| Complete pilot pairs | 0 |
-| Complete confirmatory pairs | 0 |
-| Fabricated outcomes | 0 |
-| Verdict | `inconclusive` |
-| Official policy | `flat_with_topology_shadow` |
-| Active topology influence | false |
-
-The system safely stops when authority or inputs are insufficient instead of manufacturing uplift.
 
 ### Integrated validation record
 
