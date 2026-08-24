@@ -1,0 +1,32 @@
+name: Agent governance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - codex/agent-reliability-main
+
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install governance test dependency
+        run: python -m pip install --disable-pip-version-check pytest
+      - name: Validate execution plans
+        run: python scripts/validate_execplans.py --format json --output agent/research_evidence/governance/execplan_validation.json
+      - name: Run governance tests
+        run: python -m pytest agent/tests/governance -q --tb=short
+      - name: Upload validation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-governance-validation
+          path: agent/research_evidence/governance/execplan_validation.json

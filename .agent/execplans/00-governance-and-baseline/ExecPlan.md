@@ -1,13 +1,13 @@
 # Establish enforceable Agent engineering governance and a reproducible baseline
 
 **Plan-ID:** AGS-AR-00  
-**Status:** PROPOSED  
+**Status:** ACTIVE
 **Stage:** 00  
 **Owner:** Repository maintainer / implementing agent  
 **Created:** 2026-08-24  
 **Last-Updated:** 2026-08-24  
-**Base-Ref:** `codex/ags-v32-review-hardening` at plan-authoring time  
-**Base-SHA:** `TO_BE_CAPTURED_BEFORE_ACTIVATION`  
+**Base-Ref:** `codex/agent-reliability-main`
+**Base-SHA:** `561fb5ddc9d778021da18083462b8583e60ee848`
 **Depends-On:** NONE  
 **Supersedes:** The agent-workflow portions of `AGENT_CONTRIBUTOR_GUIDE.md` only where this plan explicitly migrates them into root `AGENTS.md`; the guide otherwise remains valid  
 **Target-Outcome:** Every substantial change is governed by a machine-validated, commit-bound ExecPlan and begins from a truthful, reproducible repository baseline.
@@ -341,8 +341,8 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
 
 ## Progress
 
-- [ ] (2026-08-24) Replace `Base-SHA` with the exact activation commit and record tree state.
-- [ ] Install the governance constitution and stage plans.
+- [x] (2026-08-24) Replaced `Base-SHA` with `561fb5ddc9d778021da18083462b8583e60ee848`; Stage 00 worktree started clean on `codex/agent-reliability-00-governance`.
+- [x] Governance constitution and all eight stage plans were installed by bootstrap commit `561fb5ddc9d778021da18083462b8583e60ee848`.
 - [ ] Implement validator and adversarial tests.
 - [ ] Implement baseline capture/verification and tamper tests.
 - [ ] Add offline governance CI.
@@ -356,6 +356,12 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Evidence: Repository path inspection.
 - Observation: The current workflow is filtered to `main` while the public default branch was observed as `codex/ags-v32-review-hardening`.
   Evidence: Repository metadata and `.github/workflows/test.yml`; verify again at activation because this is mutable.
+- Observation: The user selected the current GitHub default commit `60c27c2d817523fa3f909a43f721a6b78fec1c59` as the program source base. Bootstrap is the single local commit `561fb5ddc9d778021da18083462b8583e60ee848` on top of that source.
+  Evidence: local `git fetch personal codex/ags-v32-review-hardening`; integration branch history.
+- Observation: The supplied ZIP's manifest had a stale entry for `BUNDLE_VALIDATION.json`. Its actual ZIP bytes were `2456` and SHA-256 `aa34088a874cb4b16a498dd7242b6def02102a279e235511649be4fe8298d082`, rather than the declared `2351` bytes and SHA-256 `1ec5c8057d82cd7013e71ce2cd42267a4bc3aa1fbaf7230364d3d70a0a68339f`.
+  Evidence: reopened ZIP and post-extraction hash verification. The bootstrap manifest was repaired only for this entry; all fourteen entries, all eight plan hashes, and the validation report now verify.
+- Observation: the Windows `python` app-execution alias is unavailable in this environment. The repository-supported interpreter must be discovered and recorded; no package installation is authorized merely to satisfy a baseline command.
+  Evidence: `python --version` exited nonzero before implementation.
 
 ## Decision Log
 
@@ -367,6 +373,10 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Alternatives: Fix all failures first; omit failed checks.
   Rationale: A truthful baseline can contain failures; hiding them destroys comparison validity.
   Date/Author: 2026-08-24 / plan author.
+- Decision: Repair the supplied bundle manifest's one stale validation-report size/hash entry locally before bootstrap.
+  Alternatives: retain a knowingly invalid manifest; wait for a replacement ZIP.
+  Rationale: the user instructed continuous execution after the discrepancy was reported. The repair is minimal, uses reopened ZIP bytes, leaves the validation report and every plan unchanged, and is fully recorded here.
+  Date/Author: 2026-08-24 / implementing agent.
 
 ## Outcomes & Retrospective
 
@@ -375,3 +385,4 @@ Not started. At completion, compare actual governance coverage, validator defect
 ## Plan Revision Log
 
 - 2026-08-24: Initial high-assurance plan created from repository inspection and official ExecPlan/agent-instruction guidance.
+- 2026-08-24: Activated on bootstrap commit `561fb5ddc9d778021da18083462b8583e60ee848`; recorded GitHub source-base selection, bundle-manifest repair, and Python launcher discovery.

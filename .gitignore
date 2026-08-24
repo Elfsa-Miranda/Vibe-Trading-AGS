@@ -82,8 +82,8 @@ agent/tests/test_e2e_*.py
 # Local working notes
 NOTES.md
 
-# Agent tool aliases (auto-generated mirror of CLAUDE.md)
-AGENTS.md
+# Root agent governance is a tracked source of truth; generated tool aliases stay ignored.
+!AGENTS.md
 
 .DS_Store
 
