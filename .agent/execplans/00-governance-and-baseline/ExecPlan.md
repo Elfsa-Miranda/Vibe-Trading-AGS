@@ -348,10 +348,11 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
 - [x] Governance constitution and all eight stage plans were installed by bootstrap commit `561fb5ddc9d778021da18083462b8583e60ee848`.
 - [x] Implemented validator and adversarial tests; focused result before final status update: 18 passed.
 - [x] Implemented baseline capture/verification, tamper, dependency-hash, path, duplicate-JSON, redaction, timeout, and idempotence tests.
-- [x] Added least-privilege local governance workflow definition; remote execution is blocked by the user's no-push/no-PR authorization boundary.
+- [x] Added least-privilege governance workflow definition and Stage-branch push coverage; the user authorized Stage pushes on 2026-08-25, while pull-request creation remains unauthorized.
 - [x] Performed independent full-diff review; its initial blockers were remediated and follow-up review requested.
 - [x] Ran final runnable commands and captured truthful local evidence for commit `662bfa069548f98c9488953ecb028c945bb5d94c`; broad backend regression remains a recorded FAIL due a pre-existing missing script.
 - [x] Marked every trace row with its actual state; Stage remains BLOCKED and is not eligible for merge.
+- [x] (2026-08-25) Re-ran current-HEAD focused verification: 19 governance tests passed; ExecPlan validation, compile checks, and `git diff --check` passed.
 
 ## Surprises & Discoveries
 
@@ -388,6 +389,10 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Alternatives: push or open a PR; mark the untracked local evidence as tracked despite the SHA mismatch; relax acceptance states.
   Rationale: each alternative conflicts with explicit user authorization or the plan's evidence rules.
   Date/Author: 2026-08-24 / implementing agent.
+- Decision: Accept the user's 2026-08-25 authorization to push each Stage branch and extend the workflow's push filter to those isolated branches; do not open or modify a pull request without separate authorization.
+  Alternatives: leave Stage pushes without a CI trigger; push an unmerged Stage commit directly to the integration branch; open a pull request.
+  Rationale: Stage-branch CI provides final-commit evidence without bypassing local merge gates or expanding the authorization beyond push.
+  Date/Author: 2026-08-25 / implementing agent.
 
 ## Outcomes & Retrospective
 
@@ -398,3 +403,4 @@ Local implementation now includes strict plan parsing, cross-plan identifiers, c
 - 2026-08-24: Initial high-assurance plan created from repository inspection and official ExecPlan/agent-instruction guidance.
 - 2026-08-24: Activated on bootstrap commit `561fb5ddc9d778021da18083462b8583e60ee848`; recorded GitHub source-base selection, bundle-manifest repair, and Python launcher discovery.
 - 2026-08-24: Marked BLOCKED pending permitted remote CI execution, resolution of tracked-evidence versus final-SHA semantics, and a non-governance owner for the existing broad-regression collection failure.
+- 2026-08-25: Recorded Stage-push authorization, added Stage-branch CI triggering, and recorded current-HEAD focused verification; the evidence self-reference and broad-regression blockers remain unresolved.
