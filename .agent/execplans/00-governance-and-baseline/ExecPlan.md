@@ -360,6 +360,7 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
 - [x] (2026-08-25) Final independent follow-up review confirmed the remaining four findings closed and reported no remaining locally fixable P1/P2 at that revision.
 - [x] (2026-08-25) Blocker audit proved that root `scripts/__init__.py` hid the existing `agent/scripts` namespace contribution. Removed the conflicting file, added a governance regression test, and restored the BaoStock replay slice to 3/3 passing; focused governance verification is now 45/45 under both pytest and the offline runner.
 - [x] (2026-08-25) Independent review of `ef344feeb703e41b6c823372c0adcece74901767` found async/generator false-pass handling, dependency-environment binding, import-resolution coverage, and over-specific failure attribution gaps. Remediation rejects unsupported async/generator tests, binds interpreter/build/package inventory, rejects a different direct Python executable, resolves the actual split-namespace module in the guard, and keeps the environment-sensitive activation cause INCONCLUSIVE; the offline suite is now 48/48.
+- [x] (2026-08-25) Follow-up review confirmed those four findings closed and found one remaining Python-entrypoint bypass. Direct-environment matching now covers `pythonw`, `pypyw`, and `py` variants with adversarial copied-interpreter cases.
 
 ## Surprises & Discoveries
 
@@ -437,3 +438,4 @@ Local implementation now includes strict plan parsing, row- and column-aware tra
 - 2026-08-25: Completed four independent review/fix rounds; final follow-up found no remaining locally fixable P1/P2 while preserving the two genuine Stage blockers.
 - 2026-08-25: Corrected the broad-failure diagnosis, removed the Stage-introduced namespace shadow, and added a focused regression test before restarting final-SHA gates.
 - 2026-08-25: Closed the independent review findings on async/generator false passes, dependency-environment identity, actual namespace resolution, and environment-sensitive activation-failure attribution.
+- 2026-08-25: Closed the follow-up `pythonw`/launcher bypass before restarting final-SHA gates.

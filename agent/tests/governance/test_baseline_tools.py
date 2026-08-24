@@ -193,23 +193,36 @@ def test_capture_rejects_an_empty_command_set(tmp_path: Path) -> None:
 
 def test_capture_rejects_a_different_python_environment(tmp_path: Path) -> None:
     root = _repository(tmp_path)
-    output = root / "agent" / "research_evidence" / "agent_baseline" / "wrong-python" / "baseline_manifest.json"
     copied_root = tmp_path / "other-environment"
     copied_root.mkdir()
-    copied_python = copied_root / ("python.exe" if sys.platform == "win32" else "python")
-    shutil.copy2(sys.executable, copied_python)
-    command = f'{copied_python} -c "print(\'wrong interpreter\')"'
-
-    result = subprocess.run(
-        [sys.executable, str(CAPTURE), "--root", str(root), "--output", str(output), "--command", command],
-        text=True,
-        capture_output=True,
-        check=False,
+    names = (
+        ("python.exe", "pythonw.exe", "py.exe")
+        if sys.platform == "win32"
+        else ("python", "pythonw", "py")
     )
+    for index, name in enumerate(names):
+        output = (
+            root
+            / "agent"
+            / "research_evidence"
+            / "agent_baseline"
+            / f"wrong-python-{index}"
+            / "baseline_manifest.json"
+        )
+        copied_python = copied_root / name
+        shutil.copy2(sys.executable, copied_python)
+        command = f'{copied_python} -c "print(\'wrong interpreter\')"'
 
-    assert result.returncode == 2
-    assert "PYTHON_ENVIRONMENT_MISMATCH" in result.stderr
-    assert not output.exists()
+        result = subprocess.run(
+            [sys.executable, str(CAPTURE), "--root", str(root), "--output", str(output), "--command", command],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        assert result.returncode == 2
+        assert "PYTHON_ENVIRONMENT_MISMATCH" in result.stderr
+        assert not output.exists()
 
 
 def test_missing_tool_and_timeout_are_typed_blocked_records(tmp_path: Path) -> None:

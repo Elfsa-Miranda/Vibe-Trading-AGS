@@ -32,7 +32,9 @@ POSIX_PATH_PATTERN = re.compile(r"(?m)(?<![:/\w.])/(?!/)[^\r\n]*")
 SENSITIVE_OPTION = re.compile(
     r"(?i)^--?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|authorization)$"
 )
-PYTHON_EXECUTABLE_PATTERN = re.compile(r"(?i)^(?:python|pypy)(?:\d+(?:\.\d+)*)?(?:\.exe)?$")
+PYTHON_EXECUTABLE_PATTERN = re.compile(
+    r"(?i)^(?:(?:python|pypy)w?(?:\d+(?:\.\d+)*)?w?|pyw?)(?:\.exe)?$"
+)
 TOP_LEVEL_FIELDS = {
     "schema_version",
     "repository",
