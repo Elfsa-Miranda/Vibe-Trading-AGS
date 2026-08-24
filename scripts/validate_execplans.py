@@ -85,7 +85,14 @@ def _metadata(text: str) -> dict[str, str]:
 
 
 def _defined_ids(text: str) -> list[str]:
-    return [match.group(1) for match in re.finditer(r"^\s*(?:[-*]\s+)?((?:REQ|INV|DEL|NC|RISK|AC|TEST|EVID)-[A-Z0-9][A-Z0-9-]*)\s*:", text, re.MULTILINE)]
+    trace_heading = "## Requirement Traceability Matrix"
+    start = text.find(trace_heading)
+    if start >= 0:
+        remainder = text[start + len(trace_heading) :]
+        next_heading = remainder.find("\n## ")
+        text = text[:start] + ("" if next_heading < 0 else remainder[next_heading:])
+    pattern = r"^\s*(?:[-*]\s+)?`?((?:REQ|INV|DEL|NC|RISK|AC|TEST|EVID)-[A-Z0-9][A-Z0-9-]*)`?\s*:"
+    return [match.group(1) for match in re.finditer(pattern, text, re.MULTILINE)]
 
 
 def _traceability_ids(text: str) -> set[str]:
@@ -96,7 +103,7 @@ def _traceability_ids(text: str) -> set[str]:
     remainder = text[start + len(trace_heading) :]
     next_heading = remainder.find("\n## ")
     table = remainder if next_heading < 0 else remainder[:next_heading]
-    return set(re.findall(r"\|\s*((?:REQ|INV|DEL|NC|RISK|AC|TEST|EVID)-[A-Z0-9][A-Z0-9-]*)\s*\|", table))
+    return set(re.findall(r"\b(?:REQ|INV|DEL|NC|RISK|AC|TEST|EVID)-[A-Z0-9][A-Z0-9-]*\b", table))
 
 
 def validate_plan(path: Path) -> PlanValidationResult:
@@ -129,7 +136,7 @@ def validate_plan(path: Path) -> PlanValidationResult:
     if len(definitions) != len(set(definitions)):
         errors.append("DUPLICATE_ID")
     traceability = _traceability_ids(text)
-    missing = [identifier for identifier in definitions if identifier.startswith("REQ-") and identifier not in traceability]
+    missing = [identifier for identifier in definitions if identifier.startswith(("REQ-", "INV-", "AC-")) and identifier not in traceability]
     if missing:
         errors.append("MISSING_TRACEABILITY")
     if status in {"ACTIVE", "COMPLETE"} and re.search(r"^\s*(?:[-*]\s*)?(?:TO_BE_CAPTURED|TBD)\s*$", text, re.MULTILINE):
@@ -157,6 +164,13 @@ def validate_repository(root: Path) -> RepositoryValidationResult:
     identifiers = [plan.plan_id for plan in plans if plan.plan_id]
     if len(identifiers) != len(set(identifiers)):
         errors.append("DUPLICATE_PLAN_ID")
+    definition_owners: dict[str, str] = {}
+    for plan in plans:
+        source = root / plan.path
+        for identifier in _defined_ids(source.read_text(encoding="utf-8")):
+            owner = definition_owners.setdefault(identifier, plan.path)
+            if owner != plan.path:
+                errors.append("CROSS_PLAN_DUPLICATE_ID")
     for plan in plans:
         errors.extend(f"{Path(plan.path).parent.name}:{code}" for code in plan.errors)
         warnings.extend(f"{Path(plan.path).parent.name}:{code}" for code in plan.warnings)

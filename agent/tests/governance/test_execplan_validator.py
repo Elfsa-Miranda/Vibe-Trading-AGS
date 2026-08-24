@@ -75,6 +75,8 @@ def _plan(status: str = "PROPOSED", extra: str = "") -> str:
                     "| Requirement | Implementation | Test | Evidence | State |",
                     "|---|---|---|---|---|",
                     f"| REQ-TEST-01 | `x.py` | TEST-TEST-01 | EVID-TEST-01 | {state} |",
+                    f"| INV-TEST-01 | `x.py` | TEST-TEST-01 | EVID-TEST-01 | {state} |",
+                    f"| AC-TEST-01 | `x.py` | TEST-TEST-01 | EVID-TEST-01 | {state} |",
                 ]
             )
         elif section == "Observability and Evidence Artifacts":
@@ -121,6 +123,15 @@ def test_incomplete_traceability_has_typed_error(tmp_path: Path) -> None:
     assert "MISSING_TRACEABILITY" in result.errors
 
 
+def test_missing_invariant_or_acceptance_traceability_has_typed_error(tmp_path: Path) -> None:
+    path = tmp_path / "ExecPlan.md"
+    path.write_text(_plan().replace("| INV-TEST-01 |", "| INV-OTHER-01 |").replace("| AC-TEST-01 |", "| AC-OTHER-01 |"), encoding="utf-8")
+
+    result = validate_plan(path)
+
+    assert "MISSING_TRACEABILITY" in result.errors
+
+
 def test_complete_plan_cannot_retain_non_pass_acceptance(tmp_path: Path) -> None:
     path = tmp_path / "ExecPlan.md"
     path.write_text(_plan(status="COMPLETE").replace("State: PASS", "State: PROPOSED"), encoding="utf-8")
@@ -143,3 +154,16 @@ def test_repository_report_uses_repository_relative_paths() -> None:
     report = validate_repository(REPOSITORY_ROOT)
 
     assert all(not Path(plan.path).is_absolute() for plan in report.plans)
+
+
+def test_cross_plan_duplicate_identifier_has_typed_error(tmp_path: Path) -> None:
+    plans_root = tmp_path / ".agent" / "execplans"
+    for stage in range(8):
+        plan = _plan().replace("AGS-AR-99", f"AGS-AR-{stage:02d}").replace("**Stage:** 99", f"**Stage:** {stage:02d}")
+        target = plans_root / f"{stage:02d}-stage" / "ExecPlan.md"
+        target.parent.mkdir(parents=True)
+        target.write_text(plan, encoding="utf-8")
+
+    report = validate_repository(tmp_path)
+
+    assert "CROSS_PLAN_DUPLICATE_ID" in report.errors

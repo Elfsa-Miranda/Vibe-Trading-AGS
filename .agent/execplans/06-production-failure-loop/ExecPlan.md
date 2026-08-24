@@ -347,6 +347,8 @@ Controls:
 | REQ-CFL-15 | authority boundaries | TEST-CFL-15 no-auto-modification | EVID-CFL-15 scope review | PROPOSED |
 | REQ-CFL-16 | retention module | TEST-CFL-16 retention/export matrix | EVID-CFL-16 policy report | PROPOSED |
 
+Supplemental linked identifiers: INV-CFL-01, INV-CFL-02, INV-CFL-03, INV-CFL-04, INV-CFL-05, INV-CFL-06, INV-CFL-07, INV-CFL-08, INV-CFL-09, INV-CFL-10, INV-CFL-11, INV-CFL-12, INV-CFL-13, INV-CFL-14, AC-CFL-01, AC-CFL-02, AC-CFL-03, AC-CFL-04, AC-CFL-05, AC-CFL-06, AC-CFL-07, AC-CFL-08, AC-CFL-09, AC-CFL-10, AC-CFL-11, AC-CFL-12, AC-CFL-13, AC-CFL-14, AC-CFL-15.
+
 ## Concrete Execution Commands
 
 From repository root:

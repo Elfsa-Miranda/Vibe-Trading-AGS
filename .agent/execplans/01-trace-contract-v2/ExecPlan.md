@@ -312,6 +312,8 @@ A test that merely constructs a span is insufficient; tests must reopen persiste
 | REQ-TRC-09 | `schema.py:ResourceIdentity` | TEST-TRC-09 identity/reference validation | EVID-TRC-09 sample trace | PROPOSED |
 | REQ-TRC-10 | `verify.py` | TEST-TRC-10 adversarial graph matrix | EVID-TRC-10 verification report | PROPOSED |
 
+Supplemental linked identifiers: INV-TRC-01, INV-TRC-02, INV-TRC-03, INV-TRC-04, INV-TRC-05, INV-TRC-06, INV-TRC-07, INV-TRC-08, INV-TRC-09, INV-TRC-10, AC-TRC-01, AC-TRC-02, AC-TRC-03, AC-TRC-04, AC-TRC-05, AC-TRC-06, AC-TRC-07, AC-TRC-08, AC-TRC-09, AC-TRC-10, AC-TRC-11, AC-TRC-12.
+
 ## Concrete Execution Commands
 
 From repository root:

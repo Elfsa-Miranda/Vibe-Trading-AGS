@@ -293,6 +293,8 @@ Each negative test must assert the precise error code, proving the validator is 
 | REQ-GOV-07 | `AGENT_CONTRIBUTOR_GUIDE.md` | TEST-GOV-07 authority ownership check | EVID-GOV-07 documentation review | PROPOSED |
 | REQ-GOV-08 | `.agent/README.md` | TEST-GOV-08 dependency-DAG validation | EVID-GOV-08 roadmap report | PROPOSED |
 
+Supplemental linked identifiers: INV-GOV-01, INV-GOV-02, INV-GOV-03, INV-GOV-04, INV-GOV-05, INV-GOV-06, INV-GOV-07, AC-GOV-01, AC-GOV-02, AC-GOV-03, AC-GOV-04, AC-GOV-05, AC-GOV-06, AC-GOV-07, AC-GOV-08, AC-GOV-09.
+
 ## Concrete Execution Commands
 
 From repository root:
