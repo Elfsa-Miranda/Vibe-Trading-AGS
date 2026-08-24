@@ -103,7 +103,9 @@ def _traceability_ids(text: str) -> set[str]:
     remainder = text[start + len(trace_heading) :]
     next_heading = remainder.find("\n## ")
     table = remainder if next_heading < 0 else remainder[:next_heading]
-    return set(re.findall(r"\b(?:REQ|INV|DEL|NC|RISK|AC|TEST|EVID)-[A-Z0-9][A-Z0-9-]*\b", table))
+    rows = [line for line in table.splitlines() if line.lstrip().startswith("|") and line.count("|") >= 6]
+    data_rows = [line for line in rows if not re.fullmatch(r"[|\s:-]+", line)]
+    return set(re.findall(r"\b(?:REQ|INV|DEL|NC|RISK|AC|TEST|EVID)-[A-Z0-9][A-Z0-9-]*\b", "\n".join(data_rows)))
 
 
 def validate_plan(path: Path) -> PlanValidationResult:

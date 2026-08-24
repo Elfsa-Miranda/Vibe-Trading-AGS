@@ -97,6 +97,10 @@ def verify(root: Path, manifest_path: Path) -> tuple[str, ...]:
             artifact = command.get(field, {})
             try:
                 path = _resolve_artifact(root, artifact["path"])
+                try:
+                    path.relative_to(manifest_path.parent)
+                except ValueError as exc:
+                    raise ValueError("ARTIFACT_OUTSIDE_EVIDENCE_ROOT") from exc
                 if not path.is_file() or path.stat().st_size != artifact.get("size") or _sha256(path) != artifact.get("sha256"):
                     errors.append("EVIDENCE_HASH_MISMATCH")
             except (KeyError, OSError, ValueError):

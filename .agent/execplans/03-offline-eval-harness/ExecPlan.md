@@ -320,7 +320,8 @@ Controls:
 | REQ-EVL-11 | grader tests | TEST-EVL-11 mutation/falsification | EVID-EVL-11 focused test output | PROPOSED |
 | REQ-EVL-12 | runner capability gate | TEST-EVL-12 forbidden-tool matrix | EVID-EVL-12 safety report | PROPOSED |
 
-Supplemental linked identifiers: INV-EVL-01, INV-EVL-02, INV-EVL-03, INV-EVL-04, INV-EVL-05, INV-EVL-06, INV-EVL-07, INV-EVL-08, INV-EVL-09, INV-EVL-10, INV-EVL-11, INV-EVL-12, AC-EVL-01, AC-EVL-02, AC-EVL-03, AC-EVL-04, AC-EVL-05, AC-EVL-06, AC-EVL-07, AC-EVL-08, AC-EVL-09, AC-EVL-10, AC-EVL-11, AC-EVL-12, AC-EVL-13, AC-EVL-14.
+| INV-EVL-01, INV-EVL-02, INV-EVL-03, INV-EVL-04, INV-EVL-05, INV-EVL-06, INV-EVL-07, INV-EVL-08, INV-EVL-09, INV-EVL-10, INV-EVL-11, INV-EVL-12 | Evaluation invariants | TEST-EVL-01..12 | EVID-EVL-01..12 | PROPOSED |
+| AC-EVL-01, AC-EVL-02, AC-EVL-03, AC-EVL-04, AC-EVL-05, AC-EVL-06, AC-EVL-07, AC-EVL-08, AC-EVL-09, AC-EVL-10, AC-EVL-11, AC-EVL-12, AC-EVL-13, AC-EVL-14 | Acceptance gates | TEST-EVL-01..14 | EVID-EVL-01..14 | PROPOSED |
 
 ## Concrete Execution Commands
 

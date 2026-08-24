@@ -83,6 +83,10 @@ def _redact_arguments(values: list[str], root: Path) -> tuple[list[str], int]:
         rendered, rendered_count = _redact_argument(value, root)
         redacted.append(rendered)
         count += rendered_count
+        option, separator, option_value = value.partition("=")
+        if separator and SENSITIVE_OPTION.fullmatch(option):
+            redacted[-1] = f"{option}=<REDACTED_SECRET>"
+            count += 1
         conceal_next = bool(SENSITIVE_OPTION.fullmatch(value))
     return redacted, count
 

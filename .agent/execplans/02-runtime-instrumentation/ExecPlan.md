@@ -306,7 +306,8 @@ Exporter endpoints and sampling config are trusted process configuration only.
 | REQ-INS-11 | compatibility facade | TEST-INS-11 legacy consumer regression | EVID-INS-11 compatibility output | PROPOSED |
 | REQ-INS-12 | redacted action records | TEST-INS-12 CoT/secret absence | EVID-INS-12 privacy scan | PROPOSED |
 
-Supplemental linked identifiers: INV-INS-01, INV-INS-02, INV-INS-03, INV-INS-04, INV-INS-05, INV-INS-06, INV-INS-07, INV-INS-08, INV-INS-09, INV-INS-10, INV-INS-11, INV-INS-12, AC-INS-01, AC-INS-02, AC-INS-03, AC-INS-04, AC-INS-05, AC-INS-06, AC-INS-07, AC-INS-08, AC-INS-09, AC-INS-10, AC-INS-11, AC-INS-12.
+| INV-INS-01, INV-INS-02, INV-INS-03, INV-INS-04, INV-INS-05, INV-INS-06, INV-INS-07, INV-INS-08, INV-INS-09, INV-INS-10, INV-INS-11, INV-INS-12 | Instrumentation invariants | TEST-INS-01..12 | EVID-INS-01..12 | PROPOSED |
+| AC-INS-01, AC-INS-02, AC-INS-03, AC-INS-04, AC-INS-05, AC-INS-06, AC-INS-07, AC-INS-08, AC-INS-09, AC-INS-10, AC-INS-11, AC-INS-12 | Acceptance gates | TEST-INS-01..12 | EVID-INS-01..12 | PROPOSED |
 
 ## Concrete Execution Commands
 

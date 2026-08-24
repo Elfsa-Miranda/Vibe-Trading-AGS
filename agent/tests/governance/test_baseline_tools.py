@@ -164,7 +164,7 @@ def test_same_capture_is_idempotent_and_conflicting_capture_is_rejected(tmp_path
 def test_capture_redacts_secret_arguments_and_output(tmp_path: Path) -> None:
     root = _repository(tmp_path)
     output = root / "agent" / "research_evidence" / "agent_baseline" / "redacted" / "baseline_manifest.json"
-    command = f'{sys.executable} -c "print(\'token=visible-secret\')" --token visible-argument'
+    command = f'{sys.executable} -c "print(\'token=visible-secret\')" --token visible-argument --authorization=Bearer-secret'
 
     result = subprocess.run(
         [sys.executable, str(CAPTURE), "--root", str(root), "--output", str(output), "--command", command],
@@ -178,7 +178,8 @@ def test_capture_redacts_secret_arguments_and_output(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "visible-secret" not in output.read_text(encoding="utf-8")
     assert "visible-secret" not in stdout
-    assert payload["redaction_count"] >= 2
+    assert "Bearer-secret" not in output.read_text(encoding="utf-8")
+    assert payload["redaction_count"] >= 3
 
 
 def test_verifier_reopens_dependency_hashes_and_rejects_duplicate_json_keys(tmp_path: Path) -> None:

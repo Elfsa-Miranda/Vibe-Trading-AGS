@@ -132,6 +132,16 @@ def test_missing_invariant_or_acceptance_traceability_has_typed_error(tmp_path: 
     assert "MISSING_TRACEABILITY" in result.errors
 
 
+def test_prose_identifier_is_not_a_traceability_mapping(tmp_path: Path) -> None:
+    path = tmp_path / "ExecPlan.md"
+    content = _plan().replace("| INV-TEST-01 |", "| INV-OTHER-01 |").replace("| AC-TEST-01 |", "| AC-OTHER-01 |")
+    path.write_text(content + "\nSupplemental linked identifiers: INV-TEST-01, AC-TEST-01.\n", encoding="utf-8")
+
+    result = validate_plan(path)
+
+    assert "MISSING_TRACEABILITY" in result.errors
+
+
 def test_complete_plan_cannot_retain_non_pass_acceptance(tmp_path: Path) -> None:
     path = tmp_path / "ExecPlan.md"
     path.write_text(_plan(status="COMPLETE").replace("State: PASS", "State: PROPOSED"), encoding="utf-8")

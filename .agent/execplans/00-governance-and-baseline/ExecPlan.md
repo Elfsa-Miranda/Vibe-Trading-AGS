@@ -1,7 +1,7 @@
 # Establish enforceable Agent engineering governance and a reproducible baseline
 
 **Plan-ID:** AGS-AR-00  
-**Status:** ACTIVE
+**Status:** BLOCKED
 **Stage:** 00  
 **Owner:** Repository maintainer / implementing agent  
 **Created:** 2026-08-24  
@@ -284,16 +284,17 @@ Each negative test must assert the precise error code, proving the validator is 
 
 | Requirement | Implementation | Test | Evidence | State |
 |---|---|---|---|---|
-| REQ-GOV-01 | `AGENTS.md` | TEST-GOV-01 contract-section test | EVID-GOV-01 root contract review | PROPOSED |
-| REQ-GOV-02 | `.agent/execplans/**/ExecPlan.md` | TEST-GOV-02 repository-plan discovery | EVID-GOV-02 validation report | PROPOSED |
-| REQ-GOV-03 | `scripts/validate_execplans.py` | TEST-GOV-03 adversarial fixture matrix | EVID-GOV-03 pytest transcript | PROPOSED |
-| REQ-GOV-04 | `scripts/capture_agent_baseline.py` | TEST-GOV-04 temp-repo capture matrix | EVID-GOV-04 baseline manifest | PROPOSED |
-| REQ-GOV-05 | `scripts/verify_agent_baseline.py` | TEST-GOV-05 tamper/wrong-SHA matrix | EVID-GOV-05 verifier transcript | PROPOSED |
-| REQ-GOV-06 | `.github/workflows/agent-governance.yml` | TEST-GOV-06 workflow execution | EVID-GOV-06 workflow run | PROPOSED |
-| REQ-GOV-07 | `AGENT_CONTRIBUTOR_GUIDE.md` | TEST-GOV-07 authority ownership check | EVID-GOV-07 documentation review | PROPOSED |
-| REQ-GOV-08 | `.agent/README.md` | TEST-GOV-08 dependency-DAG validation | EVID-GOV-08 roadmap report | PROPOSED |
+| REQ-GOV-01 | `AGENTS.md` | TEST-GOV-01 contract-section test | EVID-GOV-01 root contract review | PASS |
+| REQ-GOV-02 | `.agent/execplans/**/ExecPlan.md` | TEST-GOV-02 repository-plan discovery | EVID-GOV-02 validation report | PASS |
+| REQ-GOV-03 | `scripts/validate_execplans.py` | TEST-GOV-03 adversarial fixture matrix | EVID-GOV-03 pytest transcript | PASS |
+| REQ-GOV-04 | `scripts/capture_agent_baseline.py` | TEST-GOV-04 temp-repo capture matrix | EVID-GOV-04 baseline manifest | INCONCLUSIVE |
+| REQ-GOV-05 | `scripts/verify_agent_baseline.py` | TEST-GOV-05 tamper/wrong-SHA matrix | EVID-GOV-05 verifier transcript | PASS |
+| REQ-GOV-06 | `.github/workflows/agent-governance.yml` | TEST-GOV-06 workflow execution | EVID-GOV-06 workflow run | BLOCKED |
+| REQ-GOV-07 | `AGENT_CONTRIBUTOR_GUIDE.md` | TEST-GOV-07 authority ownership check | EVID-GOV-07 documentation review | PASS |
+| REQ-GOV-08 | `.agent/README.md` | TEST-GOV-08 dependency-DAG validation | EVID-GOV-08 roadmap report | PASS |
 
-Supplemental linked identifiers: INV-GOV-01, INV-GOV-02, INV-GOV-03, INV-GOV-04, INV-GOV-05, INV-GOV-06, INV-GOV-07, AC-GOV-01, AC-GOV-02, AC-GOV-03, AC-GOV-04, AC-GOV-05, AC-GOV-06, AC-GOV-07, AC-GOV-08, AC-GOV-09.
+| INV-GOV-01, INV-GOV-02, INV-GOV-03, INV-GOV-04, INV-GOV-05, INV-GOV-06, INV-GOV-07 | Governance controls | TEST-GOV-01..05 | EVID-GOV-01..05 | PROPOSED |
+| AC-GOV-01, AC-GOV-02, AC-GOV-03, AC-GOV-04, AC-GOV-05, AC-GOV-06, AC-GOV-07, AC-GOV-08, AC-GOV-09 | Acceptance gates | TEST-GOV-01..08 | EVID-GOV-01..08 | BLOCKED |
 
 ## Concrete Execution Commands
 
@@ -345,12 +346,12 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
 
 - [x] (2026-08-24) Replaced `Base-SHA` with `561fb5ddc9d778021da18083462b8583e60ee848`; Stage 00 worktree started clean on `codex/agent-reliability-00-governance`.
 - [x] Governance constitution and all eight stage plans were installed by bootstrap commit `561fb5ddc9d778021da18083462b8583e60ee848`.
-- [ ] Implement validator and adversarial tests.
-- [ ] Implement baseline capture/verification and tamper tests.
-- [ ] Add offline governance CI.
-- [ ] Perform independent full-diff review.
-- [ ] Run final commands and bind evidence.
-- [ ] Mark every acceptance criterion with its real state.
+- [x] Implemented validator and adversarial tests; focused result before final status update: 18 passed.
+- [x] Implemented baseline capture/verification, tamper, dependency-hash, path, duplicate-JSON, redaction, timeout, and idempotence tests.
+- [x] Added least-privilege local governance workflow definition; remote execution is blocked by the user's no-push/no-PR authorization boundary.
+- [x] Performed independent full-diff review; its initial blockers were remediated and follow-up review requested.
+- [x] Ran final runnable commands and captured truthful local evidence for commit `662bfa069548f98c9488953ecb028c945bb5d94c`; broad backend regression remains a recorded FAIL due a pre-existing missing script.
+- [x] Marked every trace row with its actual state; Stage remains BLOCKED and is not eligible for merge.
 
 ## Surprises & Discoveries
 
@@ -364,6 +365,10 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Evidence: reopened ZIP and post-extraction hash verification. The bootstrap manifest was repaired only for this entry; all fourteen entries, all eight plan hashes, and the validation report now verify.
 - Observation: the Windows `python` app-execution alias is unavailable in this environment. The repository-supported interpreter must be discovered and recorded; no package installation is authorized merely to satisfy a baseline command.
   Evidence: `python --version` exited nonzero before implementation.
+- Observation: broad backend regression stopped at collection because `scripts.run_phase11_baostock_research_only_v1` is absent while `agent/tests/alpha_quality/test_phase11_baostock_raw_replay_v1.py` imports it. The run also emitted five FastAPI/Starlette deprecation warnings.
+  Evidence: local broad-regression transcript under the baseline evidence directory; this Stage did not modify the missing script or runtime tests.
+- Observation: a tracked manifest cannot itself name the SHA of the commit that adds it without a self-referential Git-object cycle. The current local evidence is deliberately untracked and commit-bound; the plan's simultaneous "tracked" and exact-final-SHA wording requires maintainer direction before acceptance can be PASS.
+  Evidence: independent review finding and Git commit-object model.
 
 ## Decision Log
 
@@ -379,12 +384,17 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Alternatives: retain a knowingly invalid manifest; wait for a replacement ZIP.
   Rationale: the user instructed continuous execution after the discrepancy was reported. The repair is minimal, uses reopened ZIP bytes, leaves the validation report and every plan unchanged, and is fully recorded here.
   Date/Author: 2026-08-24 / implementing agent.
+- Decision: Do not merge Stage 00 while a remote CI run is forbidden and the baseline-evidence tracking/final-SHA requirement is unresolved.
+  Alternatives: push or open a PR; mark the untracked local evidence as tracked despite the SHA mismatch; relax acceptance states.
+  Rationale: each alternative conflicts with explicit user authorization or the plan's evidence rules.
+  Date/Author: 2026-08-24 / implementing agent.
 
 ## Outcomes & Retrospective
 
-Not started. At completion, compare actual governance coverage, validator defects found, baseline reproducibility, and remaining manual controls with the original purpose.
+Local implementation now includes strict plan parsing, cross-plan identifiers, commit/tree/artifact/dependency binding, controlled evidence roots, secret-redaction accounting, timeout states, and a least-privilege CI definition. It is intentionally not complete: remote CI has not run, existing broad regression is failing, and the tracked-evidence/final-SHA contradiction needs a governing decision.
 
 ## Plan Revision Log
 
 - 2026-08-24: Initial high-assurance plan created from repository inspection and official ExecPlan/agent-instruction guidance.
 - 2026-08-24: Activated on bootstrap commit `561fb5ddc9d778021da18083462b8583e60ee848`; recorded GitHub source-base selection, bundle-manifest repair, and Python launcher discovery.
+- 2026-08-24: Marked BLOCKED pending permitted remote CI execution, resolution of tracked-evidence versus final-SHA semantics, and a non-governance owner for the existing broad-regression collection failure.
