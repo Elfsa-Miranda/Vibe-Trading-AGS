@@ -1,0 +1,79 @@
+{
+  "schema_version": "ags.agent-governance-bundle.v1",
+  "created_date": "2026-08-24",
+  "normative_root": "AGENTS.md",
+  "execplan_count": 8,
+  "validation_report": "BUNDLE_VALIDATION.json",
+  "files": [
+    {
+      "path": ".agent/README.md",
+      "size": 3025,
+      "sha256": "60fbe19985716b04dcccdf77fd4611677aeeb3601f60c5a22b65d5ec52ce04f8"
+    },
+    {
+      "path": ".agent/execplans/00-governance-and-baseline/ExecPlan.md",
+      "size": 23432,
+      "sha256": "4411ad5d5186c4e4feb2d5de62f8ec14069ce3ac0c0cad43b4874bab97daacd9"
+    },
+    {
+      "path": ".agent/execplans/01-trace-contract-v2/ExecPlan.md",
+      "size": 22289,
+      "sha256": "b519bd0ffcc0acffed7a5328654ba328c0194ef8712c871c23bd8c1c0a9c9bac"
+    },
+    {
+      "path": ".agent/execplans/02-runtime-instrumentation/ExecPlan.md",
+      "size": 21673,
+      "sha256": "622e8c9774cec65afcf6fa8c706af4bcabd1a51ccf5cb2405f3375ad04040892"
+    },
+    {
+      "path": ".agent/execplans/03-offline-eval-harness/ExecPlan.md",
+      "size": 23161,
+      "sha256": "0dfaaf2983fc7525ecd78e0a3acfe93192c5e13eaa86ff1d628364929938360f"
+    },
+    {
+      "path": ".agent/execplans/04-failure-recovery-and-chaos/ExecPlan.md",
+      "size": 24375,
+      "sha256": "af9cbba48133a2897e5c6c16561e6a44470a49fb74b0fa56766559254d1d9a0c"
+    },
+    {
+      "path": ".agent/execplans/05-regression-gates-and-ci/ExecPlan.md",
+      "size": 22720,
+      "sha256": "ff33b18ee1e1841d0bff86a62748adef30b960374739eb9392498340aab3d201"
+    },
+    {
+      "path": ".agent/execplans/06-production-failure-loop/ExecPlan.md",
+      "size": 23623,
+      "sha256": "dab369b585ddbc3658ac947a504f5b0476adcd248c0d43bef8f046a229af4891"
+    },
+    {
+      "path": ".agent/execplans/07-flagship-hardening-and-release/ExecPlan.md",
+      "size": 25849,
+      "sha256": "5429afddabc8e3bfaf22094ce73124ccd0237642a185978ff309167bedf0371a"
+    },
+    {
+      "path": ".agent/templates/ExecPlan.template.md",
+      "size": 4941,
+      "sha256": "78c5ac38a61af8b85bf60c8a666e50d82eb947f213b0d3ab615616454027afa4"
+    },
+    {
+      "path": "AGENTS.md",
+      "size": 27528,
+      "sha256": "b40b3cc7d4a179c41702a7f9373bcc78509cb2cb18980af28c8d420742d42279"
+    },
+    {
+      "path": "BUNDLE_VALIDATION.json",
+      "size": 2456,
+      "sha256": "aa34088a874cb4b16a498dd7242b6def02102a279e235511649be4fe8298d082"
+    },
+    {
+      "path": "DESIGN_RATIONALE.md",
+      "size": 3167,
+      "sha256": "a1b6ca0a4c2abf34afeab0ab90257aead44b66ddacf6b7dbeeb4a60d2b13a4d1"
+    },
+    {
+      "path": "README.md",
+      "size": 1823,
+      "sha256": "a76d2882c8608aee0154c723c1c74f2e81841ae0c577032d89be35049d536c4c"
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "schema_version": "ags.governance-bundle-validation.v1",
+  "bundle": "/mnt/data/Vibe-Trading-AGS-Agent-Governance",
+  "agents_md_bytes": 27528,
+  "agents_md_under_32_kib": true,
+  "plan_count": 8,
+  "plans": [
+    {
+      "path": ".agent/execplans/00-governance-and-baseline/ExecPlan.md",
+      "plan_id": "AGS-AR-00",
+      "stage": "00",
+      "bytes": 23432,
+      "sha256": "4411ad5d5186c4e4feb2d5de62f8ec14069ce3ac0c0cad43b4874bab97daacd9",
+      "errors": []
+    },
+    {
+      "path": ".agent/execplans/01-trace-contract-v2/ExecPlan.md",
+      "plan_id": "AGS-AR-01",
+      "stage": "01",
+      "bytes": 22289,
+      "sha256": "b519bd0ffcc0acffed7a5328654ba328c0194ef8712c871c23bd8c1c0a9c9bac",
+      "errors": []
+    },
+    {
+      "path": ".agent/execplans/02-runtime-instrumentation/ExecPlan.md",
+      "plan_id": "AGS-AR-02",
+      "stage": "02",
+      "bytes": 21673,
+      "sha256": "622e8c9774cec65afcf6fa8c706af4bcabd1a51ccf5cb2405f3375ad04040892",
+      "errors": []
+    },
+    {
+      "path": ".agent/execplans/03-offline-eval-harness/ExecPlan.md",
+      "plan_id": "AGS-AR-03",
+      "stage": "03",
+      "bytes": 23161,
+      "sha256": "0dfaaf2983fc7525ecd78e0a3acfe93192c5e13eaa86ff1d628364929938360f",
+      "errors": []
+    },
+    {
+      "path": ".agent/execplans/04-failure-recovery-and-chaos/ExecPlan.md",
+      "plan_id": "AGS-AR-04",
+      "stage": "04",
+      "bytes": 24375,
+      "sha256": "af9cbba48133a2897e5c6c16561e6a44470a49fb74b0fa56766559254d1d9a0c",
+      "errors": []
+    },
+    {
+      "path": ".agent/execplans/05-regression-gates-and-ci/ExecPlan.md",
+      "plan_id": "AGS-AR-05",
+      "stage": "05",
+      "bytes": 22720,
+      "sha256": "ff33b18ee1e1841d0bff86a62748adef30b960374739eb9392498340aab3d201",
+      "errors": []
+    },
+    {
+      "path": ".agent/execplans/06-production-failure-loop/ExecPlan.md",
+      "plan_id": "AGS-AR-06",
+      "stage": "06",
+      "bytes": 23623,
+      "sha256": "dab369b585ddbc3658ac947a504f5b0476adcd248c0d43bef8f046a229af4891",
+      "errors": []
+    },
+    {
+      "path": ".agent/execplans/07-flagship-hardening-and-release/ExecPlan.md",
+      "plan_id": "AGS-AR-07",
+      "stage": "07",
+      "bytes": 25849,
+      "sha256": "5429afddabc8e3bfaf22094ce73124ccd0237642a185978ff309167bedf0371a",
+      "errors": []
+    }
+  ],
+  "errors": [],
+  "state": "PASS",
+  "note": "Updated with dedicated integration-worktree and per-stage branch/worktree execution policy."
+}
