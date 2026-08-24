@@ -359,6 +359,7 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
 - [x] (2026-08-25) Focused verification after four review/fix rounds: 44 pytest tests passed, 44 offline-runner tests passed, all eight plans validated with zero errors, and ruff/compile checks passed; final diff check remains part of the commit gate.
 - [x] (2026-08-25) Final independent follow-up review confirmed the remaining four findings closed and reported no remaining locally fixable P1/P2 at that revision.
 - [x] (2026-08-25) Blocker audit proved that root `scripts/__init__.py` hid the existing `agent/scripts` namespace contribution. Removed the conflicting file, added a governance regression test, and restored the BaoStock replay slice to 3/3 passing; focused governance verification is now 45/45 under both pytest and the offline runner.
+- [x] (2026-08-25) Independent review of `ef344feeb703e41b6c823372c0adcece74901767` found async/generator false-pass handling, dependency-environment binding, import-resolution coverage, and over-specific failure attribution gaps. Remediation rejects unsupported async/generator tests, binds interpreter/build/package inventory, rejects a different direct Python executable, resolves the actual split-namespace module in the guard, and keeps the environment-sensitive activation cause INCONCLUSIVE; the offline suite is now 48/48.
 
 ## Surprises & Discoveries
 
@@ -384,8 +385,8 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Evidence: commit-bound local capture under `agent/research_evidence/agent_baseline/03e388f99cfef6fa7cb862219b85dd958e62aeed/`.
 - Observation: the five factor skips are four fundamental factors whose required columns are absent from the OHLCV-only synthetic panel and Alpha101-096 whose 300-row synthetic output exceeds the registry's 95% NaN sanity threshold. They are explicit coverage gaps, not passing look-ahead assertions.
   Evidence: `pytest -q -rs` output from the factor purity/look-ahead slice.
-- Observation: after the namespace fix, the broad suite passed its former collection point and then failed `test_shared_research_bundle_sources_materialize_arm_terminal_dossier` because activation-arm source hashes were not unique. The same isolated test fails identically on the untouched integration baseline, and no Stage diff touches its runtime or test paths.
-  Evidence: fail-fast broad run (305 passed before the failure), isolated Stage and integration runs with the same `EventTransitionError`, and an empty base-to-Stage diff for `agent/src`, `agent/tests/alpha_foundry`, `agent/tests/factors`, and `agent/tests/alpha_quality`.
+- Observation: after the namespace fix, the broad suite passed its former collection point and then failed `test_shared_research_bundle_sources_materialize_arm_terminal_dossier`. Stage and integration fail at the same point within a given environment, and no Stage diff touches its runtime or test paths; however, one environment reported non-unique frozen sources while independent review reported insufficient provider authority. The specific runtime cause is therefore `INCONCLUSIVE` until evidence is captured under the strengthened environment fingerprint.
+  Evidence: fail-fast broad run (305 passed before the failure), paired isolated Stage/integration runs, independent-review reproduction, and an empty base-to-Stage diff for `agent/src`, `agent/tests/alpha_foundry`, `agent/tests/factors`, and `agent/tests/alpha_quality`.
 
 ## Decision Log
 
@@ -424,7 +425,7 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
 
 ## Outcomes & Retrospective
 
-Local implementation now includes strict plan parsing, row- and column-aware traceability, commit/tree/artifact/dependency binding, controlled evidence roots, recursive secret/path redaction, typed timeout and missing-tool states, deterministic summaries, a least-privilege dependency-free CI definition, and a regression guard for the repository's split `scripts` namespace. It is intentionally not complete: broad verification exposes an integration-baseline runtime failure, factor-integrity evidence contains five explicit coverage gaps, and the tracked-evidence/final-SHA contradiction needs a governing decision.
+Local implementation now includes strict plan parsing, row- and column-aware traceability, commit/tree/artifact/dependency binding, interpreter/build/installed-package identity, controlled evidence roots, recursive secret/path redaction, typed timeout and missing-tool states, fail-closed sync-only offline test execution, deterministic summaries, a least-privilege dependency-free CI definition, and an import-resolution guard for the repository's split `scripts` namespace. It is intentionally not complete: broad verification exposes an integration-baseline runtime failure, factor-integrity evidence contains five explicit coverage gaps, and the tracked-evidence/final-SHA contradiction needs a governing decision.
 
 ## Plan Revision Log
 
@@ -435,3 +436,4 @@ Local implementation now includes strict plan parsing, row- and column-aware tra
 - 2026-08-25: Remediated the follow-up independent-review findings, added a standard-library offline test runner, hardened evidence semantics/redaction, and recorded the first successful Stage-branch CI run.
 - 2026-08-25: Completed four independent review/fix rounds; final follow-up found no remaining locally fixable P1/P2 while preserving the two genuine Stage blockers.
 - 2026-08-25: Corrected the broad-failure diagnosis, removed the Stage-introduced namespace shadow, and added a focused regression test before restarting final-SHA gates.
+- 2026-08-25: Closed the independent review findings on async/generator false passes, dependency-environment identity, actual namespace resolution, and environment-sensitive activation-failure attribution.

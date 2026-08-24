@@ -13,6 +13,11 @@ SHA-256 hashes of its referenced logs and generated `baseline_summary.md`.
 Reopen it with `scripts/verify_agent_baseline.py`; a changed commit, dirty-file
 content, dependency, aggregate state, or referenced artifact is a failure,
 never a passing baseline. Captures require at least one explicit `--command`.
+The environment fingerprint includes Python implementation/build/cache-tag,
+the interpreter binary hash, and a normalized installed-package inventory
+hash. A direct Python command must use the same interpreter that runs the
+capture utility; a different Python executable is rejected rather than hidden
+behind the redacted command path.
 The full controlled baseline-evidence root is excluded from the working-tree
 fingerprint so sibling capture attempts do not invalidate one another. Command
 timeouts default to `FAIL`; callers may select `--timeout-state BLOCKED` only

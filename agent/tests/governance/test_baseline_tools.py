@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -68,7 +69,21 @@ def test_capture_and_verify_bind_exact_commit_and_artifacts(tmp_path: Path) -> N
     assert payload["commands"][0]["stdout_artifact"]["sha256"]
     assert payload["summary"]["command_count"] == 1
     assert (manifest.parent / "baseline_summary.md").is_file()
-    assert set(payload["environment"]) == {"python", "node", "npm", "platform"}
+    assert set(payload["environment"]) == {
+        "python",
+        "python_implementation",
+        "python_build",
+        "python_cache_tag",
+        "python_executable_sha256",
+        "python_packages_sha256",
+        "python_package_count",
+        "node",
+        "npm",
+        "platform",
+    }
+    assert len(payload["environment"]["python_executable_sha256"]) == 64
+    assert len(payload["environment"]["python_packages_sha256"]) == 64
+    assert payload["environment"]["python_package_count"] >= 0
 
 
 def test_verifier_rejects_tampered_command_artifact(tmp_path: Path) -> None:
@@ -173,6 +188,27 @@ def test_capture_rejects_an_empty_command_set(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "EMPTY_COMMAND_SET" in result.stderr
+    assert not output.exists()
+
+
+def test_capture_rejects_a_different_python_environment(tmp_path: Path) -> None:
+    root = _repository(tmp_path)
+    output = root / "agent" / "research_evidence" / "agent_baseline" / "wrong-python" / "baseline_manifest.json"
+    copied_root = tmp_path / "other-environment"
+    copied_root.mkdir()
+    copied_python = copied_root / ("python.exe" if sys.platform == "win32" else "python")
+    shutil.copy2(sys.executable, copied_python)
+    command = f'{copied_python} -c "print(\'wrong interpreter\')"'
+
+    result = subprocess.run(
+        [sys.executable, str(CAPTURE), "--root", str(root), "--output", str(output), "--command", command],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "PYTHON_ENVIRONMENT_MISMATCH" in result.stderr
     assert not output.exists()
 
 
@@ -447,7 +483,7 @@ def test_verifier_rejects_forged_environment_and_unknown_sensitive_fields(tmp_pa
     root = _repository(tmp_path)
     manifest = _capture(root)
     payload = json.loads(manifest.read_text(encoding="utf-8"))
-    payload["environment"] = {"python": "forged", "node": "forged", "npm": "forged", "platform": "forged"}
+    payload["environment"]["python_packages_sha256"] = "0" * 64
     manifest.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
 
     environment_result = _verify(root, manifest)

@@ -78,3 +78,43 @@ def test_offline_runner_cannot_be_bypassed_by_import_time_system_exit_zero(tmp_p
     assert "1 passed, 1 failed" in result.stdout
     assert "test_b_exit.py::<module import>" in result.stdout
     assert "SystemExit: 0" in result.stderr
+
+
+def test_offline_runner_rejects_async_tests_without_marking_them_passed(tmp_path: Path) -> None:
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    (tests_root / "test_async.py").write_text(
+        "async def test_never_fake_pass():\n    raise AssertionError('must execute or reject')\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(RUNNER), "--root", str(REPOSITORY_ROOT), "--tests-root", str(tests_root)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "0 passed, 1 failed" in result.stdout
+    assert "UNSUPPORTED_ASYNC_TEST:test_never_fake_pass" in result.stderr
+
+
+def test_offline_runner_rejects_generator_tests_without_marking_them_passed(tmp_path: Path) -> None:
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    (tests_root / "test_generator.py").write_text(
+        "def test_never_fake_pass():\n    yield None\n    raise AssertionError('must execute or reject')\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(RUNNER), "--root", str(REPOSITORY_ROOT), "--tests-root", str(tests_root)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "0 passed, 1 failed" in result.stdout
+    assert "UNSUPPORTED_GENERATOR_TEST:test_never_fake_pass" in result.stderr

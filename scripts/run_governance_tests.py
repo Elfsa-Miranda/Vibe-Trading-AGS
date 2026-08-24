@@ -24,15 +24,25 @@ def _load_module(path: Path, index: int) -> ModuleType:
 
 
 def _invoke(test: Callable[..., object]) -> None:
+    if inspect.iscoroutinefunction(test) or inspect.isasyncgenfunction(test):
+        raise TypeError(f"UNSUPPORTED_ASYNC_TEST:{test.__name__}")
+    if inspect.isgeneratorfunction(test):
+        raise TypeError(f"UNSUPPORTED_GENERATOR_TEST:{test.__name__}")
     parameters = tuple(inspect.signature(test).parameters)
     if not parameters:
-        test()
-        return
-    if parameters == ("tmp_path",):
+        result = test()
+    elif parameters == ("tmp_path",):
         with tempfile.TemporaryDirectory(prefix="ags-governance-") as directory:
-            test(Path(directory))
-        return
-    raise TypeError(f"UNSUPPORTED_TEST_SIGNATURE:{test.__name__}:{','.join(parameters)}")
+            result = test(Path(directory))
+    else:
+        raise TypeError(f"UNSUPPORTED_TEST_SIGNATURE:{test.__name__}:{','.join(parameters)}")
+    if inspect.isawaitable(result):
+        if inspect.iscoroutine(result):
+            result.close()
+        raise TypeError(f"UNSUPPORTED_AWAITABLE_RESULT:{test.__name__}")
+    if inspect.isgenerator(result) or inspect.isasyncgen(result):
+        result.close()
+        raise TypeError(f"UNSUPPORTED_GENERATOR_RESULT:{test.__name__}")
 
 
 def run(tests_root: Path) -> tuple[int, int]:

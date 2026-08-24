@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import os
 import platform
@@ -31,6 +32,7 @@ POSIX_PATH_PATTERN = re.compile(r"(?m)(?<![:/\w.])/(?!/)[^\r\n]*")
 SENSITIVE_OPTION = re.compile(
     r"(?i)^--?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|authorization)$"
 )
+PYTHON_EXECUTABLE_PATTERN = re.compile(r"(?i)^(?:python|pypy)(?:\d+(?:\.\d+)*)?(?:\.exe)?$")
 TOP_LEVEL_FIELDS = {
     "schema_version",
     "repository",
@@ -45,7 +47,18 @@ TOP_LEVEL_FIELDS = {
     "result",
 }
 REPOSITORY_FIELDS = {"commit", "tree_status", "tree_diff_hash", "clean", "evidence_root"}
-ENVIRONMENT_FIELDS = {"python", "node", "npm", "platform"}
+ENVIRONMENT_FIELDS = {
+    "python",
+    "python_implementation",
+    "python_build",
+    "python_cache_tag",
+    "python_executable_sha256",
+    "python_packages_sha256",
+    "python_package_count",
+    "node",
+    "npm",
+    "platform",
+}
 POLICY_FIELDS = {"timeout_seconds", "timeout_state", "blocker_reason", "blocker_owner"}
 COMMAND_FIELDS = {
     "argv",
@@ -133,6 +146,15 @@ def _closed_schema_valid(payload: dict[str, Any]) -> bool:
     if (
         not isinstance(environment["python"], str)
         or not environment["python"]
+        or not isinstance(environment["python_implementation"], str)
+        or not environment["python_implementation"]
+        or not isinstance(environment["python_build"], str)
+        or not environment["python_build"]
+        or not isinstance(environment["python_cache_tag"], str)
+        or not environment["python_cache_tag"]
+        or not _is_hash(environment["python_executable_sha256"])
+        or not _is_hash(environment["python_packages_sha256"])
+        or not _is_nonnegative_int(environment["python_package_count"])
         or not isinstance(environment["platform"], str)
         or not environment["platform"]
         or any(environment[key] is not None and not isinstance(environment[key], str) for key in ("node", "npm"))
@@ -326,6 +348,22 @@ def _parse_command(value: str) -> list[str]:
     return [item[1:-1] if len(item) >= 2 and item[0] == item[-1] and item[0] in {'"', "'"} else item for item in values]
 
 
+def _validate_python_command_environment(argv: list[str]) -> None:
+    """Require direct Python commands to use the fingerprinted interpreter."""
+    executable = argv[0]
+    name = Path(executable).name
+    if not PYTHON_EXECUTABLE_PATTERN.fullmatch(name):
+        return
+    resolved = Path(executable).resolve() if Path(executable).is_absolute() else None
+    if resolved is None:
+        located = shutil.which(executable)
+        if located is None:
+            return
+        resolved = Path(located).resolve()
+    if resolved != Path(sys.executable).resolve():
+        raise ValueError("PYTHON_ENVIRONMENT_MISMATCH")
+
+
 def _write_artifact(root: Path, destination: Path, content: str) -> dict[str, Any]:
     relative = _relative_path(root, destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -367,9 +405,28 @@ def _tool_version(tool: str, *args: str) -> str | None:
     return value if completed.returncode == 0 and value else None
 
 
-def _environment() -> dict[str, str | None]:
+def _python_package_inventory() -> tuple[int, str]:
+    entries: set[str] = set()
+    for distribution in importlib.metadata.distributions():
+        raw_name = distribution.metadata.get("Name") or distribution.name
+        name = re.sub(r"[-_.]+", "-", str(raw_name)).lower()
+        entries.add(f"{name}=={distribution.version}")
+    ordered = sorted(entries)
+    digest = _sha256_bytes(_canonical_json(ordered).encode("utf-8"))
+    return len(ordered), digest
+
+
+def _environment() -> dict[str, str | int | None]:
+    package_count, packages_hash = _python_package_inventory()
+    executable_hash = _sha256_bytes(Path(sys.executable).read_bytes())
     return {
         "python": sys.version.split()[0],
+        "python_implementation": platform.python_implementation(),
+        "python_build": "|".join((*platform.python_build(), platform.python_compiler())),
+        "python_cache_tag": sys.implementation.cache_tag,
+        "python_executable_sha256": executable_hash,
+        "python_packages_sha256": packages_hash,
+        "python_package_count": package_count,
         "node": _tool_version("node", "--version"),
         "npm": _tool_version("npm", "--version"),
         "platform": platform.platform(),
@@ -381,7 +438,7 @@ def _render_summary(
     tree_status: list[str],
     result: str,
     state_counts: dict[str, int],
-    environment: dict[str, str | None],
+    environment: dict[str, str | int | None],
 ) -> str:
     return "\n".join(
         (
@@ -580,6 +637,7 @@ def capture(
         argv = _parse_command(raw_command)
         if not argv:
             raise ValueError("EMPTY_COMMAND")
+        _validate_python_command_environment(argv)
         started = time.monotonic()
         started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         try:
