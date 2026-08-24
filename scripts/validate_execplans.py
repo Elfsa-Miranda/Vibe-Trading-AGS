@@ -76,6 +76,17 @@ class RepositoryValidationResult:
     warnings: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class TraceabilityRow:
+    requirements: tuple[str, ...]
+    implementation: str
+    tests: tuple[str, ...]
+    evidence: tuple[str, ...]
+    test_definition: str
+    evidence_definition: str
+    state: str
+
+
 def _unique(values: list[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
 
@@ -95,17 +106,45 @@ def _defined_ids(text: str) -> list[str]:
     return [match.group(1) for match in re.finditer(pattern, text, re.MULTILINE)]
 
 
-def _traceability_ids(text: str) -> set[str]:
+def _traceability_rows(text: str) -> tuple[tuple[TraceabilityRow, ...], bool]:
     trace_heading = "## Requirement Traceability Matrix"
     start = text.find(trace_heading)
     if start < 0:
-        return set()
+        return (), False
     remainder = text[start + len(trace_heading) :]
     next_heading = remainder.find("\n## ")
     table = remainder if next_heading < 0 else remainder[:next_heading]
-    rows = [line for line in table.splitlines() if line.lstrip().startswith("|") and line.count("|") >= 6]
-    data_rows = [line for line in rows if not re.fullmatch(r"[|\s:-]+", line)]
-    return set(re.findall(r"\b(?:REQ|INV|DEL|NC|RISK|AC|TEST|EVID)-[A-Z0-9][A-Z0-9-]*\b", "\n".join(data_rows)))
+    rows: list[TraceabilityRow] = []
+    malformed = False
+    for line in table.splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if cells and cells[0] == "Requirement":
+            continue
+        if cells and all(re.fullmatch(r"\s*:?-+:?\s*", cell) for cell in cells):
+            continue
+        if len(cells) != 5:
+            malformed = True
+            continue
+        requirement_cell, implementation, test_cell, evidence_cell, state = cells
+        requirement_ids = tuple(ID_PATTERN.findall(requirement_cell))
+        tests = tuple(ID_PATTERN.findall(test_cell))
+        evidence = tuple(ID_PATTERN.findall(evidence_cell))
+        if (
+            not requirement_ids
+            or any(not identifier.startswith(("REQ-", "INV-", "AC-")) for identifier in requirement_ids)
+            or not implementation
+            or not tests
+            or any(not identifier.startswith("TEST-") for identifier in tests)
+            or not evidence
+            or any(not identifier.startswith("EVID-") for identifier in evidence)
+            or state not in {"PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "PROPOSED"}
+            or ".." in line
+        ):
+            malformed = True
+        rows.append(TraceabilityRow(requirement_ids, implementation, tests, evidence, test_cell, evidence_cell, state))
+    return tuple(rows), malformed
 
 
 def validate_plan(path: Path) -> PlanValidationResult:
@@ -137,17 +176,39 @@ def validate_plan(path: Path) -> PlanValidationResult:
     definitions = _defined_ids(text)
     if len(definitions) != len(set(definitions)):
         errors.append("DUPLICATE_ID")
-    traceability = _traceability_ids(text)
+    traceability_rows, malformed_traceability = _traceability_rows(text)
+    traceability = {identifier for row in traceability_rows for identifier in row.requirements}
     missing = [identifier for identifier in definitions if identifier.startswith(("REQ-", "INV-", "AC-")) and identifier not in traceability]
     if missing:
         errors.append("MISSING_TRACEABILITY")
+    if malformed_traceability:
+        errors.append("MALFORMED_TRACEABILITY")
+    declared_tests: set[str] = set()
+    declared_evidence: set[str] = set()
+    for row in traceability_rows:
+        requirement_ids = [identifier for identifier in row.requirements if identifier.startswith("REQ-")]
+        if len(requirement_ids) == 1 and len(row.requirements) == 1:
+            suffix = requirement_ids[0][len("REQ-") :]
+            expected_test = f"TEST-{suffix}"
+            expected_evidence = f"EVID-{suffix}"
+            test_defined = bool(re.fullmatch(rf"{re.escape(expected_test)}\s+\S.*", row.test_definition))
+            evidence_defined = bool(re.fullmatch(rf"{re.escape(expected_evidence)}\s+\S.*", row.evidence_definition))
+            if set(row.tests) != {expected_test} or set(row.evidence) != {expected_evidence} or not test_defined or not evidence_defined:
+                errors.append("UNKNOWN_TRACE_ENTITY")
+            if test_defined:
+                declared_tests.add(expected_test)
+            if evidence_defined:
+                declared_evidence.add(expected_evidence)
+    if any(
+        not set(row.tests).issubset(declared_tests) or not set(row.evidence).issubset(declared_evidence)
+        for row in traceability_rows
+    ):
+        errors.append("UNKNOWN_TRACE_ENTITY")
     if status in {"ACTIVE", "COMPLETE"} and re.search(r"^\s*(?:[-*]\s*)?(?:TO_BE_CAPTURED|TBD)\s*$", text, re.MULTILINE):
         errors.append("UNRESOLVED_PLACEHOLDER")
     if status == "COMPLETE":
-        acceptance = re.findall(r"^\s*[-*]\s+(AC-[A-Z0-9][A-Z0-9-]*).*?State:\s*([A-Z_]+)", text, re.MULTILINE)
-        if not acceptance or any(state != "PASS" for _, state in acceptance):
-            errors.append("FALSE_COMPLETE")
-        if re.search(r"\|\s*(?:REQ|INV|DEL|NC|RISK|AC|TEST|EVID)-[^|]+\|[^\n]*\|\s*(?!PASS\s*\|)", text):
+        acceptance_rows = [row for row in traceability_rows if any(identifier.startswith("AC-") for identifier in row.requirements)]
+        if not acceptance_rows or any(row.state != "PASS" for row in traceability_rows):
             errors.append("FALSE_COMPLETE")
     return PlanValidationResult(str(path), plan_id, status, _unique(errors), _unique(warnings))
 
@@ -189,10 +250,11 @@ def main() -> int:
     serialized = json.dumps(asdict(report), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     if args.output:
         target = args.output.resolve(strict=False)
+        controlled_root = (args.root.resolve() / "agent" / "research_evidence" / "governance").resolve()
         try:
-            target.relative_to(args.root.resolve())
+            target.relative_to(controlled_root)
         except ValueError:
-            print("OUTPUT_PATH_ESCAPE", file=sys.stderr)
+            print("UNCONTROLLED_OUTPUT_PATH", file=sys.stderr)
             return 2
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(serialized + "\n", encoding="utf-8")

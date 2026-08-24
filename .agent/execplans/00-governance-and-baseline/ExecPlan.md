@@ -58,6 +58,7 @@ This stage must not alter runtime Agent, factor-research, evidence, API, fronten
 - `.agent/templates/ExecPlan.template.md`
 - `.agent/execplans/**/ExecPlan.md`
 - `scripts/validate_execplans.py`
+- `scripts/run_governance_tests.py`
 - `scripts/capture_agent_baseline.py`
 - `scripts/verify_agent_baseline.py`
 - `agent/tests/governance/`
@@ -293,8 +294,8 @@ Each negative test must assert the precise error code, proving the validator is 
 | REQ-GOV-07 | `AGENT_CONTRIBUTOR_GUIDE.md` | TEST-GOV-07 authority ownership check | EVID-GOV-07 documentation review | PASS |
 | REQ-GOV-08 | `.agent/README.md` | TEST-GOV-08 dependency-DAG validation | EVID-GOV-08 roadmap report | PASS |
 
-| INV-GOV-01, INV-GOV-02, INV-GOV-03, INV-GOV-04, INV-GOV-05, INV-GOV-06, INV-GOV-07 | Governance controls | TEST-GOV-01..05 | EVID-GOV-01..05 | PROPOSED |
-| AC-GOV-01, AC-GOV-02, AC-GOV-03, AC-GOV-04, AC-GOV-05, AC-GOV-06, AC-GOV-07, AC-GOV-08, AC-GOV-09 | Acceptance gates | TEST-GOV-01..08 | EVID-GOV-01..08 | BLOCKED |
+| INV-GOV-01, INV-GOV-02, INV-GOV-03, INV-GOV-04, INV-GOV-05, INV-GOV-06, INV-GOV-07 | Governance controls | TEST-GOV-01, TEST-GOV-02, TEST-GOV-03, TEST-GOV-04, TEST-GOV-05 | EVID-GOV-01, EVID-GOV-02, EVID-GOV-03, EVID-GOV-04, EVID-GOV-05 | PROPOSED |
+| AC-GOV-01, AC-GOV-02, AC-GOV-03, AC-GOV-04, AC-GOV-05, AC-GOV-06, AC-GOV-07, AC-GOV-08, AC-GOV-09 | Acceptance gates | TEST-GOV-01, TEST-GOV-02, TEST-GOV-03, TEST-GOV-04, TEST-GOV-05, TEST-GOV-06, TEST-GOV-07, TEST-GOV-08 | EVID-GOV-01, EVID-GOV-02, EVID-GOV-03, EVID-GOV-04, EVID-GOV-05, EVID-GOV-06, EVID-GOV-07, EVID-GOV-08 | BLOCKED |
 
 ## Concrete Execution Commands
 
@@ -304,6 +305,7 @@ From repository root:
     git status --short --branch
     git diff --check
     python -m pytest agent/tests/governance -q --tb=short
+    python scripts/run_governance_tests.py
     python scripts/validate_execplans.py --format json \
       --output agent/research_evidence/governance/execplan_validation.json
     python scripts/capture_agent_baseline.py \
@@ -353,6 +355,9 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
 - [x] Ran final runnable commands and captured truthful local evidence for commit `662bfa069548f98c9488953ecb028c945bb5d94c`; broad backend regression remains a recorded FAIL due a pre-existing missing script.
 - [x] Marked every trace row with its actual state; Stage remains BLOCKED and is not eligible for merge.
 - [x] (2026-08-25) Re-ran current-HEAD focused verification: 19 governance tests passed; ExecPlan validation, compile checks, and `git diff --check` passed.
+- [x] (2026-08-25) Closed the follow-up review findings with content-bound dirty-tree fingerprints, semantic manifest verification, strict typed traceability rows, broader redaction, typed missing-tool/timeout records, deterministic summaries, artifact revalidation, and a dependency-free offline CI runner.
+- [x] (2026-08-25) Focused verification after four review/fix rounds: 44 pytest tests passed, 44 offline-runner tests passed, all eight plans validated with zero errors, and ruff/compile checks passed; final diff check remains part of the commit gate.
+- [x] (2026-08-25) Final independent follow-up review confirmed the remaining four findings closed and reported no remaining locally fixable P1/P2; broad regression and final-SHA evidence self-reference remain BLOCKED.
 
 ## Surprises & Discoveries
 
@@ -370,6 +375,10 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Evidence: local broad-regression transcript under the baseline evidence directory; this Stage did not modify the missing script or runtime tests.
 - Observation: a tracked manifest cannot itself name the SHA of the commit that adds it without a self-referential Git-object cycle. The current local evidence is deliberately untracked and commit-bound; the plan's simultaneous "tracked" and exact-final-SHA wording requires maintainer direction before acceptance can be PASS.
   Evidence: independent review finding and Git commit-object model.
+- Observation: authorized Stage-branch push triggered governance workflow run `32755313994` on commit `03e388f99cfef6fa7cb862219b85dd958e62aeed`; its governance job and every step completed successfully.
+  Evidence: `https://github.com/Elfsa-Miranda/Vibe-Trading-AGS/actions/runs/32755313994` and GitHub Actions job `97521378439`.
+- Observation: current-commit broad regression reproduced the existing missing-module collection failure after 67.79 seconds; safety tests passed 62/62, while factor-integrity tests passed 915 with five explicit skips and therefore are not represented as an unconditional PASS.
+  Evidence: commit-bound local capture under `agent/research_evidence/agent_baseline/03e388f99cfef6fa7cb862219b85dd958e62aeed/`.
 
 ## Decision Log
 
@@ -393,10 +402,14 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Alternatives: leave Stage pushes without a CI trigger; push an unmerged Stage commit directly to the integration branch; open a pull request.
   Rationale: Stage-branch CI provides final-commit evidence without bypassing local merge gates or expanding the authorization beyond push.
   Date/Author: 2026-08-25 / implementing agent.
+- Decision: Make governance CI dependency-free by running the narrowly scoped standard-library test runner and pin every third-party action by full commit SHA.
+  Alternatives: install an unpinned pytest at runtime; vendor wheels; rely on the runner image's incidental packages.
+  Rationale: the test slice uses only assertions and `tmp_path`, so a fail-closed runner can execute it offline while preserving failures and avoiding mutable dependency resolution.
+  Date/Author: 2026-08-25 / implementing agent.
 
 ## Outcomes & Retrospective
 
-Local implementation now includes strict plan parsing, cross-plan identifiers, commit/tree/artifact/dependency binding, controlled evidence roots, secret-redaction accounting, timeout states, and a least-privilege CI definition. It is intentionally not complete: remote CI has not run, existing broad regression is failing, and the tracked-evidence/final-SHA contradiction needs a governing decision.
+Local implementation now includes strict plan parsing, row- and column-aware traceability, commit/tree/artifact/dependency binding, controlled evidence roots, recursive secret/path redaction, typed timeout and missing-tool states, deterministic summaries, and a least-privilege dependency-free CI definition. It is intentionally not complete: the existing broad regression is failing, factor-integrity evidence includes skips, and the tracked-evidence/final-SHA contradiction needs a governing decision.
 
 ## Plan Revision Log
 
@@ -404,3 +417,5 @@ Local implementation now includes strict plan parsing, cross-plan identifiers, c
 - 2026-08-24: Activated on bootstrap commit `561fb5ddc9d778021da18083462b8583e60ee848`; recorded GitHub source-base selection, bundle-manifest repair, and Python launcher discovery.
 - 2026-08-24: Marked BLOCKED pending permitted remote CI execution, resolution of tracked-evidence versus final-SHA semantics, and a non-governance owner for the existing broad-regression collection failure.
 - 2026-08-25: Recorded Stage-push authorization, added Stage-branch CI triggering, and recorded current-HEAD focused verification; the evidence self-reference and broad-regression blockers remain unresolved.
+- 2026-08-25: Remediated the follow-up independent-review findings, added a standard-library offline test runner, hardened evidence semantics/redaction, and recorded the first successful Stage-branch CI run.
+- 2026-08-25: Completed four independent review/fix rounds; final follow-up found no remaining locally fixable P1/P2 while preserving the two genuine Stage blockers.
