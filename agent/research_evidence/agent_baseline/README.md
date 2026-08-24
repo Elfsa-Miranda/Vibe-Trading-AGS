@@ -19,6 +19,13 @@ timeouts default to `FAIL`; callers may select `--timeout-state BLOCKED` only
 when the timeout is known to be an environmental prerequisite failure and both
 `--blocker-reason` and `--blocker-owner` name that external condition.
 
+`PASS` in a command record means only that the captured process exited zero. It
+does not turn skipped, unavailable, stale, or otherwise inconclusive test
+evidence into an acceptance PASS. Review the referenced command artifacts and
+apply the four-state Stage acceptance rules from `AGENTS.md`; any such evidence
+keeps the affected acceptance row `INCONCLUSIVE` even when the process exit code
+was zero.
+
 Captured artifacts are evidence, not a source of secrets. The capture utility
 redacts repository paths and secret-like values from command output, but callers
 must still choose commands that do not print credentials.

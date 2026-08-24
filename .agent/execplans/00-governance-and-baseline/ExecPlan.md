@@ -352,12 +352,13 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
 - [x] Implemented baseline capture/verification, tamper, dependency-hash, path, duplicate-JSON, redaction, timeout, and idempotence tests.
 - [x] Added least-privilege governance workflow definition and Stage-branch push coverage; the user authorized Stage pushes on 2026-08-25, while pull-request creation remains unauthorized.
 - [x] Performed independent full-diff review; its initial blockers were remediated and follow-up review requested.
-- [x] Ran final runnable commands and captured truthful local evidence for commit `662bfa069548f98c9488953ecb028c945bb5d94c`; broad backend regression remains a recorded FAIL due a pre-existing missing script.
+- [x] Ran runnable commands and captured truthful local evidence for commit `662bfa069548f98c9488953ecb028c945bb5d94c`; the recorded broad FAIL was later traced to Stage 00 namespace shadowing rather than an absent runtime script.
 - [x] Marked every trace row with its actual state; Stage remains BLOCKED and is not eligible for merge.
 - [x] (2026-08-25) Re-ran current-HEAD focused verification: 19 governance tests passed; ExecPlan validation, compile checks, and `git diff --check` passed.
 - [x] (2026-08-25) Closed the follow-up review findings with content-bound dirty-tree fingerprints, semantic manifest verification, strict typed traceability rows, broader redaction, typed missing-tool/timeout records, deterministic summaries, artifact revalidation, and a dependency-free offline CI runner.
 - [x] (2026-08-25) Focused verification after four review/fix rounds: 44 pytest tests passed, 44 offline-runner tests passed, all eight plans validated with zero errors, and ruff/compile checks passed; final diff check remains part of the commit gate.
-- [x] (2026-08-25) Final independent follow-up review confirmed the remaining four findings closed and reported no remaining locally fixable P1/P2; broad regression and final-SHA evidence self-reference remain BLOCKED.
+- [x] (2026-08-25) Final independent follow-up review confirmed the remaining four findings closed and reported no remaining locally fixable P1/P2 at that revision.
+- [x] (2026-08-25) Blocker audit proved that root `scripts/__init__.py` hid the existing `agent/scripts` namespace contribution. Removed the conflicting file, added a governance regression test, and restored the BaoStock replay slice to 3/3 passing; focused governance verification is now 45/45 under both pytest and the offline runner.
 
 ## Surprises & Discoveries
 
@@ -371,14 +372,20 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Evidence: reopened ZIP and post-extraction hash verification. The bootstrap manifest was repaired only for this entry; all fourteen entries, all eight plan hashes, and the validation report now verify.
 - Observation: the Windows `python` app-execution alias is unavailable in this environment. The repository-supported interpreter must be discovered and recorded; no package installation is authorized merely to satisfy a baseline command.
   Evidence: `python --version` exited nonzero before implementation.
-- Observation: broad backend regression stopped at collection because `scripts.run_phase11_baostock_research_only_v1` is absent while `agent/tests/alpha_quality/test_phase11_baostock_raw_replay_v1.py` imports it. The run also emitted five FastAPI/Starlette deprecation warnings.
-  Evidence: local broad-regression transcript under the baseline evidence directory; this Stage did not modify the missing script or runtime tests.
+- Observation: broad backend regression stopped at collection because Stage 00 had added root `scripts/__init__.py`, converting the repository's split `scripts` namespace into a regular package and hiding the existing `agent/scripts/run_phase11_baostock_research_only_v1.py` module. The module was not absent.
+  Evidence: side-by-side import resolution on the Stage and integration worktrees, base-tree inspection proving the root initializer was newly added, and the restored BaoStock replay slice passing 3/3 after its removal.
 - Observation: a tracked manifest cannot itself name the SHA of the commit that adds it without a self-referential Git-object cycle. The current local evidence is deliberately untracked and commit-bound; the plan's simultaneous "tracked" and exact-final-SHA wording requires maintainer direction before acceptance can be PASS.
   Evidence: independent review finding and Git commit-object model.
 - Observation: authorized Stage-branch push triggered governance workflow run `32755313994` on commit `03e388f99cfef6fa7cb862219b85dd958e62aeed`; its governance job and every step completed successfully.
   Evidence: `https://github.com/Elfsa-Miranda/Vibe-Trading-AGS/actions/runs/32755313994` and GitHub Actions job `97521378439`.
-- Observation: current-commit broad regression reproduced the existing missing-module collection failure after 67.79 seconds; safety tests passed 62/62, while factor-integrity tests passed 915 with five explicit skips and therefore are not represented as an unconditional PASS.
+- Observation: exact-SHA workflow run `32760686558` completed successfully on commit `12cf780cda2172ec7deee772ef9fc5130d52cd06` and retained both declared CI artifacts. A later local blocker audit found the namespace regression described above, so that commit is no longer the final Stage candidate.
+  Evidence: `https://github.com/Elfsa-Miranda/Vibe-Trading-AGS/actions/runs/32760686558`, job `97538538500`, and artifact IDs `9532537360` and `9532536576`.
+- Observation: commit `03e388f99cfef6fa7cb862219b85dd958e62aeed` reproduced the then-unrecognized namespace-shadowing collection failure after 67.79 seconds; safety tests passed 62/62, while factor-integrity tests passed 915 with five explicit skips and therefore were not represented as an unconditional PASS.
   Evidence: commit-bound local capture under `agent/research_evidence/agent_baseline/03e388f99cfef6fa7cb862219b85dd958e62aeed/`.
+- Observation: the five factor skips are four fundamental factors whose required columns are absent from the OHLCV-only synthetic panel and Alpha101-096 whose 300-row synthetic output exceeds the registry's 95% NaN sanity threshold. They are explicit coverage gaps, not passing look-ahead assertions.
+  Evidence: `pytest -q -rs` output from the factor purity/look-ahead slice.
+- Observation: after the namespace fix, the broad suite passed its former collection point and then failed `test_shared_research_bundle_sources_materialize_arm_terminal_dossier` because activation-arm source hashes were not unique. The same isolated test fails identically on the untouched integration baseline, and no Stage diff touches its runtime or test paths.
+  Evidence: fail-fast broad run (305 passed before the failure), isolated Stage and integration runs with the same `EventTransitionError`, and an empty base-to-Stage diff for `agent/src`, `agent/tests/alpha_foundry`, `agent/tests/factors`, and `agent/tests/alpha_quality`.
 
 ## Decision Log
 
@@ -406,10 +413,18 @@ Large raw command logs may be CI artifacts rather than committed files. Every ma
   Alternatives: install an unpinned pytest at runtime; vendor wheels; rely on the runner image's incidental packages.
   Rationale: the test slice uses only assertions and `tmp_path`, so a fail-closed runner can execute it offline while preserving failures and avoiding mutable dependency resolution.
   Date/Author: 2026-08-25 / implementing agent.
+- Decision: Keep root `scripts/` as a namespace-package contribution and forbid a root initializer while `agent/scripts/` contributes runtime modules.
+  Alternatives: duplicate or proxy runtime modules from the root package; change runtime import paths during the governance stage.
+  Rationale: deleting the Stage-introduced initializer restores baseline import behavior without changing runtime code, while a governance regression test prevents recurrence.
+  Date/Author: 2026-08-25 / implementing agent.
+- Decision: Treat manifest command `PASS` strictly as a zero process exit, not as Stage acceptance authority.
+  Alternatives: infer semantic completeness from arbitrary command text; treat zero-exit pytest runs with skips as acceptance PASS.
+  Rationale: generic command capture cannot safely infer domain completeness. The referenced artifacts remain authoritative for the reviewer, and skipped or inconclusive evidence keeps the Stage acceptance row non-passing under `AGENTS.md`.
+  Date/Author: 2026-08-25 / implementing agent.
 
 ## Outcomes & Retrospective
 
-Local implementation now includes strict plan parsing, row- and column-aware traceability, commit/tree/artifact/dependency binding, controlled evidence roots, recursive secret/path redaction, typed timeout and missing-tool states, deterministic summaries, and a least-privilege dependency-free CI definition. It is intentionally not complete: the existing broad regression is failing, factor-integrity evidence includes skips, and the tracked-evidence/final-SHA contradiction needs a governing decision.
+Local implementation now includes strict plan parsing, row- and column-aware traceability, commit/tree/artifact/dependency binding, controlled evidence roots, recursive secret/path redaction, typed timeout and missing-tool states, deterministic summaries, a least-privilege dependency-free CI definition, and a regression guard for the repository's split `scripts` namespace. It is intentionally not complete: broad verification exposes an integration-baseline runtime failure, factor-integrity evidence contains five explicit coverage gaps, and the tracked-evidence/final-SHA contradiction needs a governing decision.
 
 ## Plan Revision Log
 
@@ -419,3 +434,4 @@ Local implementation now includes strict plan parsing, row- and column-aware tra
 - 2026-08-25: Recorded Stage-push authorization, added Stage-branch CI triggering, and recorded current-HEAD focused verification; the evidence self-reference and broad-regression blockers remain unresolved.
 - 2026-08-25: Remediated the follow-up independent-review findings, added a standard-library offline test runner, hardened evidence semantics/redaction, and recorded the first successful Stage-branch CI run.
 - 2026-08-25: Completed four independent review/fix rounds; final follow-up found no remaining locally fixable P1/P2 while preserving the two genuine Stage blockers.
+- 2026-08-25: Corrected the broad-failure diagnosis, removed the Stage-introduced namespace shadow, and added a focused regression test before restarting final-SHA gates.
