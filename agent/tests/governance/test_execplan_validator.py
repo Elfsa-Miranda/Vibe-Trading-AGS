@@ -137,3 +137,9 @@ def test_active_plan_rejects_unresolved_placeholder(tmp_path: Path) -> None:
     result = validate_plan(path)
 
     assert "UNRESOLVED_PLACEHOLDER" in result.errors
+
+
+def test_repository_report_uses_repository_relative_paths() -> None:
+    report = validate_repository(REPOSITORY_ROOT)
+
+    assert all(not Path(plan.path).is_absolute() for plan in report.plans)
